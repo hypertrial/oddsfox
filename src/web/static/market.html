@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>oddsfox market</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; background: #0b1020; color: #e8eefc; }
+    a { color: #7db3ff; }
+    .card { background: #141b33; border: 1px solid #243055; border-radius: 12px; padding: 1rem; margin: 1rem 0; }
+  </style>
+</head>
+<body>
+  <p><a href="/">← Dashboard</a></p>
+  <div id="content" class="card">Loading market…</div>
+  <script>
+    const id = location.pathname.split('/').pop();
+    Promise.all([
+      fetch('/markets/' + id).then(r => r.json()),
+      fetch('/markets/' + id + '/metrics').then(r => r.json()).catch(() => ({ metrics: [] })),
+      fetch('/markets/' + id + '/orderbook/latest').then(r => r.json()).catch(() => ({}))
+    ]).then(([market, metrics, book]) => {
+      document.getElementById('content').innerHTML = `
+        <h1>${market.question || market.market_id}</h1>
+        <p>Active: ${market.active} · Resolved: ${market.resolved}</p>
+        <h2>Outcomes</h2>
+        <ul>${(market.outcomes || []).map(o => `<li>${o.outcome_name}: ${o.token_id || 'n/a'}</li>`).join('')}</ul>
+        <h2>Order book</h2>
+        <pre>${JSON.stringify(book, null, 2)}</pre>
+        <h2>Metrics</h2>
+        <pre>${JSON.stringify(metrics.metrics || [], null, 2)}</pre>
+      `;
+    });
+  </script>
+</body>
+</html>

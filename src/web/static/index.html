@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>oddsfox</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; background: #0b1020; color: #e8eefc; }
+    a { color: #7db3ff; }
+    .card { background: #141b33; border: 1px solid #243055; border-radius: 12px; padding: 1rem; margin: 1rem 0; }
+    h1, h2 { margin-top: 0; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { text-align: left; padding: 0.5rem; border-bottom: 1px solid #243055; }
+  </style>
+</head>
+<body>
+  <h1>oddsfox</h1>
+  <p>Local-first Polymarket research kit. Read-only v0.1.0.</p>
+  <div class="card">
+    <h2>Dashboard</h2>
+    <ul>
+      <li><a href="/markets?active=true">Active markets</a></li>
+      <li><a href="/metrics/liquidity">Liquidity metrics</a></li>
+      <li><a href="/metrics/calibration">Calibration</a></li>
+      <li><a href="/resolved">Recently resolved</a></li>
+      <li><a href="/health">Health</a></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2>API</h2>
+    <p>Use the local HTTP API at <code>/markets</code>, <code>/search?q=...</code>, <code>/markets/{id}</code>.</p>
+  </div>
+  <script>
+    fetch('/markets').then(r => r.json()).then(data => {
+      const root = document.createElement('div');
+      root.className = 'card';
+      root.innerHTML = '<h2>Top markets</h2>';
+      const table = document.createElement('table');
+      table.innerHTML = '<tr><th>Question</th><th>Volume 24h</th><th>Link</th></tr>';
+      (data.markets || []).slice(0, 10).forEach(m => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${m.question || m.market_id}</td><td>${m.volume_24h ?? ''}</td><td><a href="/markets/${m.market_id}">view</a></td>`;
+        table.appendChild(tr);
+      });
+      root.appendChild(table);
+      document.body.appendChild(root);
+    }).catch(() => {});
+  </script>
+</body>
+</html>

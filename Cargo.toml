@@ -1,0 +1,55 @@
+[package]
+name = "oddsfox"
+version = "0.1.0"
+edition = "2021"
+description = "A local-first Rust research kit for Polymarket"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/hypertrial/oddsfox"
+homepage = "https://github.com/hypertrial/oddsfox"
+documentation = "https://github.com/hypertrial/oddsfox/tree/main/docs"
+keywords = ["polymarket", "parquet", "lakehouse", "duckdb", "forecasting"]
+categories = ["command-line-utilities", "database"]
+
+[lib]
+name = "oddsfox"
+path = "src/lib.rs"
+
+[[bin]]
+name = "oddsfox"
+path = "src/main.rs"
+
+[features]
+default = []
+live-tests = []
+
+[dependencies]
+anyhow = "1"
+arrow = { version = "58", default-features = false, features = ["chrono-tz"] }
+axum = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+duckdb = { version = "1.1", features = ["bundled"] }
+fs2 = "0.4"
+futures-util = "0.3"
+parquet = { version = "58", default-features = false, features = ["arrow", "snap", "zstd"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rust_decimal = { version = "1", features = ["serde-with-str"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+toml = "0.8"
+tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
+wiremock = "0.6"
+
+[profile.dist]
+inherits = "release"

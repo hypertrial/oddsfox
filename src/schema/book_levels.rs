@@ -1,0 +1,17 @@
+use std::sync::Arc;
+
+use arrow::datatypes::Schema;
+
+use super::{ingest_meta_fields, string_field, float64_field, int32_field};
+
+pub fn schema() -> Arc<Schema> {
+    let mut fields = vec![
+        string_field("snapshot_id", false),
+        string_field("side", false),
+        float64_field("price", true),
+        float64_field("size", true),
+        int32_field("level_index", false),
+    ];
+    fields.extend(ingest_meta_fields());
+    Arc::new(Schema::new(fields))
+}

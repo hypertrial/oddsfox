@@ -1,0 +1,653 @@
+{
+  "contract_version": "1.0.0",
+  "schema_version": "polymarket-v1",
+  "lake_layout_version": "medallion-v2",
+  "oddsfox_version": "0.1.0",
+  "bronze_tables": {
+    "book_levels": [
+      {
+        "name": "snapshot_id",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "side",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "price",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "size",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "level_index",
+        "data_type": "Int32",
+        "nullable": false
+      },
+      {
+        "name": "source",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "raw_url",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "raw_sha256",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "ingested_at",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": false
+      },
+      {
+        "name": "run_id",
+        "data_type": "Utf8",
+        "nullable": false
+      }
+    ],
+    "events": [
+      {
+        "name": "event_id",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "slug",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "title",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "description",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "category",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "tags",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "active",
+        "data_type": "Boolean",
+        "nullable": true
+      },
+      {
+        "name": "closed",
+        "data_type": "Boolean",
+        "nullable": true
+      },
+      {
+        "name": "start_time",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": true
+      },
+      {
+        "name": "end_time",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": true
+      },
+      {
+        "name": "updated_at",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": true
+      },
+      {
+        "name": "raw_json",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "source",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "raw_url",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "raw_sha256",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "ingested_at",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": false
+      },
+      {
+        "name": "run_id",
+        "data_type": "Utf8",
+        "nullable": false
+      }
+    ],
+    "markets": [
+      {
+        "name": "market_id",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "event_id",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "condition_id",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "question_id",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "slug",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "question",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "description",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "active",
+        "data_type": "Boolean",
+        "nullable": true
+      },
+      {
+        "name": "closed",
+        "data_type": "Boolean",
+        "nullable": true
+      },
+      {
+        "name": "resolved",
+        "data_type": "Boolean",
+        "nullable": true
+      },
+      {
+        "name": "enable_order_book",
+        "data_type": "Boolean",
+        "nullable": true
+      },
+      {
+        "name": "neg_risk",
+        "data_type": "Boolean",
+        "nullable": true
+      },
+      {
+        "name": "liquidity",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "volume",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "volume_24h",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "open_interest",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "close_time",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": true
+      },
+      {
+        "name": "resolution_time",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": true
+      },
+      {
+        "name": "resolution_source",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "raw_json",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "source",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "raw_url",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "raw_sha256",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "ingested_at",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": false
+      },
+      {
+        "name": "run_id",
+        "data_type": "Utf8",
+        "nullable": false
+      }
+    ],
+    "orderbooks": [
+      {
+        "name": "snapshot_id",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "token_id",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "market_id",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "ts",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": false
+      },
+      {
+        "name": "book_hash",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "best_bid",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "best_ask",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "spread",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "midpoint",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "bid_depth_1pct",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "ask_depth_1pct",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "bid_depth_5pct",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "ask_depth_5pct",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "raw_json",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "source",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "raw_url",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "raw_sha256",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "ingested_at",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": false
+      },
+      {
+        "name": "run_id",
+        "data_type": "Utf8",
+        "nullable": false
+      }
+    ],
+    "outcomes": [
+      {
+        "name": "market_id",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "outcome_index",
+        "data_type": "Int32",
+        "nullable": false
+      },
+      {
+        "name": "outcome_name",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "token_id",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "is_winner",
+        "data_type": "Boolean",
+        "nullable": true
+      },
+      {
+        "name": "source",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "raw_url",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "raw_sha256",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "ingested_at",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": false
+      },
+      {
+        "name": "run_id",
+        "data_type": "Utf8",
+        "nullable": false
+      }
+    ],
+    "prices": [
+      {
+        "name": "token_id",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "market_id",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "ts",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": false
+      },
+      {
+        "name": "price",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "source",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "fidelity_seconds",
+        "data_type": "Int32",
+        "nullable": true
+      },
+      {
+        "name": "ingested_at",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": false
+      },
+      {
+        "name": "source",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "raw_url",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "raw_sha256",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "ingested_at",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": false
+      },
+      {
+        "name": "run_id",
+        "data_type": "Utf8",
+        "nullable": false
+      }
+    ],
+    "resolutions": [
+      {
+        "name": "market_id",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "resolved_at",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": true
+      },
+      {
+        "name": "winning_token_id",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "winning_outcome",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "resolution_source",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "resolution_status",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "raw_json",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "source",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "raw_url",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "raw_sha256",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "ingested_at",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": false
+      },
+      {
+        "name": "run_id",
+        "data_type": "Utf8",
+        "nullable": false
+      }
+    ],
+    "trades": [
+      {
+        "name": "trade_id",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "market_id",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "token_id",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "ts",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": false
+      },
+      {
+        "name": "price",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "size",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "side",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "tx_hash",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "maker",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "taker",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "raw_json",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "source",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "raw_url",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "raw_sha256",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "ingested_at",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": false
+      },
+      {
+        "name": "run_id",
+        "data_type": "Utf8",
+        "nullable": false
+      }
+    ]
+  },
+  "metadata_tables": {
+    "sync_state": [
+      {
+        "name": "source",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "cursor_key",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "cursor_value",
+        "data_type": "Utf8",
+        "nullable": false
+      }
+    ]
+  }
+}

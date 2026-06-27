@@ -1,0 +1,11 @@
+{
+  "hash": "0xabc123",
+  "market": "mkt-1",
+  "asset_id": "token-yes",
+  "timestamp": "2025-06-01T12:00:00Z",
+  "bids": [{"price": "0.48", "size": "1000"}],
+  "asks": [{"price": "0.52", "size": "1000"}],
+  "min_order_size": "1",
+  "tick_size": "0.01",
+  "neg_risk": false
+}

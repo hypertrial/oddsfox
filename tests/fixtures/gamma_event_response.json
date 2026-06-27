@@ -1,0 +1,32 @@
+[
+  {
+    "id": "evt-1",
+    "slug": "test-event",
+    "title": "Test Event",
+    "description": "Fixture event",
+    "category": "politics",
+    "tags": [{"label": "Politics", "slug": "politics"}],
+    "active": true,
+    "closed": false,
+    "markets": [
+      {
+        "id": "mkt-1",
+        "question": "Will this pass?",
+        "active": true,
+        "closed": false,
+        "resolved": false,
+        "enableOrderBook": true,
+        "negRisk": false,
+        "liquidity": "1000",
+        "volume": "5000",
+        "volume24hr": "250",
+        "outcomes": "[\"Yes\",\"No\"]",
+        "clobTokenIds": "[\"token-yes\",\"token-no\"]"
+      }
+    ],
+    "startDate": "2025-01-01T00:00:00Z",
+    "endDate": "2025-12-31T23:59:59Z",
+    "createdAt": "2025-01-01T00:00:00Z",
+    "updatedAt": "2025-06-01T00:00:00Z"
+  }
+]
