@@ -3,6 +3,10 @@
 debug
 /target
 /catalog.duckdb
+
+# Repo-local cargo scratch (TMPDIR redirect in .cargo/config.toml)
+.tmp-cargo/*
+!.tmp-cargo/.gitkeep
 **/*.duckdb
 .lake/
 

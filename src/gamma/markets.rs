@@ -2,6 +2,20 @@
 
 use serde::Deserialize;
 
+/// Gamma returns monetary fields inconsistently as JSON strings or numbers.
+/// Normalize either representation (and null) into `Option<String>`.
+fn de_stringish<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|value| match value {
+        serde_json::Value::String(s) => Some(s),
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }))
+}
+
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 pub struct GammaMarket {
     pub id: String,
@@ -16,9 +30,13 @@ pub struct GammaMarket {
     pub resolved: Option<bool>,
     pub enableOrderBook: Option<bool>,
     pub negRisk: Option<bool>,
+    #[serde(default, deserialize_with = "de_stringish")]
     pub liquidity: Option<String>,
+    #[serde(default, deserialize_with = "de_stringish")]
     pub volume: Option<String>,
+    #[serde(default, deserialize_with = "de_stringish")]
     pub volume24hr: Option<String>,
+    #[serde(default, deserialize_with = "de_stringish")]
     pub openInterest: Option<String>,
     pub endDate: Option<String>,
     pub resolutionTime: Option<String>,
@@ -53,5 +71,35 @@ impl GammaMarket {
                 (idx as i32, name, token_id)
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GammaMarket;
+
+    #[test]
+    fn deserializes_numeric_monetary_fields() {
+        // Gamma returns these fields as bare JSON numbers for some markets.
+        let json = r#"{
+            "id": "691547",
+            "volume24hr": 30.700835,
+            "liquidity": 4262.9944,
+            "volume": 541493.91993,
+            "openInterest": 12
+        }"#;
+        let market: GammaMarket = serde_json::from_str(json).unwrap();
+        assert_eq!(market.volume24hr.as_deref(), Some("30.700835"));
+        assert_eq!(market.liquidity.as_deref(), Some("4262.9944"));
+        assert_eq!(market.volume.as_deref(), Some("541493.91993"));
+        assert_eq!(market.openInterest.as_deref(), Some("12"));
+    }
+
+    #[test]
+    fn deserializes_string_monetary_fields() {
+        let json = r#"{ "id": "1", "volume24hr": "30.7", "liquidity": null }"#;
+        let market: GammaMarket = serde_json::from_str(json).unwrap();
+        assert_eq!(market.volume24hr.as_deref(), Some("30.7"));
+        assert_eq!(market.liquidity, None);
     }
 }

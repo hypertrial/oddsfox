@@ -1,0 +1,11 @@
+# Keep all build output and scratch on the volume that holds this repo (the SSD),
+# not the cramped system volume. Without this, tooling defaults `CARGO_TARGET_DIR`
+# and `TMPDIR` to `/var/folders` (system volume), which churns a per-run target
+# dir (stale binaries, repeated DuckDB recompiles) and fills a near-full disk.
+[build]
+target-dir = "target"
+
+[env]
+# `relative = true` resolves against this file's parent (the repo root on the SSD);
+# `force = true` overrides an inherited `TMPDIR` that points off-volume.
+TMPDIR = { value = ".tmp-cargo", force = true, relative = true }
