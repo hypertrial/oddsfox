@@ -50,9 +50,9 @@ pub fn compute_liquidity_metrics(out: &std::path::Path, active_only: bool) -> Re
     let mut window_seconds = Int32Builder::new();
     let mut source_version = StringBuilder::new();
     let now = Utc::now().timestamp_millis();
-    let mut count = 0_i64;
 
-    for row in rows.flatten() {
+    for row in rows {
+        let row = row?;
         let (_snapshot, token, market, spread, midpoint, bid_depth, ask_depth) = row;
         append_metric(
             &mut metric_name,
@@ -114,7 +114,6 @@ pub fn compute_liquidity_metrics(out: &std::path::Path, active_only: bool) -> Re
             now,
             ask_depth,
         );
-        count += 3;
     }
 
     let batch = RecordBatch::try_new(
@@ -129,10 +128,11 @@ pub fn compute_liquidity_metrics(out: &std::path::Path, active_only: bool) -> Re
             Arc::new(source_version.finish()),
         ],
     )?;
-    if batch.num_rows() > 0 {
+    let rows = batch.num_rows() as i64;
+    if rows > 0 {
         crate::parquet::write_gold(&paths, "metric_points", "liquidity", &[batch])?;
     }
-    Ok(count)
+    Ok(rows)
 }
 
 #[allow(clippy::too_many_arguments)]

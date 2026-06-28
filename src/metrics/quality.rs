@@ -20,7 +20,8 @@ pub fn run_quality_checks(out: &std::path::Path) -> Result<Vec<DataQualityRecord
         format!("SELECT market_id FROM {outcomes_source} WHERE token_id IS NULL");
     if let Ok(mut stmt) = conn.prepare(&missing_tokens_sql) {
         let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
-        for market_id in rows.flatten() {
+        for market_id in rows {
+            let market_id = market_id?;
             records.push(DataQualityRecord {
                 check_name: "missing_token_ids".into(),
                 entity_type: "market".into(),
@@ -36,7 +37,8 @@ pub fn run_quality_checks(out: &std::path::Path) -> Result<Vec<DataQualityRecord
         format!("SELECT market_id FROM {markets_source} WHERE closed = true AND resolved = false");
     if let Ok(mut stmt) = conn.prepare(&unresolved_sql) {
         let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
-        for market_id in rows.flatten() {
+        for market_id in rows {
+            let market_id = market_id?;
             records.push(DataQualityRecord {
                 check_name: "missing_resolution".into(),
                 entity_type: "market".into(),

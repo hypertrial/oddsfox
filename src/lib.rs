@@ -11,6 +11,7 @@ pub mod duckdb_engine;
 pub mod error;
 pub mod explore;
 pub mod gamma;
+pub mod head;
 pub mod http;
 pub mod ids;
 pub mod init;
@@ -18,7 +19,6 @@ pub mod kalshi;
 pub mod manifest;
 pub mod metrics;
 pub mod normalize;
-pub mod head;
 pub mod ops;
 pub mod parquet;
 pub mod parquet_props;
@@ -46,7 +46,10 @@ impl Lake {
         Ok(Self { root: path.into() })
     }
 
-    pub async fn sync_markets(&self, options: config::SyncMarketsOptions) -> Result<sync::SyncSummary> {
+    pub async fn sync_markets(
+        &self,
+        options: config::SyncMarketsOptions,
+    ) -> Result<sync::SyncSummary> {
         let mut opts = options;
         opts.out = self.root.clone();
         sync::sync_markets(opts).await

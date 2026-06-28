@@ -28,7 +28,8 @@ pub fn search(out: &Path, query: &str) -> Result<Vec<SearchHit>> {
             volume_24h: row.get(3)?,
         })
     })?;
-    Ok(rows.filter_map(|r| r.ok()).collect())
+    rows.collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(Into::into)
 }
 
 pub fn market_detail(out: &Path, market_id: &str) -> Result<MarketDetail> {
@@ -80,8 +81,7 @@ pub fn market_detail(out: &Path, market_id: &str) -> Result<MarketDetail> {
                 is_winner: row.get(3)?,
             })
         })?
-        .filter_map(|r| r.ok())
-        .collect();
+        .collect::<std::result::Result<Vec<_>, _>>()?;
 
     Ok(MarketDetail { outcomes, ..market })
 }
@@ -145,7 +145,8 @@ pub fn resolved_markets(out: &Path, since: Option<NaiveDate>) -> Result<Vec<Mark
             outcomes: Vec::new(),
         })
     })?;
-    Ok(rows.filter_map(|r| r.ok()).collect())
+    rows.collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(Into::into)
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

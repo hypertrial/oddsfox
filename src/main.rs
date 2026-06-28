@@ -4,6 +4,7 @@ use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
 use oddsfox::cli::{
+    base_snapshot_books_options, base_sync_markets_options, base_sync_prices_options,
     lake_root_from_config, Cli, Commands, ComputeCommands, MetricsCommands, SnapshotCommands,
     SyncCommands,
 };
@@ -14,7 +15,7 @@ use oddsfox::config::{
 };
 use oddsfox::duckdb::default_db_for_lake;
 use oddsfox::error::Result;
-use oddsfox::settings::{resolve_config, OddsfoxConfig};
+use oddsfox::settings::resolve_config;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -376,7 +377,8 @@ async fn main() -> Result<()> {
         }
         Commands::Top { by, out, limit } => {
             let root = lake_root_from_config(cli.config.as_deref(), out.clone())?;
-            let markets = oddsfox::snapshot::top_markets(&root, TopBy::from(*by), *limit)?;
+            let markets =
+                oddsfox::snapshot::top_markets(&root, TopBy::from(*by), *limit, None, None)?;
             println!("{}", serde_json::to_string_pretty(&markets)?);
         }
         Commands::Metrics { target } => match target {
@@ -459,124 +461,4 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn kalshi_private_key_path(config: &OddsfoxConfig) -> Option<PathBuf> {
-    config.kalshi.private_key_path.clone().map(PathBuf::from)
-}
-
-fn base_sync_markets_options(
-    out: PathBuf,
-    source: Source,
-    config: &OddsfoxConfig,
-) -> oddsfox::config::SyncMarketsOptions {
-    oddsfox::config::SyncMarketsOptions {
-        out,
-        source,
-        active: false,
-        closed: false,
-        all: false,
-        status: None,
-        series: None,
-        event: None,
-        tag: None,
-        since: None,
-        limit: None,
-        resume: true,
-        overwrite: false,
-        gamma_base_url: config.polymarket.gamma_base_url.clone(),
-        kalshi_rest_base_url: config.kalshi.rest_base_url.clone(),
-        kalshi_key_id: config.kalshi.key_id.clone(),
-        kalshi_private_key_path: kalshi_private_key_path(config),
-        requests_per_second: config.sync.requests_per_second,
-        max_retries: config.sync.max_retries,
-        user_agent: config.sync.user_agent.clone(),
-        raw_retention_days: config.data.raw_retention_days,
-    }
-}
-
-fn base_sync_prices_options(
-    out: PathBuf,
-    source: Source,
-    config: &OddsfoxConfig,
-) -> oddsfox::config::SyncPricesOptions {
-    oddsfox::config::SyncPricesOptions {
-        out,
-        source,
-        market_id: None,
-        series: None,
-        active: false,
-        all: false,
-        filter_active: None,
-        tag: None,
-        limit: None,
-        top_limit: None,
-        interval: None,
-        fidelity: None,
-        period: None,
-        since: None,
-        until: None,
-        recent_hours: None,
-        overwrite: false,
-        concurrency: 1,
-        clob_base_url: config.polymarket.clob_base_url.clone(),
-        kalshi_rest_base_url: config.kalshi.rest_base_url.clone(),
-        kalshi_key_id: config.kalshi.key_id.clone(),
-        kalshi_private_key_path: kalshi_private_key_path(config),
-        requests_per_second: config.sync.requests_per_second,
-        max_retries: config.sync.max_retries,
-        user_agent: config.sync.user_agent.clone(),
-    }
-}
-
-fn base_snapshot_books_options(
-    out: PathBuf,
-    source: Source,
-    config: &OddsfoxConfig,
-) -> oddsfox::config::SnapshotBooksOptions {
-    oddsfox::config::SnapshotBooksOptions {
-        out,
-        source,
-        market_id: None,
-        active: false,
-        top_volume: None,
-        tokens_file: None,
-        depth: None,
-        clob_base_url: config.polymarket.clob_base_url.clone(),
-        kalshi_rest_base_url: config.kalshi.rest_base_url.clone(),
-        kalshi_key_id: config.kalshi.key_id.clone(),
-        kalshi_private_key_path: kalshi_private_key_path(config),
-        requests_per_second: config.sync.requests_per_second,
-        max_retries: config.sync.max_retries,
-        user_agent: config.sync.user_agent.clone(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn base_options_keep_shared_defaults() {
-        let config = OddsfoxConfig::default();
-        let root = PathBuf::from("/tmp/lake");
-
-        let markets = base_sync_markets_options(root.clone(), Source::Polymarket, &config);
-        assert_eq!(markets.out, root);
-        assert!(!markets.active);
-        assert!(!markets.all);
-        assert_eq!(markets.requests_per_second, config.sync.requests_per_second);
-        assert_eq!(markets.raw_retention_days, config.data.raw_retention_days);
-
-        let prices = base_sync_prices_options(PathBuf::from("/tmp/lake"), Source::Kalshi, &config);
-        assert!(!prices.active);
-        assert!(!prices.all);
-        assert_eq!(prices.concurrency, 1);
-        assert_eq!(prices.recent_hours, None);
-
-        let snapshot =
-            base_snapshot_books_options(PathBuf::from("/tmp/lake"), Source::Polymarket, &config);
-        assert!(!snapshot.active);
-        assert_eq!(snapshot.top_volume, None);
-    }
 }

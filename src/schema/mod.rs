@@ -4,15 +4,15 @@ use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 
 use crate::config::Table;
 
+pub mod book_levels;
 pub mod events;
 pub mod markets;
+pub mod metrics;
+pub mod orderbooks;
 pub mod outcomes;
 pub mod prices;
-pub mod orderbooks;
-pub mod book_levels;
-pub mod trades;
 pub mod resolutions;
-pub mod metrics;
+pub mod trades;
 
 pub fn arrow_schema(table: Table) -> Arc<Schema> {
     match table {

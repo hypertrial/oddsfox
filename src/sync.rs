@@ -118,7 +118,8 @@ pub async fn token_ids_for_market(out: &std::path::Path, market_id: &str) -> Res
     let rows = crate::duckdb_engine::map_duckdb(
         stmt.query_map([market_id], |row| row.get::<_, String>(0)),
     )?;
-    Ok(rows.filter_map(|r| r.ok()).collect())
+    rows.collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(Into::into)
 }
 
 pub async fn top_token_ids(out: &std::path::Path, limit: usize) -> Result<Vec<String>> {
@@ -208,7 +209,8 @@ fn query_token_pairs(
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         }),
     )?;
-    Ok(rows.filter_map(|r| r.ok()).collect())
+    rows.collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(Into::into)
 }
 
 #[cfg(test)]

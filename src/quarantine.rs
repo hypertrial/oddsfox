@@ -26,7 +26,12 @@ pub fn quarantine_bad_row(
     Ok(())
 }
 
-pub fn quarantine_bad_file(lake: &LakePaths, source: &str, filename: &str, message: &str) -> Result<()> {
+pub fn quarantine_bad_file(
+    lake: &LakePaths,
+    source: &str,
+    filename: &str,
+    message: &str,
+) -> Result<()> {
     let path = lake.quarantine_bad_file(source, filename);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -40,7 +45,12 @@ pub fn quarantine_bad_file(lake: &LakePaths, source: &str, filename: &str, messa
     Ok(())
 }
 
-pub fn write_raw_json(lake: &LakePaths, source: &str, filename: &str, body: &[u8]) -> Result<PathBuf> {
+pub fn write_raw_json(
+    lake: &LakePaths,
+    source: &str,
+    filename: &str,
+    body: &[u8],
+) -> Result<PathBuf> {
     let path = lake.raw_file(source, filename);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;

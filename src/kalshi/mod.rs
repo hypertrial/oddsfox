@@ -246,7 +246,8 @@ pub fn active_markets_for_prices(
     let rows = crate::duckdb_engine::map_duckdb(stmt.query_map([], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
     }))?;
-    Ok(rows.filter_map(|row| row.ok()).collect())
+    rows.collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(Into::into)
 }
 
 async fn sync_market_prices(ctx: KalshiMarketPriceSync<'_>) -> Result<i64> {

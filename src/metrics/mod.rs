@@ -78,7 +78,8 @@ pub fn market_metrics(out: &std::path::Path, market_id: &str) -> Result<Vec<Metr
             window_seconds: row.get(5)?,
         })
     })?;
-    Ok(rows.filter_map(|r| r.ok()).collect())
+    rows.collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(Into::into)
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

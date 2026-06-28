@@ -31,10 +31,7 @@ impl DataClient {
     }
 
     pub async fn fetch_trades(&self, market_id: &str, limit: usize) -> Result<Vec<DataTrade>> {
-        let url = format!(
-            "{}/trades?market={market_id}&limit={limit}",
-            self.base_url
-        );
+        let url = format!("{}/trades?market={market_id}&limit={limit}", self.base_url);
         let body = self.http.get_bytes(&url).await?;
         let trades: Vec<DataTrade> = serde_json::from_slice(&body).unwrap_or_default();
         Ok(trades)

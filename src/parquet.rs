@@ -94,7 +94,9 @@ pub fn read_all_batches(path: &Path) -> Result<Vec<RecordBatch>> {
     }
     let file = File::open(path)?;
     let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
-    reader.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+    reader
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(Into::into)
 }
 
 pub fn write_gold(
@@ -103,6 +105,8 @@ pub fn write_gold(
     run_id: &str,
     batches: &[RecordBatch],
 ) -> Result<std::path::PathBuf> {
-    let path = lake.gold_dir(name).join(format!("run={run_id}/part.parquet"));
+    let path = lake
+        .gold_dir(name)
+        .join(format!("run={run_id}/part.parquet"));
     write_batches(&path, batches)
 }

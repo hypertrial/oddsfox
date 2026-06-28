@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use arrow::datatypes::Schema;
 
-use super::{ingest_meta_fields, string_field, float64_field, int32_field};
+use super::{float64_field, ingest_meta_fields, int32_field, string_field};
 
 pub fn schema() -> Arc<Schema> {
     let mut fields = vec![

@@ -23,7 +23,10 @@ pub fn check_lake(out: &Path) -> Result<CheckReport> {
     for table in Table::all() {
         let dir = paths.bronze_table_dir(*table);
         if !dir.is_dir() {
-            issues.push(format!("missing bronze table directory: {}", table.as_str()));
+            issues.push(format!(
+                "missing bronze table directory: {}",
+                table.as_str()
+            ));
         }
     }
 

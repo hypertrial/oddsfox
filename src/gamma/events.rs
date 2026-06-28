@@ -40,8 +40,14 @@ pub struct FetchEventsParams<'a> {
     pub offset: usize,
 }
 
-pub async fn fetch_events(client: &HttpClient, params: FetchEventsParams<'_>) -> Result<Vec<GammaEvent>> {
-    let mut url = format!("{}/events?limit={}&offset={}", params.base_url, params.limit, params.offset);
+pub async fn fetch_events(
+    client: &HttpClient,
+    params: FetchEventsParams<'_>,
+) -> Result<Vec<GammaEvent>> {
+    let mut url = format!(
+        "{}/events?limit={}&offset={}",
+        params.base_url, params.limit, params.offset
+    );
     if let Some(active) = params.active {
         url.push_str(&format!("&active={active}"));
     }
@@ -56,7 +62,11 @@ pub async fn fetch_events(client: &HttpClient, params: FetchEventsParams<'_>) ->
     Ok(events)
 }
 
-pub async fn fetch_event_by_id(client: &HttpClient, base_url: &str, event_id: &str) -> Result<GammaEvent> {
+pub async fn fetch_event_by_id(
+    client: &HttpClient,
+    base_url: &str,
+    event_id: &str,
+) -> Result<GammaEvent> {
     let url = format!("{base_url}/events/{event_id}");
     let body = client.get_bytes(&url).await?;
     Ok(serde_json::from_slice(&body)?)

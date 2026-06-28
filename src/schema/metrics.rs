@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use arrow::datatypes::Schema;
 
-use super::{string_field, float64_field, int32_field, timestamp_field};
+use super::{float64_field, int32_field, string_field, timestamp_field};
 
 pub fn schema() -> Arc<Schema> {
     Arc::new(Schema::new(vec![

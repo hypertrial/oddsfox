@@ -10,7 +10,8 @@ use oddsfox::quarantine::sha256_hex;
 fn contract_matches_golden_file() {
     let contract = build_contract();
     let json = serde_json::to_string_pretty(&contract).unwrap();
-    let golden_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/contract.golden.json");
+    let golden_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/contract.golden.json");
     if std::env::var("UPDATE_GOLDEN").ok().as_deref() == Some("1") {
         fs::write(&golden_path, &json).unwrap();
     }
@@ -27,10 +28,12 @@ fn gamma_fixture_normalizes_to_batches() {
     assert_eq!(events_batch.num_rows(), 1);
 
     let markets: Vec<_> = events.iter().flat_map(|e| e.markets.clone()).collect();
-    let markets_batch = markets_batch(&markets, "gamma", "http://test/events", &sha, "run-1").unwrap();
+    let markets_batch =
+        markets_batch(&markets, "gamma", "http://test/events", &sha, "run-1").unwrap();
     assert_eq!(markets_batch.num_rows(), 1);
 
-    let outcomes_batch = outcomes_batch(&markets, "gamma", "http://test/events", &sha, "run-1").unwrap();
+    let outcomes_batch =
+        outcomes_batch(&markets, "gamma", "http://test/events", &sha, "run-1").unwrap();
     assert_eq!(outcomes_batch.num_rows(), 2);
 }
 

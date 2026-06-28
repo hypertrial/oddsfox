@@ -85,8 +85,7 @@ impl LakePaths {
     }
 
     pub fn date_partition_dir(&self, table: Table, date: NaiveDate) -> PathBuf {
-        self.bronze_table_dir(table)
-            .join(format!("date={date}"))
+        self.bronze_table_dir(table).join(format!("date={date}"))
     }
 
     pub fn snapshot_partition_file(&self, table: Table, run_id: &str) -> PathBuf {
@@ -96,7 +95,8 @@ impl LakePaths {
     }
 
     pub fn time_series_file(&self, table: Table, date: NaiveDate, part: &str) -> PathBuf {
-        self.date_partition_dir(table, date).join(format!("{part}.parquet"))
+        self.date_partition_dir(table, date)
+            .join(format!("{part}.parquet"))
     }
 
     pub fn token_partition_file(&self, table: Table, token_id: &str) -> PathBuf {

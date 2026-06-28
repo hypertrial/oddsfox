@@ -72,14 +72,13 @@ async fn list_markets(
     State(state): State<Arc<AppState>>,
     Query(query): Query<MarketsQuery>,
 ) -> impl IntoResponse {
-    let _ = (query.active, query.tag);
     let by = match query.order.as_deref() {
         Some("spread") => TopBy::Spread,
         Some("liquidity") => TopBy::Liquidity,
         Some("volume") => TopBy::Volume,
         _ => TopBy::Volume24h,
     };
-    match top_markets(&state.out, by, 50) {
+    match top_markets(&state.out, by, 50, query.active, query.tag.as_deref()) {
         Ok(markets) => Json(serde_json::json!({ "markets": markets })).into_response(),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
     }
@@ -117,10 +116,10 @@ async fn list_events(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         }))
     });
     match rows {
-        Ok(iter) => Json(serde_json::json!({
-            "events": iter.filter_map(|r| r.ok()).collect::<Vec<_>>()
-        }))
-        .into_response(),
+        Ok(iter) => match iter.collect::<std::result::Result<Vec<_>, _>>() {
+            Ok(events) => Json(serde_json::json!({ "events": events })).into_response(),
+            Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
+        },
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
     }
 }
@@ -155,11 +154,14 @@ async fn token_prices(
         Ok(serde_json::json!({ "ts": row.get::<_, i64>(0)?, "price": row.get::<_, f64>(1)? }))
     });
     match rows {
-        Ok(iter) => Json(serde_json::json!({
-            "token_id": token_id,
-            "prices": iter.filter_map(|r| r.ok()).collect::<Vec<_>>()
-        }))
-        .into_response(),
+        Ok(iter) => match iter.collect::<std::result::Result<Vec<_>, _>>() {
+            Ok(prices) => Json(serde_json::json!({
+                "token_id": token_id,
+                "prices": prices
+            }))
+            .into_response(),
+            Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
+        },
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
     }
 }

@@ -7,7 +7,7 @@ use rsa::pkcs8::DecodePrivateKey;
 use rsa::pss::BlindedSigningKey;
 use rsa::rand_core::OsRng;
 use rsa::signature::{RandomizedSigner, SignatureEncoding};
-use rsa::{RsaPrivateKey, sha2::Sha256};
+use rsa::{sha2::Sha256, RsaPrivateKey};
 
 use crate::config::KalshiStatus;
 use crate::error::{OddsfoxError, Result};
@@ -30,10 +30,18 @@ impl KalshiAuth {
         let private_key = RsaPrivateKey::from_pkcs8_pem(&pem)
             .or_else(|_| RsaPrivateKey::from_pkcs1_pem(&pem))
             .map_err(|err| OddsfoxError::Config(format!("invalid Kalshi private key: {err}")))?;
-        Ok(Self { key_id, private_key })
+        Ok(Self {
+            key_id,
+            private_key,
+        })
     }
 
-    pub fn headers(&self, method: &str, path_without_query: &str, timestamp_ms: i64) -> Result<HeaderMap> {
+    pub fn headers(
+        &self,
+        method: &str,
+        path_without_query: &str,
+        timestamp_ms: i64,
+    ) -> Result<HeaderMap> {
         let message = format!("{timestamp_ms}{method}{path_without_query}");
         let signing_key = BlindedSigningKey::<Sha256>::new(self.private_key.clone());
         let signature = signing_key.sign_with_rng(&mut OsRng, message.as_bytes());
@@ -41,7 +49,8 @@ impl KalshiAuth {
         let mut headers = HeaderMap::new();
         headers.insert(
             "KALSHI-ACCESS-KEY",
-            HeaderValue::from_str(&self.key_id).map_err(|err| OddsfoxError::Config(err.to_string()))?,
+            HeaderValue::from_str(&self.key_id)
+                .map_err(|err| OddsfoxError::Config(err.to_string()))?,
         );
         headers.insert(
             "KALSHI-ACCESS-SIGNATURE",
@@ -49,7 +58,8 @@ impl KalshiAuth {
         );
         headers.insert(
             "KALSHI-ACCESS-TIMESTAMP",
-            HeaderValue::from_str(&timestamp_ms.to_string()).map_err(|err| OddsfoxError::Config(err.to_string()))?,
+            HeaderValue::from_str(&timestamp_ms.to_string())
+                .map_err(|err| OddsfoxError::Config(err.to_string()))?,
         );
         Ok(headers)
     }
@@ -71,7 +81,12 @@ impl KalshiClient {
         }
     }
 
-    pub fn markets_url(&self, status: KalshiStatus, series: Option<&str>, limit: Option<usize>) -> String {
+    pub fn markets_url(
+        &self,
+        status: KalshiStatus,
+        series: Option<&str>,
+        limit: Option<usize>,
+    ) -> String {
         let mut url = self.url("/markets");
         {
             let mut pairs = url.query_pairs_mut();
@@ -121,11 +136,15 @@ impl KalshiClient {
         if let Some(max) = limit {
             out.truncate(max);
         }
-        Ok(KalshiMarketResponse { markets: out, cursor })
+        Ok(KalshiMarketResponse {
+            markets: out,
+            cursor,
+        })
     }
 
     pub async fn get_event(&self, event_ticker: &str) -> Result<KalshiEventEnvelope> {
-        self.get_json(self.url(&format!("/events/{event_ticker}"))).await
+        self.get_json(self.url(&format!("/events/{event_ticker}")))
+            .await
     }
 
     pub async fn get_candlesticks(
@@ -193,10 +212,15 @@ impl KalshiClient {
         Ok(out)
     }
 
-    pub async fn get_orderbook(&self, ticker: &str, depth: Option<u32>) -> Result<KalshiOrderbookEnvelope> {
+    pub async fn get_orderbook(
+        &self,
+        ticker: &str,
+        depth: Option<u32>,
+    ) -> Result<KalshiOrderbookEnvelope> {
         let mut url = self.url(&format!("/markets/{ticker}/orderbook"));
         if let Some(depth) = depth {
-            url.query_pairs_mut().append_pair("depth", &depth.min(100).to_string());
+            url.query_pairs_mut()
+                .append_pair("depth", &depth.min(100).to_string());
         }
         self.get_json(url).await
     }
@@ -211,7 +235,10 @@ impl KalshiClient {
 
     async fn get_json<T: for<'de> serde::Deserialize<'de>>(&self, url: reqwest::Url) -> Result<T> {
         let headers = self.auth_headers(&url)?;
-        let body = self.http.get_bytes_with_headers(url.as_str(), headers).await?;
+        let body = self
+            .http
+            .get_bytes_with_headers(url.as_str(), headers)
+            .await?;
         Ok(serde_json::from_slice(&body)?)
     }
 
@@ -245,7 +272,10 @@ mod tests {
     #[test]
     fn auth_headers_sign_path_without_query() {
         let key = RsaPrivateKey::new(&mut OsRng, 2048).unwrap();
-        let auth = KalshiAuth { key_id: "kid".into(), private_key: key };
+        let auth = KalshiAuth {
+            key_id: "kid".into(),
+            private_key: key,
+        };
         let headers = auth.headers("GET", "/trade-api/v2/markets", 123).unwrap();
         assert_eq!(headers["KALSHI-ACCESS-KEY"], "kid");
         assert_eq!(headers["KALSHI-ACCESS-TIMESTAMP"], "123");
@@ -278,7 +308,10 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path("/historical/cutoff"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"cutoff_ts": 1700000000})))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"cutoff_ts": 1700000000})),
+            )
             .mount(&server)
             .await;
 
@@ -287,8 +320,14 @@ mod tests {
             crate::http::HttpClient::new(100.0, 0, "test").unwrap(),
             None,
         );
-        let markets = client.get_markets(KalshiStatus::Open, None, None).await.unwrap();
+        let markets = client
+            .get_markets(KalshiStatus::Open, None, None)
+            .await
+            .unwrap();
         assert_eq!(markets.markets.len(), 2);
-        assert_eq!(client.get_historical_cutoff().await.unwrap(), Some(1700000000));
+        assert_eq!(
+            client.get_historical_cutoff().await.unwrap(),
+            Some(1700000000)
+        );
     }
 }

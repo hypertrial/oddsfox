@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::{
     DEFAULT_CLOB_BASE_URL, DEFAULT_DATA_BASE_URL, DEFAULT_GAMMA_BASE_URL,
-    DEFAULT_KALSHI_REST_BASE_URL, DEFAULT_KALSHI_WS_URL,
-    DEFAULT_MAX_RETRIES, DEFAULT_RAW_RETENTION_DAYS, DEFAULT_REQUESTS_PER_SECOND,
-    DEFAULT_USER_AGENT, DEFAULT_WS_MARKET_URL,
+    DEFAULT_KALSHI_REST_BASE_URL, DEFAULT_KALSHI_WS_URL, DEFAULT_MAX_RETRIES,
+    DEFAULT_RAW_RETENTION_DAYS, DEFAULT_REQUESTS_PER_SECOND, DEFAULT_USER_AGENT,
+    DEFAULT_WS_MARKET_URL,
 };
 use crate::error::{OddsfoxError, Result};
 
@@ -199,7 +199,8 @@ pub fn save_config(path: &Path, config: &OddsfoxConfig) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let contents = toml::to_string_pretty(config).map_err(|err| OddsfoxError::Config(err.to_string()))?;
+    let contents =
+        toml::to_string_pretty(config).map_err(|err| OddsfoxError::Config(err.to_string()))?;
     std::fs::write(path, contents)?;
     Ok(())
 }

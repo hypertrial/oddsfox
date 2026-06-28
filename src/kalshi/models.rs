@@ -160,7 +160,8 @@ mod tests {
         .unwrap();
         assert_eq!(candles.candlesticks[0].end_period_ts, Some(1700000000));
 
-        let cutoff: HistoricalCutoff = serde_json::from_value(serde_json::json!({"cutoff_ts": 1700000000})).unwrap();
+        let cutoff: HistoricalCutoff =
+            serde_json::from_value(serde_json::json!({"cutoff_ts": 1700000000})).unwrap();
         assert_eq!(cutoff.cutoff_ts, Some(1700000000));
     }
 }
