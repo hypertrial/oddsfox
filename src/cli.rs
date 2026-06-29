@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::config::{
-    BackfillSource, KalshiStatus, LakeOptions, SnapshotBooksOptions, Source, SyncMarketsOptions,
-    SyncPricesOptions, TopBy,
+    BackfillSource, KalshiStatus, LakeOptions, OutputFormat, SnapshotBooksOptions, Source,
+    SyncMarketsOptions, SyncPricesOptions, SyncUserOptions, TopBy, UserSource,
 };
 use crate::error::Result;
 use crate::settings::{resolve_config, OddsfoxConfig};
@@ -130,6 +130,16 @@ pub enum Commands {
     Metrics {
         #[command(subcommand)]
         target: MetricsCommands,
+    },
+    Pnl {
+        #[arg(long, value_enum, default_value_t = UserSource::All)]
+        source: UserSource,
+        #[arg(long)]
+        user: Option<String>,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+        #[arg(long)]
+        out: Option<PathBuf>,
     },
     Check {
         #[arg(long)]
@@ -264,6 +274,18 @@ pub enum SyncCommands {
         limit: Option<usize>,
         #[arg(long)]
         rps: Option<f64>,
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    User {
+        #[arg(long, value_enum, default_value_t = UserSource::Polymarket)]
+        source: UserSource,
+        #[arg(long)]
+        user: Option<String>,
+        #[arg(long)]
+        since: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
         #[arg(long)]
         out: Option<PathBuf>,
     },
@@ -451,6 +473,27 @@ pub fn base_sync_prices_options(
     }
 }
 
+pub fn base_sync_user_options(
+    out: PathBuf,
+    source: UserSource,
+    config: &OddsfoxConfig,
+) -> SyncUserOptions {
+    SyncUserOptions {
+        out,
+        source,
+        user_id: None,
+        since: None,
+        limit: None,
+        data_base_url: config.polymarket.data_base_url.clone(),
+        kalshi_rest_base_url: config.kalshi.rest_base_url.clone(),
+        kalshi_key_id: config.kalshi.key_id.clone(),
+        kalshi_private_key_path: kalshi_private_key_path(config),
+        requests_per_second: config.sync.requests_per_second,
+        max_retries: config.sync.max_retries,
+        user_agent: config.sync.user_agent.clone(),
+    }
+}
+
 pub fn base_snapshot_books_options(
     out: PathBuf,
     source: Source,
@@ -535,6 +578,32 @@ mod tests {
             "--active",
             "--recent-hours",
             "24",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_user_sync_and_pnl_commands() {
+        Cli::try_parse_from([
+            "oddsfox",
+            "sync",
+            "user",
+            "--source",
+            "polymarket",
+            "--user",
+            "0xabc",
+            "--since",
+            "2026-01-01",
+            "--limit",
+            "25",
+        ])
+        .unwrap();
+        Cli::try_parse_from([
+            "oddsfox", "sync", "user", "--source", "kalshi", "--limit", "25",
+        ])
+        .unwrap();
+        Cli::try_parse_from([
+            "oddsfox", "pnl", "--source", "all", "--user", "0xabc", "--format", "json",
         ])
         .unwrap();
     }

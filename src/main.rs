@@ -5,8 +5,8 @@ use tracing_subscriber::EnvFilter;
 
 use oddsfox::cli::{
     base_snapshot_books_options, base_sync_markets_options, base_sync_prices_options,
-    lake_root_from_config, Cli, Commands, ComputeCommands, MetricsCommands, SnapshotCommands,
-    SyncCommands,
+    base_sync_user_options, lake_root_from_config, Cli, Commands, ComputeCommands, MetricsCommands,
+    SnapshotCommands, SyncCommands,
 };
 use oddsfox::config::{
     apply_active_minute_defaults, parse_date, Source, Table, TopBy, DEFAULT_BACKFILL_CONCURRENCY,
@@ -248,6 +248,22 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            SyncCommands::User {
+                source,
+                user,
+                since,
+                limit,
+                out,
+            } => {
+                let root = lake_root_from_config(cli.config.as_deref(), out.clone())?;
+                let options = oddsfox::config::SyncUserOptions {
+                    user_id: user.clone(),
+                    since: since.as_ref().map(|s| parse_date(s)).transpose()?,
+                    limit: *limit,
+                    ..base_sync_user_options(root, *source, &config)
+                };
+                oddsfox::user::sync_user(options).await?;
+            }
         },
         Commands::Snapshot { target } => match target {
             SnapshotCommands::Books {
@@ -388,6 +404,20 @@ async fn main() -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&metrics)?);
             }
         },
+        Commands::Pnl {
+            source,
+            user,
+            format,
+            out,
+        } => {
+            let root = lake_root_from_config(cli.config.as_deref(), out.clone())?;
+            oddsfox::user::run_pnl(&oddsfox::config::PnlOptions {
+                out: root,
+                source: *source,
+                user_id: user.clone(),
+                format: *format,
+            })?;
+        }
         Commands::Check { out } => {
             let root = lake_root_from_config(cli.config.as_deref(), out.clone())?;
             oddsfox::check::run(&root)?;

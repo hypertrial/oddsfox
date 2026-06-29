@@ -3,13 +3,14 @@
 oddsfox is **code-only** FOSS. It does not ship Polymarket or Kalshi data.
 
 Users fetch data directly from Polymarket and Kalshi APIs under their own access rights. Local caches are created on the user's machine.
-Kalshi API keys, when configured, are used only for read-only market-data endpoints.
+Kalshi API keys, when configured, are used only for read-only market-data and portfolio endpoints.
+User PnL sync stores only data the user requests locally, under their own API access or public wallet/proxy address.
 
 ## Out of scope
 
 - Historical dumps or hosted mirrors
 - Trade execution or auto-betting
-- Portfolio, balances, fills, orders, or account data
+- Order submission, balance transfer, wallet custody, or hosted account data
 - Geo-bypass tooling
 
 ## Research caveats

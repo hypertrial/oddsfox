@@ -33,6 +33,7 @@ pub mod settings;
 pub mod snapshot;
 pub mod sql_cmd;
 pub mod sync;
+pub mod user;
 
 pub use error::{OddsfoxError, Result};
 

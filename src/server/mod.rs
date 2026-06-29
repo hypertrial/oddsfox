@@ -11,7 +11,7 @@ use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 
-use crate::config::{parse_date, ServeOptions, TopBy};
+use crate::config::{parse_date, ServeOptions, TopBy, UserSource};
 use crate::duckdb_engine::{open_connection, read_parquet_sql};
 use crate::error::Result;
 use crate::explore::{event_detail, market_detail, resolved_markets, search};
@@ -43,6 +43,8 @@ pub async fn serve(options: ServeOptions) -> Result<()> {
         .route("/markets/{market_id}/metrics", get(market_metrics_handler))
         .route("/metrics/calibration", get(calibration))
         .route("/metrics/liquidity", get(liquidity))
+        .route("/pnl", get(pnl_handler))
+        .route("/users/{user_id}/pnl", get(user_pnl_handler))
         .route("/resolved", get(resolved))
         .route("/search", get(search_handler))
         .nest_service("/", ServeDir::new(web_dir))
@@ -223,6 +225,50 @@ async fn liquidity(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 }
 
 #[derive(Deserialize)]
+struct PnlQuery {
+    source: Option<String>,
+    user: Option<String>,
+}
+
+async fn pnl_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<PnlQuery>,
+) -> impl IntoResponse {
+    let source = match parse_user_source(query.source.as_deref()) {
+        Ok(source) => source,
+        Err(err) => return (StatusCode::BAD_REQUEST, err).into_response(),
+    };
+    match crate::user::pnl_rows(&state.out, source, query.user.as_deref()) {
+        Ok(rows) => Json(serde_json::json!({ "pnl": rows })).into_response(),
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
+    }
+}
+
+async fn user_pnl_handler(
+    State(state): State<Arc<AppState>>,
+    Path(user_id): Path<String>,
+    Query(query): Query<PnlQuery>,
+) -> impl IntoResponse {
+    let source = match parse_user_source(query.source.as_deref()) {
+        Ok(source) => source,
+        Err(err) => return (StatusCode::BAD_REQUEST, err).into_response(),
+    };
+    match crate::user::pnl_rows(&state.out, source, Some(&user_id)) {
+        Ok(rows) => Json(serde_json::json!({ "user_id": user_id, "pnl": rows })).into_response(),
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
+    }
+}
+
+fn parse_user_source(raw: Option<&str>) -> std::result::Result<UserSource, String> {
+    match raw.unwrap_or("all").to_ascii_lowercase().as_str() {
+        "all" => Ok(UserSource::All),
+        "polymarket" => Ok(UserSource::Polymarket),
+        "kalshi" => Ok(UserSource::Kalshi),
+        other => Err(format!("invalid source `{other}`")),
+    }
+}
+
+#[derive(Deserialize)]
 struct ResolvedQuery {
     since: Option<String>,
 }
@@ -275,5 +321,15 @@ mod tests {
             parse_resolved_since(Some("2024-01-31")).unwrap(),
             Some(chrono::NaiveDate::from_ymd_opt(2024, 1, 31).unwrap())
         );
+    }
+
+    #[test]
+    fn parse_user_source_defaults_to_all() {
+        assert_eq!(parse_user_source(None).unwrap(), UserSource::All);
+        assert_eq!(
+            parse_user_source(Some("polymarket")).unwrap(),
+            UserSource::Polymarket
+        );
+        assert!(parse_user_source(Some("bad")).is_err());
     }
 }

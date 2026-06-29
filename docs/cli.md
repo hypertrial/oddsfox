@@ -47,6 +47,19 @@ oddsfox sql "SELECT m.question, p.ts, p.price FROM bronze_prices p JOIN bronze_o
 oddsfox serve --port 8787
 ```
 
+## User PnL
+
+Polymarket PnL starts from a public wallet/proxy address. Kalshi PnL uses the configured read-only API key.
+
+```bash
+oddsfox sync user --source polymarket --user 0xabc... --since 2026-01-01 --limit 100
+oddsfox sync user --source kalshi --since 2026-01-01 --limit 100
+oddsfox pnl --source all --format json
+oddsfox sql "SELECT source, user_id, market_id, total_pnl FROM gold_user_pnl ORDER BY total_pnl DESC"
+```
+
+`sync user --source all` syncs both sources; pass `--user` for the Polymarket identity. Kalshi uses `[kalshi] key_id` as the local user id.
+
 ## Core workflow
 
 ```bash
@@ -70,6 +83,7 @@ private_key_path = "/path/to/kalshi-private-key.pem"
 ```
 
 Some public endpoints work without keys; authenticated requests use RSA-PSS signing for market-data reads only.
+User PnL sync also uses the same credentials for read-only portfolio fills and positions.
 
 ```bash
 oddsfox sync markets --source kalshi --status open --limit 100

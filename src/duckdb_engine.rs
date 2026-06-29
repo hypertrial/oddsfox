@@ -5,11 +5,12 @@ use duckdb::Connection;
 use crate::error::{OddsfoxError, Result};
 use crate::paths::LakePaths;
 
-pub const GOLD_TABLES: [&str; 4] = [
+pub const GOLD_TABLES: [&str; 5] = [
     "metric_points",
     "calibration",
     "liquidity_rollup",
     "accuracy",
+    "user_pnl",
 ];
 
 pub fn lake_db_path(lake: &LakePaths) -> PathBuf {

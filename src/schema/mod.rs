@@ -13,6 +13,8 @@ pub mod outcomes;
 pub mod prices;
 pub mod resolutions;
 pub mod trades;
+pub mod user_fills;
+pub mod user_positions;
 
 pub fn arrow_schema(table: Table) -> Arc<Schema> {
     match table {
@@ -24,11 +26,13 @@ pub fn arrow_schema(table: Table) -> Arc<Schema> {
         Table::BookLevels => book_levels::schema(),
         Table::Trades => trades::schema(),
         Table::Resolutions => resolutions::schema(),
+        Table::UserFills => user_fills::schema(),
+        Table::UserPositions => user_positions::schema(),
     }
 }
 
 pub fn schema_version() -> &'static str {
-    "prediction-market-v2"
+    "prediction-market-v3"
 }
 
 pub fn lake_layout_version() -> &'static str {

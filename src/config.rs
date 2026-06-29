@@ -34,6 +34,8 @@ pub enum Table {
     BookLevels,
     Trades,
     Resolutions,
+    UserFills,
+    UserPositions,
 }
 
 impl Table {
@@ -47,6 +49,8 @@ impl Table {
             Table::BookLevels => "book_levels",
             Table::Trades => "trades",
             Table::Resolutions => "resolutions",
+            Table::UserFills => "user_fills",
+            Table::UserPositions => "user_positions",
         }
     }
 
@@ -60,13 +64,20 @@ impl Table {
             Table::BookLevels,
             Table::Trades,
             Table::Resolutions,
+            Table::UserFills,
+            Table::UserPositions,
         ]
     }
 
     pub fn is_time_series(self) -> bool {
         matches!(
             self,
-            Table::Prices | Table::Orderbooks | Table::BookLevels | Table::Trades
+            Table::Prices
+                | Table::Orderbooks
+                | Table::BookLevels
+                | Table::Trades
+                | Table::UserFills
+                | Table::UserPositions
         )
     }
 }
@@ -84,6 +95,10 @@ impl FromStr for Table {
             "book_levels" | "book-levels" => Ok(Table::BookLevels),
             "trades" | "trade" => Ok(Table::Trades),
             "resolutions" | "resolution" => Ok(Table::Resolutions),
+            "user_fills" | "user-fills" | "user_fill" | "user-fill" => Ok(Table::UserFills),
+            "user_positions" | "user-positions" | "user_position" | "user-position" => {
+                Ok(Table::UserPositions)
+            }
             other => Err(OddsfoxError::InvalidTable(other.to_string())),
         }
     }
@@ -99,6 +114,13 @@ pub enum OutputFormat {
 pub enum Source {
     Polymarket,
     Kalshi,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum UserSource {
+    Polymarket,
+    Kalshi,
+    All,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -249,6 +271,30 @@ pub struct SyncPricesOptions {
     pub requests_per_second: f64,
     pub max_retries: u32,
     pub user_agent: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SyncUserOptions {
+    pub out: PathBuf,
+    pub source: UserSource,
+    pub user_id: Option<String>,
+    pub since: Option<NaiveDate>,
+    pub limit: Option<usize>,
+    pub data_base_url: String,
+    pub kalshi_rest_base_url: String,
+    pub kalshi_key_id: Option<String>,
+    pub kalshi_private_key_path: Option<PathBuf>,
+    pub requests_per_second: f64,
+    pub max_retries: u32,
+    pub user_agent: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct PnlOptions {
+    pub out: PathBuf,
+    pub source: UserSource,
+    pub user_id: Option<String>,
+    pub format: OutputFormat,
 }
 
 #[derive(Debug, Clone)]

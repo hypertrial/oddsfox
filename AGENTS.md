@@ -21,6 +21,8 @@ Optional smoke (needs network):
 oddsfox init
 oddsfox sync markets --active
 oddsfox sync prices --active
+oddsfox sync user --source polymarket --user 0xabc... --limit 100
+oddsfox pnl --source all --format json
 oddsfox serve
 ```
 
@@ -48,6 +50,7 @@ oddsfox backfill --source kalshi --fidelity 60 --limit 25
 | Normalize | `src/normalize/` | JSON → Arrow batches |
 | Metrics | `src/metrics/` | Liquidity, accuracy, calibration |
 | Lake | `src/paths.rs`, `src/parquet.rs`, `src/manifest/` | Medallion storage |
+| User PnL | `src/user/`, `src/data/` | Read-only user fills/positions + PnL |
 | API/UI | `src/server/`, `src/web/` | Read-only axum + static UI |
 
 ## Boundaries

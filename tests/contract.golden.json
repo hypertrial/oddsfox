@@ -1,6 +1,6 @@
 {
   "contract_version": "1.0.0",
-  "schema_version": "prediction-market-v2",
+  "schema_version": "prediction-market-v3",
   "lake_layout_version": "medallion-v2",
   "oddsfox_version": "0.2.0",
   "bronze_tables": {
@@ -586,6 +586,190 @@
       },
       {
         "name": "taker",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "raw_json",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "source",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "raw_url",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "raw_sha256",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "ingested_at",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": false
+      },
+      {
+        "name": "run_id",
+        "data_type": "Utf8",
+        "nullable": false
+      }
+    ],
+    "user_fills": [
+      {
+        "name": "fill_id",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "user_id",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "market_id",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "token_id",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "ts",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": false
+      },
+      {
+        "name": "side",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "price",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "size",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "cash_delta",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "fee",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "realized_pnl",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "raw_json",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "source",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "raw_url",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "raw_sha256",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "ingested_at",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": false
+      },
+      {
+        "name": "run_id",
+        "data_type": "Utf8",
+        "nullable": false
+      }
+    ],
+    "user_positions": [
+      {
+        "name": "position_id",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "user_id",
+        "data_type": "Utf8",
+        "nullable": false
+      },
+      {
+        "name": "market_id",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "token_id",
+        "data_type": "Utf8",
+        "nullable": true
+      },
+      {
+        "name": "as_of",
+        "data_type": "Timestamp(Millisecond, None)",
+        "nullable": false
+      },
+      {
+        "name": "size",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "avg_price",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "mark_price",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "mark_value",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "unrealized_pnl",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "realized_pnl",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "total_pnl",
+        "data_type": "Float64",
+        "nullable": true
+      },
+      {
+        "name": "status",
         "data_type": "Utf8",
         "nullable": true
       },

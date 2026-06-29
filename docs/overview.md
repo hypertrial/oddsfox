@@ -10,12 +10,13 @@ It answers five research questions locally:
 3. How liquid were they?
 4. How did they resolve?
 5. How accurate/calibrated were they?
+6. What is a user-supplied account's PnL on Polymarket, Kalshi, and combined?
 
 ## Non-goals
 
 - Trading, signing, wallets
 - Hosted data mirrors
-- Order submission, portfolio, balances, fills, or user-specific exchange data
+- Order submission, wallet custody, or hosted user-specific exchange data
 - On-chain archive reconstruction
 
 ## Success demo

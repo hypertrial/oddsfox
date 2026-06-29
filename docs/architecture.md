@@ -2,6 +2,7 @@
 
 oddsfox is an end-to-end local data lake creator: public source APIs land in `_raw`, become bronze/silver/gold Parquet, are registered in DuckDB, and are exposed through CLI, SQL, HTTP API, and UI.
 The current source implementations are Polymarket and Kalshi. Both write the same bronze tables using `source` and prefixed IDs.
+Read-only user PnL sync adds `bronze_user_fills`, `bronze_user_positions`, and `gold_user_pnl` for user-supplied Polymarket wallets/proxy addresses and authenticated Kalshi portfolio reads.
 
 ```mermaid
 flowchart TB

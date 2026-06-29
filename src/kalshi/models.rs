@@ -84,6 +84,62 @@ pub struct KalshiTradesResponse {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct KalshiFillsResponse {
+    #[serde(default)]
+    pub fills: Vec<KalshiFill>,
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct KalshiFill {
+    pub trade_id: Option<String>,
+    pub fill_id: Option<String>,
+    pub order_id: Option<String>,
+    pub ticker: Option<String>,
+    pub market_ticker: Option<String>,
+    pub action: Option<String>,
+    pub side: Option<String>,
+    pub yes_price: Option<f64>,
+    pub yes_price_dollars: Option<f64>,
+    pub count: Option<f64>,
+    pub count_fp: Option<f64>,
+    pub fee: Option<f64>,
+    pub fee_dollars: Option<f64>,
+    pub created_time: Option<String>,
+    pub created_ts: Option<i64>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct KalshiPositionsResponse {
+    #[serde(default)]
+    pub market_positions: Vec<KalshiPosition>,
+    #[serde(default)]
+    pub positions: Vec<KalshiPosition>,
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct KalshiPosition {
+    pub ticker: Option<String>,
+    pub market_ticker: Option<String>,
+    pub position: Option<f64>,
+    pub yes_count: Option<f64>,
+    pub no_count: Option<f64>,
+    pub market_exposure: Option<f64>,
+    pub market_exposure_dollars: Option<f64>,
+    pub realized_pnl: Option<f64>,
+    pub realized_pnl_dollars: Option<f64>,
+    pub total_traded: Option<f64>,
+    pub resting_order_count: Option<f64>,
+    pub fees_paid: Option<f64>,
+    pub fees_paid_dollars: Option<f64>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct KalshiTrade {
     pub trade_id: Option<String>,
     pub ticker: Option<String>,

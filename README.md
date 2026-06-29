@@ -10,7 +10,9 @@ It builds a local Parquet + DuckDB lake so analysts can make sense of Polymarket
 
 - Syncs Polymarket events and markets from Gamma
 - Syncs Kalshi markets, candlesticks, trades, and order book snapshots
+- Syncs read-only user positions/fills for user-supplied Polymarket wallets and Kalshi keys
 - Stores prices, order books, trades, and resolutions locally in a medallion lake
+- Computes user PnL by source or across Polymarket and Kalshi
 - Computes liquidity and forecasting metrics
 - Exposes CLI, SQL, local HTTP API, and minimal web UI
 - Keeps the full workflow local: fetch, normalize, catalog, compute, query, and serve
@@ -21,6 +23,7 @@ It builds a local Parquet + DuckDB lake so analysts can make sense of Polymarket
 - Does not provide financial advice
 - Does not redistribute Polymarket or Kalshi data
 - Does not bypass API limits or geo restrictions
+- Does not submit orders, custody wallets, or host user account data
 
 ## Install
 
@@ -69,6 +72,14 @@ oddsfox sync trades --source kalshi --market KXEXAMPLE-26
 oddsfox snapshot books --source kalshi --market KXEXAMPLE-26 --depth 20
 ```
 
+For user PnL:
+
+```bash
+oddsfox sync user --source polymarket --user 0xabc... --limit 100
+oddsfox sync user --source kalshi --limit 100
+oddsfox pnl --source all --format json
+```
+
 Or one shot demo:
 
 ```bash
@@ -85,12 +96,14 @@ oddsfox quickstart
 | `sync markets` | Sync Polymarket or Kalshi events/markets/outcomes |
 | `sync prices` | Sync Polymarket CLOB or Kalshi candlestick price history |
 | `sync trades` | Sync Kalshi trades |
+| `sync user` | Sync read-only user fills/positions |
 | `snapshot books` | Fetch order book snapshots |
 | `watch` | Record WebSocket market events |
 | `compute liquidity/accuracy/calibration/all` | Derive gold metrics |
 | `search`, `market`, `event`, `resolved`, `top` | Explore local data |
 | `check`, `repair`, `clean`, `stats`, `head` | Lake maintenance |
 | `duckdb`, `sql` | Query via DuckDB |
+| `pnl` | Summarize user PnL |
 | `serve` | Local read-only HTTP API + UI |
 
 ## Lake layout

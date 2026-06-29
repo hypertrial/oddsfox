@@ -15,7 +15,8 @@ use crate::http::HttpClient;
 
 use super::models::{
     HistoricalCutoff, KalshiCandlestick, KalshiCandlestickResponse, KalshiEventEnvelope,
-    KalshiMarketResponse, KalshiOrderbookEnvelope, KalshiTrade, KalshiTradesResponse,
+    KalshiFill, KalshiFillsResponse, KalshiMarketResponse, KalshiOrderbookEnvelope, KalshiPosition,
+    KalshiPositionsResponse, KalshiTrade, KalshiTradesResponse,
 };
 
 #[derive(Clone)]
@@ -201,6 +202,67 @@ impl KalshiClient {
             }
             let page: KalshiTradesResponse = self.get_json(url).await?;
             out.extend(page.trades);
+            cursor = page.cursor.filter(|c| !c.is_empty());
+            if cursor.is_none() || limit.is_some_and(|max| out.len() >= max) {
+                break;
+            }
+        }
+        if let Some(max) = limit {
+            out.truncate(max);
+        }
+        Ok(out)
+    }
+
+    pub async fn get_fills(
+        &self,
+        min_ts: Option<i64>,
+        limit: Option<usize>,
+    ) -> Result<Vec<KalshiFill>> {
+        let mut out = Vec::new();
+        let mut cursor = None;
+        loop {
+            let mut url = self.url("/portfolio/fills");
+            {
+                let mut pairs = url.query_pairs_mut();
+                if let Some(min_ts) = min_ts {
+                    pairs.append_pair("min_ts", &min_ts.to_string());
+                }
+                pairs.append_pair("limit", &limit.unwrap_or(500).min(1000).to_string());
+                if let Some(cursor) = cursor.as_deref() {
+                    pairs.append_pair("cursor", cursor);
+                }
+            }
+            let page: KalshiFillsResponse = self.get_json(url).await?;
+            out.extend(page.fills);
+            cursor = page.cursor.filter(|c| !c.is_empty());
+            if cursor.is_none() || limit.is_some_and(|max| out.len() >= max) {
+                break;
+            }
+        }
+        if let Some(max) = limit {
+            out.truncate(max);
+        }
+        Ok(out)
+    }
+
+    pub async fn get_positions(&self, limit: Option<usize>) -> Result<Vec<KalshiPosition>> {
+        let mut out = Vec::new();
+        let mut cursor = None;
+        loop {
+            let mut url = self.url("/portfolio/positions");
+            {
+                let mut pairs = url.query_pairs_mut();
+                pairs.append_pair("limit", &limit.unwrap_or(500).min(1000).to_string());
+                if let Some(cursor) = cursor.as_deref() {
+                    pairs.append_pair("cursor", cursor);
+                }
+            }
+            let page: KalshiPositionsResponse = self.get_json(url).await?;
+            if page.positions.is_empty() {
+                out.extend(page.market_positions);
+            } else {
+                out.extend(page.positions);
+            }
             cursor = page.cursor.filter(|c| !c.is_empty());
             if cursor.is_none() || limit.is_some_and(|max| out.len() >= max) {
                 break;
