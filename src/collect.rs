@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -30,7 +31,7 @@ pub async fn run(options: CollectHourlyOptions) -> Result<()> {
     loop {
         let progress = run_once(&options).await?;
         println!(
-            "collect hourly: {} windows, {} rows",
+            "collect hourly complete: {} windows, {} rows",
             progress.windows_written, progress.rows_written
         );
         if options.once {
@@ -100,11 +101,22 @@ async fn collect_source_once(
 ) -> Result<CollectProgress> {
     let tokens = hourly_tokens(&options.out, source)?;
     if tokens.is_empty() {
+        println!(
+            "collect hourly: {} no tokens to collect",
+            source_label(source)
+        );
         return Ok(CollectProgress::default());
     }
     let horizon_ts = floor_to_hour(Utc::now().timestamp() - i64::from(options.lag_minutes) * 60);
     let seed_ts = seed_ts(options, source)?;
     let concurrency = options.concurrency.max(1);
+    println!(
+        "collect hourly: {} {} tokens, since {}, horizon {}",
+        source_label(source),
+        tokens.len(),
+        format_ts(seed_ts),
+        format_ts(horizon_ts),
+    );
 
     match source {
         Source::Polymarket => {
@@ -130,6 +142,10 @@ async fn collect_polymarket(
     let paths = LakePaths::new(&options.out);
     let out = options.out.clone();
     let cursor_lock = cursor_lock();
+    let total = tokens.len();
+    let processed = Arc::new(AtomicUsize::new(0));
+    let total_windows = Arc::new(AtomicUsize::new(0));
+    let total_rows = Arc::new(AtomicI64::new(0));
 
     let results = stream::iter(tokens)
         .map(|token| {
@@ -137,8 +153,11 @@ async fn collect_polymarket(
             let paths = paths.clone();
             let out = out.clone();
             let cursor_lock = cursor_lock.clone();
+            let processed = Arc::clone(&processed);
+            let total_windows = Arc::clone(&total_windows);
+            let total_rows = Arc::clone(&total_rows);
             async move {
-                collect_token_window(
+                let progress = collect_token_window(
                     &out,
                     &paths,
                     &cursor_lock,
@@ -161,7 +180,20 @@ async fn collect_polymarket(
                         }
                     },
                 )
-                .await
+                .await?;
+                total_windows.fetch_add(progress.windows_written, Ordering::Relaxed);
+                total_rows.fetch_add(progress.rows_written, Ordering::Relaxed);
+                let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
+                if done == total || done.is_multiple_of(25) {
+                    print_collect_progress(
+                        Source::Polymarket,
+                        done,
+                        total,
+                        total_windows.load(Ordering::Relaxed),
+                        total_rows.load(Ordering::Relaxed),
+                    );
+                }
+                Ok::<_, OddsfoxError>(progress)
             }
         })
         .buffer_unordered(concurrency)
@@ -188,6 +220,10 @@ async fn collect_kalshi(
     let paths = LakePaths::new(&options.out);
     let out = options.out.clone();
     let cursor_lock = cursor_lock();
+    let total = tokens.len();
+    let processed = Arc::new(AtomicUsize::new(0));
+    let total_windows = Arc::new(AtomicUsize::new(0));
+    let total_rows = Arc::new(AtomicI64::new(0));
 
     let results = stream::iter(tokens)
         .map(|token| {
@@ -195,8 +231,11 @@ async fn collect_kalshi(
             let paths = paths.clone();
             let out = out.clone();
             let cursor_lock = cursor_lock.clone();
+            let processed = Arc::clone(&processed);
+            let total_windows = Arc::clone(&total_windows);
+            let total_rows = Arc::clone(&total_rows);
             async move {
-                collect_token_window(
+                let progress = collect_token_window(
                     &out,
                     &paths,
                     &cursor_lock,
@@ -228,7 +267,20 @@ async fn collect_kalshi(
                         }
                     },
                 )
-                .await
+                .await?;
+                total_windows.fetch_add(progress.windows_written, Ordering::Relaxed);
+                total_rows.fetch_add(progress.rows_written, Ordering::Relaxed);
+                let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
+                if done == total || done.is_multiple_of(25) {
+                    print_collect_progress(
+                        Source::Kalshi,
+                        done,
+                        total,
+                        total_windows.load(Ordering::Relaxed),
+                        total_rows.load(Ordering::Relaxed),
+                    );
+                }
+                Ok::<_, OddsfoxError>(progress)
             }
         })
         .buffer_unordered(concurrency)
@@ -492,6 +544,25 @@ fn source_label(source: Source) -> &'static str {
         Source::Polymarket => "polymarket",
         Source::Kalshi => "kalshi",
     }
+}
+
+fn format_ts(ts: i64) -> String {
+    DateTime::from_timestamp(ts, 0)
+        .map(|dt| dt.to_rfc3339())
+        .unwrap_or_else(|| ts.to_string())
+}
+
+fn print_collect_progress(
+    source: Source,
+    done: usize,
+    total: usize,
+    windows: usize,
+    rows: i64,
+) {
+    println!(
+        "collect hourly progress ({}): {done}/{total} tokens, {windows} windows, {rows} rows",
+        source_label(source)
+    );
 }
 
 #[derive(Clone, Debug)]
