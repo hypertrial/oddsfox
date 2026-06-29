@@ -159,7 +159,7 @@ Long-running sync and collection commands prefix progress and completion lines w
 2026-06-29T17:20:45.200000+00:00 backfill: lake check ok
 ```
 
-`sync prices` and `backfill` report progress every 25 tokens/markets. On resume, existing token parquet files are skipped without API calls when checkpoints match or when a backfill was interrupted before sync state flushed; progress shows `skipped` counts and `points written` is new rows only. After price sync, `backfill` logs DuckDB catalog registration (one line per view, `bronze_prices` can take a while on large lakes), a lake check, then completion. `collect hourly` also logs every 100 hour-windows processed.
+`sync prices` and `backfill` report progress every 25 tokens/markets. On resume, existing token parquet files are classified in a fast pre-pass and skipped without API calls when checkpoints match or when a backfill was interrupted before sync state flushed; a full lake with matching data typically finishes price sync in seconds. Progress shows `skipped` counts and `points written` is new rows only. After price sync, `backfill` logs DuckDB catalog registration (one line per view, `bronze_prices` can take a while on large lakes), a lake check, then completion. `collect hourly` also logs every 100 hour-windows processed.
 
 ## Hourly Collector Operations
 

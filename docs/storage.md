@@ -100,7 +100,7 @@ Each sync or compute command appends a run to `_metadata/runs.parquet`. DuckDB b
 bronze/prices/token=<token_id>/part.parquet
 ```
 
-Price sync merges into existing token files using per-token checkpoints in `_metadata/sync_state.parquet`. Re-running the same range/fidelity is a no-op; existing token parquet is also skipped when checkpoints were not flushed yet (for example Ctrl+C after price sync); use `--overwrite` to refetch. Active rolling sync merges inside the requested window instead of skipping.
+Price sync merges into existing token files using per-token checkpoints in `_metadata/sync_state.parquet`. Re-running the same range/fidelity is a no-op; existing token parquet is also skipped when checkpoints were not flushed yet (for example Ctrl+C after price sync); tokens with empty price history persist a checkpoint after the first fetch so later runs skip the API call. Use `--overwrite` to refetch. Active rolling sync merges inside the requested window instead of skipping.
 
 `collect hourly` writes one file per token per UTC hour under a separate windows tree (same bronze `prices` schema):
 

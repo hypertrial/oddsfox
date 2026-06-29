@@ -198,23 +198,35 @@ impl ManifestStore {
             .collect()
     }
 
+    pub fn sync_state_records(&self) -> Vec<SyncStateRecord> {
+        read_json_lines(&self.paths.sync_state_manifest())
+    }
+
     pub fn upsert_sync_state(&self, record: SyncStateRecord) -> Result<()> {
+        self.upsert_sync_states(std::slice::from_ref(&record))
+    }
+
+    pub fn upsert_sync_states(&self, updates: &[SyncStateRecord]) -> Result<()> {
+        if updates.is_empty() {
+            return Ok(());
+        }
         let path = self.paths.sync_state_manifest();
         let mut records: Vec<SyncStateRecord> = read_json_lines(&path);
-        if let Some(existing) = records
-            .iter_mut()
-            .find(|r| r.source == record.source && r.cursor_key == record.cursor_key)
-        {
-            *existing = record;
-        } else {
-            records.push(record);
+        for record in updates {
+            if let Some(existing) = records
+                .iter_mut()
+                .find(|r| r.source == record.source && r.cursor_key == record.cursor_key)
+            {
+                *existing = record.clone();
+            } else {
+                records.push(record.clone());
+            }
         }
         write_json(&path, &records)
     }
 
     pub fn sync_state(&self, source: &str, cursor_key: &str) -> Option<SyncStateRecord> {
-        let path = self.paths.sync_state_manifest();
-        read_json_lines::<SyncStateRecord>(&path)
+        self.sync_state_records()
             .into_iter()
             .find(|r| r.source == source && r.cursor_key == cursor_key)
     }
@@ -384,6 +396,33 @@ mod tests {
             store.incomplete_run_ids().into_iter().collect::<Vec<_>>(),
             vec!["run-1", "run-2"]
         );
+    }
+
+    #[test]
+    fn upsert_sync_states_batch_updates_in_one_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ManifestStore::open(dir.path()).unwrap();
+        let now = Utc::now();
+        store
+            .upsert_sync_states(&[
+                SyncStateRecord {
+                    source: "polymarket".into(),
+                    cursor_key: "prices:polymarket:tok-1".into(),
+                    cursor_value: r#"{"start_ts":1}"#.into(),
+                    last_ts: None,
+                    updated_at: now,
+                },
+                SyncStateRecord {
+                    source: "polymarket".into(),
+                    cursor_key: "prices:polymarket:tok-2".into(),
+                    cursor_value: r#"{"start_ts":2}"#.into(),
+                    last_ts: None,
+                    updated_at: now,
+                },
+            ])
+            .unwrap();
+        assert!(store.sync_state("polymarket", "prices:polymarket:tok-1").is_some());
+        assert!(store.sync_state("polymarket", "prices:polymarket:tok-2").is_some());
     }
 
     #[test]

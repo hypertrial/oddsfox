@@ -20,7 +20,7 @@ use crate::http::HttpClient;
 use crate::manifest::{new_run_id, ManifestStore, SyncStateRecord};
 use crate::parquet::{write_snapshot, write_token_series};
 use crate::paths::LakePaths;
-use crate::prices::{parse_price_checkpoint, price_cursor_key, PriceCheckpoint};
+use crate::prices::{parse_price_checkpoint, PriceCheckpoint};
 use crate::progress_log::log_progress;
 use crate::quarantine::{sha256_hex, write_raw_json};
 
@@ -365,7 +365,7 @@ fn kalshi_price_checkpoints(
     store: &ManifestStore,
     markets: &[(String, Option<String>)],
 ) -> HashMap<String, PriceCheckpoint> {
-    markets
+    let wanted: std::collections::HashSet<String> = markets
         .iter()
         .flat_map(|(market_id, _)| {
             let ticker = normalize::strip_kalshi_market_id(market_id);
@@ -374,11 +374,18 @@ fn kalshi_price_checkpoints(
                 normalize::kalshi_token_id(ticker, "no"),
             ]
         })
-        .filter_map(|token_id| {
-            store
-                .sync_state("kalshi", &price_cursor_key("kalshi", &token_id))
-                .and_then(|record| parse_price_checkpoint(&record))
-                .map(|checkpoint| (token_id, checkpoint))
+        .collect();
+    let key_prefix = "prices:kalshi:";
+    store
+        .sync_state_records()
+        .into_iter()
+        .filter(|record| record.source == "kalshi" && record.cursor_key.starts_with(key_prefix))
+        .filter_map(|record| {
+            let token_id = record.cursor_key.strip_prefix(key_prefix)?;
+            if !wanted.contains(token_id) {
+                return None;
+            }
+            parse_price_checkpoint(&record).map(|checkpoint| (token_id.to_string(), checkpoint))
         })
         .collect()
 }

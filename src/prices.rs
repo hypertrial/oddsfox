@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -57,45 +57,51 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
     let overwrite = options.overwrite;
     let merge_window = options.recent_hours.is_some();
     let total = pairs.len();
-    let processed = Arc::new(AtomicUsize::new(0));
-    let skipped = Arc::new(AtomicUsize::new(0));
-    let total_points = Arc::new(AtomicI64::new(0));
     let concurrency = options.concurrency.max(1);
 
-    let states = stream::iter(pairs)
+    let mut skipped = 0usize;
+    let mut pending_states = Vec::new();
+    let mut to_fetch = Vec::new();
+    for (token_id, market_id) in pairs {
+        let output_path = paths.token_partition_file(Table::Prices, &token_id);
+        let stored_checkpoint = checkpoints.get(&token_id);
+        if price_token_up_to_date(
+            &output_path,
+            overwrite,
+            merge_window,
+            &checkpoint,
+            stored_checkpoint,
+        ) {
+            skipped += 1;
+            if stored_checkpoint.is_none() {
+                pending_states.push(checkpoint.sync_state(&token_id)?);
+            }
+        } else {
+            to_fetch.push((token_id, market_id));
+        }
+    }
+    if skipped > 0 {
+        print_progress(skipped, total, 0, skipped);
+    }
+
+    let processed = Arc::new(AtomicUsize::new(skipped));
+    let skipped_count = Arc::new(AtomicUsize::new(skipped));
+    let total_points = Arc::new(AtomicI64::new(0));
+
+    let fetched_states = stream::iter(to_fetch)
         .map(|(token_id, market_id)| {
             let clob = clob.clone();
             let paths = paths.clone();
             let run_id = run_id.clone();
             let interval = interval.map(str::to_string);
             let processed = Arc::clone(&processed);
-            let skipped = Arc::clone(&skipped);
+            let skipped_count = Arc::clone(&skipped_count);
             let total_points = Arc::clone(&total_points);
             let start_ts = time_range.start_ts;
             let end_ts = time_range.end_ts;
             let checkpoint = checkpoint.clone();
-            let stored_checkpoint = checkpoints.get(&token_id).cloned();
             async move {
                 let output_path = paths.token_partition_file(Table::Prices, &token_id);
-                if price_token_up_to_date(
-                    &output_path,
-                    overwrite,
-                    merge_window,
-                    &checkpoint,
-                    stored_checkpoint.as_ref(),
-                ) {
-                    skipped.fetch_add(1, Ordering::Relaxed);
-                    let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
-                    if done == total || done.is_multiple_of(25) {
-                        print_progress(
-                            done,
-                            total,
-                            total_points.load(Ordering::Relaxed),
-                            skipped.load(Ordering::Relaxed),
-                        );
-                    }
-                    return Ok::<_, OddsfoxError>(Some(checkpoint.sync_state(&token_id)?));
-                }
 
                 let mut history = clob
                     .get_prices_history(&token_id, interval.as_deref(), fidelity, start_ts, end_ts)
@@ -117,10 +123,10 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
                             done,
                             total,
                             total_points.load(Ordering::Relaxed),
-                            skipped.load(Ordering::Relaxed),
+                            skipped_count.load(Ordering::Relaxed),
                         );
                     }
-                    return Ok(None);
+                    return Ok::<_, OddsfoxError>(Some(checkpoint.sync_state(&token_id)?));
                 }
 
                 let batch = prices_batch(
@@ -141,7 +147,7 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
                         done,
                         total,
                         total_points.load(Ordering::Relaxed),
-                        skipped.load(Ordering::Relaxed),
+                        skipped_count.load(Ordering::Relaxed),
                     );
                 }
                 Ok(Some(state))
@@ -151,12 +157,11 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
         .try_collect::<Vec<_>>()
         .await?;
 
-    for state in states.into_iter().flatten() {
-        store.upsert_sync_state(state)?;
-    }
+    pending_states.extend(fetched_states.into_iter().flatten());
+    store.upsert_sync_states(&pending_states)?;
 
     let points_written = total_points.load(Ordering::Relaxed);
-    let skipped_tokens = skipped.load(Ordering::Relaxed);
+    let skipped_tokens = skipped_count.load(Ordering::Relaxed);
     run.complete(points_written)?;
     log_progress(format!(
         "sync prices complete: {points_written} points written, {skipped_tokens} skipped, {total} tokens (run={run_id})"
@@ -224,13 +229,18 @@ fn price_checkpoints(
     source: &str,
     pairs: &[(String, String)],
 ) -> HashMap<String, PriceCheckpoint> {
-    pairs
-        .iter()
-        .filter_map(|(token_id, _)| {
-            store
-                .sync_state(source, &price_cursor_key(source, token_id))
-                .and_then(|record| parse_price_checkpoint(&record))
-                .map(|checkpoint| (token_id.clone(), checkpoint))
+    let wanted: HashSet<&str> = pairs.iter().map(|(token_id, _)| token_id.as_str()).collect();
+    let key_prefix = format!("prices:{source}:");
+    store
+        .sync_state_records()
+        .into_iter()
+        .filter(|record| record.source == source && record.cursor_key.starts_with(&key_prefix))
+        .filter_map(|record| {
+            let token_id = record.cursor_key.strip_prefix(&key_prefix)?;
+            if !wanted.contains(token_id) {
+                return None;
+            }
+            parse_price_checkpoint(&record).map(|checkpoint| (token_id.to_string(), checkpoint))
         })
         .collect()
 }
@@ -316,14 +326,15 @@ fn price_token_up_to_date(
     checkpoint: &PriceCheckpoint,
     stored_checkpoint: Option<&PriceCheckpoint>,
 ) -> bool {
-    if overwrite || merge_window || !output_path.exists() {
+    if overwrite || merge_window {
         return false;
     }
     match stored_checkpoint {
         Some(stored) if stored == checkpoint => true,
         Some(_) => false,
         // ponytail: backfill can finish writing parquet before sync_state is flushed; use --overwrite to refetch
-        None => true,
+        None if output_path.exists() => true,
+        None => false,
     }
 }
 
@@ -392,5 +403,39 @@ mod checkpoint_tests {
             &checkpoint,
             Some(&other),
         ));
+    }
+
+    #[test]
+    fn price_token_up_to_date_skips_empty_history_when_checkpoint_matches() {
+        let checkpoint = PriceCheckpoint::new("polymarket", Some(1), None, None, Some(1440));
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("part.parquet");
+        assert!(price_token_up_to_date(
+            &path,
+            false,
+            false,
+            &checkpoint,
+            Some(&checkpoint),
+        ));
+    }
+
+    #[test]
+    fn price_checkpoints_reads_sync_state_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ManifestStore::open(dir.path()).unwrap();
+        let checkpoint = PriceCheckpoint::new("polymarket", Some(1), None, None, Some(1440));
+        for token_id in ["tok-a", "tok-b"] {
+            store
+                .upsert_sync_state(checkpoint.sync_state(token_id).unwrap())
+                .unwrap();
+        }
+        let pairs = vec![
+            ("tok-a".into(), "m1".into()),
+            ("tok-b".into(), "m2".into()),
+            ("tok-c".into(), "m3".into()),
+        ];
+        let loaded = price_checkpoints(&store, "polymarket", &pairs);
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded.get("tok-a"), Some(&checkpoint));
     }
 }
