@@ -122,9 +122,23 @@ oddsfox --config /path/to/oddsfox.toml sync markets --active
 
 See [metadata.md](metadata.md) for manifest details.
 
-## Hourly collector cursors
+## Hourly Collector Operations
 
-`oddsfox collect hourly` stores resume state in `{lake}/_metadata/sync_state.parquet` using cursor keys shaped like `collect:hourly:{source}:{token_id}`. Each cursor records the next UTC hour to collect and whether a closed or resolved token is done.
+Run forever:
+
+```bash
+oddsfox collect hourly --source all --since 2024-01-01
+```
+
+Run one catch-up pass for cron or CI:
+
+```bash
+oddsfox collect hourly --source all --once
+```
+
+The first run for a source requires `--since`. After that, the seed date is stored and `--since` is optional. `--lag-minutes` defaults to `5`, so the collector waits for an hour to be safely closed before fetching it.
+
+`oddsfox collect hourly` stores resume state in `{lake}/_metadata/sync_state.parquet` using cursor keys shaped like `collect:hourly:{source}:{token_id}`. Each cursor records the next UTC hour to collect, the market id, whether the token is done, and the last window row count.
 
 To inspect cursors:
 
@@ -132,7 +146,14 @@ To inspect cursors:
 oddsfox sql "SELECT source, cursor_key, cursor_value FROM read_json_auto('~/.oddsfox/_metadata/sync_state.parquet') WHERE cursor_key LIKE 'collect:hourly:%'" --limit 20
 ```
 
-To reset one token, remove that specific sync-state row or recreate the lake. The next collector run will reinitialize the token from the stored collector seed date or from `--since`.
+To check whether collection is writing data:
+
+```bash
+oddsfox stats --out ~/.oddsfox
+oddsfox sql "SELECT token_id, MAX(ts) AS latest_ts FROM bronze_prices GROUP BY token_id ORDER BY latest_ts DESC" --limit 20
+```
+
+To reset one token, remove only that token's sync-state row. The next collector run reinitializes that token from the stored source seed date or from `--since`. Do not delete broad cursor ranges unless you intend to refetch that history.
 
 ## Related docs
 

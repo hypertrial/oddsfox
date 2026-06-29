@@ -16,6 +16,12 @@ cargo test --verbose
 cargo clippy --all-targets -- -D warnings
 ```
 
+Local binary note:
+
+- `cargo build` updates `target/debug/oddsfox`, not the `oddsfox` binary on PATH.
+- If `oddsfox <new-command>` reports `unrecognized subcommand`, compare `./target/debug/oddsfox --help` with `oddsfox --help`.
+- Run `cargo install --path .` when the PATH binary should use the current checkout.
+
 Optional smoke (needs network):
 
 ```bash

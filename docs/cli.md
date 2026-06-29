@@ -1,18 +1,32 @@
-# CLI reference
+# CLI workflows
 
-See `oddsfox --help` for full flags.
+See `oddsfox --help` and `oddsfox <command> --help` for every flag. This page is the analyst path through the CLI.
 
-## Quickstart
+## Which command should I use?
 
-Build a small active-market lake, create DuckDB views, and start the local UI:
+| Goal | Command |
+|------|---------|
+| First demo with local UI | `oddsfox quickstart` |
+| Continuous hourly all-market collection | `oddsfox collect hourly --source all --since YYYY-MM-DD` |
+| One collector catch-up pass | `oddsfox collect hourly --source all --once` |
+| Rolling active-market refresh | `oddsfox backfill --source all --active` |
+| Custom source/range price fetch | `oddsfox sync prices ...` |
+| User PnL | `oddsfox sync user ...`, then `oddsfox pnl` |
+| Shell SQL | `oddsfox sql "SELECT ..."` |
+| Interactive SQL | `oddsfox duckdb` |
+| Local API and UI | `oddsfox serve` |
+
+## Demo
 
 ```bash
 oddsfox quickstart
 ```
 
+Expected result: oddsfox initializes the lake, syncs a small active-market sample, creates DuckDB views, computes starter outputs, and prints a local URL.
+
 Open <http://127.0.0.1:8787>. `quickstart` keeps serving until you stop it.
 
-## Hourly forever collector
+## Durable Hourly Collection
 
 Collect hourly price history across every discovered Polymarket and Kalshi market:
 
@@ -20,19 +34,32 @@ Collect hourly price history across every discovered Polymarket and Kalshi marke
 oddsfox collect hourly --source all --since 2024-01-01
 ```
 
-First run requires `--since` so historical collection starts from an explicit UTC date. The command refreshes market metadata, collects one UTC hour per token at a time, and stores per-token cursors under `_metadata/sync_state.parquet`. Restarting the same command continues from each token's next uncollected hour. Closed or resolved markets stop once their final hourly window is collected.
+First run requires `--since` so historical collection starts from an explicit UTC date. The collector refreshes market metadata, fetches one UTC hour per token at a time, writes deterministic hourly price files, and advances a per-token cursor only after the hour is handled.
 
-Useful bounded run for cron or CI:
+Restart behavior:
+
+- Crash before a window write: the same hour is fetched again.
+- Crash after a write but before cursor update: the deterministic file is replaced, then the cursor advances.
+- Crash after cursor update: the next run starts at the next hour.
+- Closed or resolved tokens stop after their final hourly window.
+
+Useful bounded run for cron, CI, or manual catch-up:
 
 ```bash
 oddsfox collect hourly --source all --once
 ```
 
-`--lag-minutes` defaults to `5`, so the collector only asks providers for hourly windows that ended at least five minutes ago.
+`--lag-minutes` defaults to `5`, so only hours that ended at least five minutes ago are collected.
 
-## Active minute refresh (last 24 hours)
+## Active Market Refresh
 
-Sync only active markets/events at 1-minute fidelity for the rolling last 24 hours:
+For a rolling 24-hour active-market refresh at 1-minute fidelity:
+
+```bash
+oddsfox backfill --source all --active
+```
+
+Equivalent explicit commands:
 
 ```bash
 oddsfox sync markets --active
@@ -41,17 +68,11 @@ oddsfox sync markets --source kalshi --status open
 oddsfox sync prices --active --source kalshi
 ```
 
-`--active` defaults to `--fidelity 1 --recent-hours 24`. Existing price files are merged inside the 24-hour window instead of skipped.
+`--active` defaults to `--fidelity 1 --recent-hours 24`. Existing price files are merged inside the rolling window instead of skipped.
 
-For both sources in one backfill:
+## Longer Historical Backfills
 
-```bash
-oddsfox backfill --source all --active
-```
-
-## Full analyst workflow
-
-These longer-running commands build a DuckDB catalog of all markets with full CLOB price history:
+Use these when you want bounded historical data rather than a forever collector:
 
 ```bash
 oddsfox backfill --fidelity 60
@@ -59,22 +80,33 @@ oddsfox backfill --since 2023-01-01 --fidelity 1 --rps 5 --concurrency 4
 oddsfox backfill --source kalshi --fidelity 60 --limit 25
 ```
 
-Defaults (overridable via flags or `[backfill]` in `oddsfox.toml`):
+Defaults are `--all` markets, `--interval max`, `--fidelity 60`, `--rps 5`, and `--concurrency 4`.
 
-- `--all` markets (active + closed + resolved)
-- `--interval max` for full history (ignored when `--since`/`--until` are set)
-- `--fidelity 60` (minutes between price points)
-- `--rps 5` and `--concurrency 4`
+Resume by re-running the same command. Snapshot-style bronze runs become visible only after the manifest run is complete. Price sync resumes per token using stored range/fidelity checkpoints; use `--overwrite` to refetch.
 
-Resume a partial backfill by re-running the same command. Snapshot-style bronze runs are visible only after their manifest run is marked complete, so partial run directories left by a crash are ignored until `repair` quarantines them. Price sync resumes per token using stored range/fidelity checkpoints; use `--overwrite` to refetch.
+## Query The Results
 
-Query the catalog:
+`oddsfox sql` prints tab-separated rows with a header and a default 100-row print cap:
 
 ```bash
-oddsfox sql "SELECT m.question, p.ts, p.price FROM bronze_prices p JOIN bronze_outcomes o ON p.token_id = o.token_id JOIN bronze_markets m ON o.market_id = m.market_id LIMIT 10"
 oddsfox sql "SELECT market_id, question, volume_24h FROM bronze_markets ORDER BY volume_24h DESC NULLS LAST" --limit 10
+```
+
+Use `--limit 0` to remove the print cap.
+
+Open interactive DuckDB:
+
+```bash
+oddsfox duckdb --out ~/.oddsfox
+```
+
+Serve the local API and UI:
+
+```bash
 oddsfox serve --port 8787
 ```
+
+`serve` reads Parquet directly and does not require `catalog.duckdb`. Use `duckdb` or `sql --db` when you want persistent views in a catalog file.
 
 ## User PnL
 
@@ -84,41 +116,14 @@ Polymarket PnL starts from a public wallet/proxy address. Kalshi PnL uses the co
 oddsfox sync user --source polymarket --user 0xabc... --since 2026-01-01 --limit 100
 oddsfox sync user --source kalshi --since 2026-01-01 --limit 100
 oddsfox pnl --source all --format json
-oddsfox sql "SELECT source, user_id, market_id, total_pnl FROM gold_user_pnl ORDER BY total_pnl DESC"
+oddsfox sql "SELECT source, user_id, market_id, total_pnl FROM gold_user_pnl ORDER BY total_pnl DESC" --limit 20
 ```
 
-`sync user --source all` syncs both sources; pass `--user` for the Polymarket identity. Kalshi uses `[kalshi] key_id` as the local user id.
-Reruns are safe: user fills are deduplicated by source/fill id, latest positions replace older snapshots, and source/user watermarks avoid refetching old fills. Passing `--since` overrides the stored watermark. Use `--limit` only for smoke tests or bounded debugging, not a complete historical sync.
+Reruns are safe: fills dedupe by source/fill id, latest positions replace older snapshots, and watermarks avoid refetching old fills. Passing `--since` overrides the stored watermark. Use `--limit` only for smoke tests or bounded debugging.
 
-## Restart behavior
+## Kalshi Setup
 
-| Command | Rerun behavior |
-|---------|----------------|
-| `sync markets` | Appends a run snapshot; readers see it only after the run is marked complete. |
-| `sync prices` | Skips existing token files only when the stored checkpoint matches the requested range/fidelity; rolling active sync merges the requested window. |
-| `sync trades` | Appends a run snapshot; readers see it only after the run is marked complete. |
-| `sync user` | Appends bronze rows, dedupes fills and keeps latest positions in PnL, then advances user watermarks after successful gold refresh. |
-| `snapshot books` | Appends a run snapshot; readers see it only after the run is marked complete. |
-
-`check` reports incomplete runs, orphan run partitions, and leftover temp files. `repair` removes temp files and moves orphan run partitions under `_quarantine/orphan_runs/` without deleting their data.
-
-## Core workflow
-
-```bash
-oddsfox init --out ~/.oddsfox
-oddsfox sync markets --all
-oddsfox sync prices --all --interval max --fidelity 60 --rps 5 --concurrency 4
-oddsfox snapshot books --active --top-volume 100
-oddsfox compute all --since 2024-01-01
-oddsfox duckdb --out ~/.oddsfox --db ~/.oddsfox/catalog.duckdb
-oddsfox serve --port 8787
-```
-
-`serve` reads Parquet directly and does not accept `--db`. Build or refresh the DuckDB catalog with `duckdb` or `sql --db` when needed.
-
-## Kalshi workflow
-
-Configure read-only API credentials in `oddsfox.toml` (or the lake copy at `{out}/oddsfox.toml`):
+Configure read-only API credentials in `oddsfox.toml` or `{lake}/oddsfox.toml`:
 
 ```toml
 [kalshi]
@@ -126,18 +131,21 @@ key_id = "your-key-id"
 private_key_path = "/path/to/kalshi-private-key.pem"
 ```
 
-Some public endpoints work without keys; authenticated requests use RSA-PSS signing for market-data reads only.
-User PnL sync also uses the same credentials for read-only portfolio fills and positions.
+Some public endpoints work without keys. User PnL and portfolio reads require credentials.
+
+Single-market Kalshi workflow:
 
 ```bash
 oddsfox sync markets --source kalshi --status open --limit 100
 oddsfox sync prices --source kalshi --market KXEXAMPLE-26 --series KXEXAMPLE --period 60
 oddsfox sync trades --source kalshi --market KXEXAMPLE-26 --since 2026-01-01
 oddsfox snapshot books --source kalshi --market KXEXAMPLE-26 --depth 20
-oddsfox sql "SELECT market_id, question FROM bronze_markets WHERE source LIKE 'kalshi%' LIMIT 10"
+oddsfox sql "SELECT market_id, question FROM bronze_markets WHERE market_id LIKE 'kalshi:%' LIMIT 10"
 ```
 
-## Explore
+## Explore And Maintain
+
+Explore local data:
 
 ```bash
 oddsfox search "election"
@@ -147,30 +155,29 @@ oddsfox resolved --since 2024-01-01
 oddsfox top --by volume_24h
 ```
 
-## Maintenance
+Inspect and maintain the lake:
 
 ```bash
 oddsfox stats
 oddsfox head
-oddsfox head --limit 30 --export-dir ./heads
+oddsfox check
+oddsfox repair
 ```
 
-`head` prints the first 30 rows of every registered bronze and gold table to stdout and writes one CSV per table. Empty tables get a header-only CSV. Default export directory: `{lake}/_exports/heads/`.
+`check` reports incomplete runs, orphan run partitions, and leftover temp files. `repair` removes temp files and moves orphan run partitions under `_quarantine/orphan_runs/` without deleting their data.
 
-## WebSocket watch
+## WebSocket Watch
 
-Record live Polymarket CLOB WebSocket events to `_raw/websocket/`. Use for capturing raw market messages; use `sync prices` for durable price history in bronze.
+Use `watch` for raw Polymarket CLOB WebSocket captures. Use `sync prices` or `collect hourly` for durable bronze price history.
 
 ```bash
 oddsfox watch --active --top-volume 50 --out ~/.oddsfox
 oddsfox watch --market <market_id> --out ~/.oddsfox
 ```
 
-Watch selects token ids from active markets (or a single `--market`), connects to the configured WebSocket URL, and writes JSON captures plus a session log. It stops after 100 events per run.
+## Schemas And Metrics
 
-## Schema and contract
-
-Inspect Arrow schemas and the published lake contract without opening Parquet manually:
+Inspect table schemas:
 
 ```bash
 oddsfox schema markets
@@ -178,24 +185,11 @@ oddsfox schema prices
 oddsfox contract --out ~/.oddsfox
 ```
 
-`contract` refreshes `_metadata/contract.json` and prints the JSON. Column-level detail also lives in [schema.md](schema.md).
-
-## Per-market metrics
-
-Dump recent gold metric points for one market (same data as `GET /markets/{id}/metrics`):
+Compute and inspect metrics:
 
 ```bash
 oddsfox compute liquidity --active
 oddsfox metrics market <market_id> --out ~/.oddsfox
 ```
 
-## Clean quarantine
-
-Inspect or acknowledge the quarantine directory:
-
-```bash
-oddsfox clean --dry-run --out ~/.oddsfox
-oddsfox clean --out ~/.oddsfox
-```
-
-`--dry-run` reports what would be inspected; default run logs the quarantine path. Orphan run data is handled by `repair`, not `clean`.
+Related: [interfaces.md](interfaces.md), [schema.md](schema.md), [operations.md](operations.md).

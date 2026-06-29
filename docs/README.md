@@ -1,50 +1,55 @@
-# oddsfox v0.2 documentation
+# oddsfox analyst docs
 
-Self-hosted, MIT-licensed FOSS data lake creator for prediction-market research.
-v0.2 builds a local Polymarket and Kalshi lake end-to-end.
+oddsfox builds a local Polymarket and Kalshi analytics lake. Start with the job you need, then use the reference docs when you need table or storage detail.
 
-**Current release:** v0.2.0 (medallion Parquet lake, Polymarket + Kalshi sync, user PnL, DuckDB views, local HTTP API + UI).
+## Start Here
 
-## Status legend
+| Need | Start with |
+|------|------------|
+| Run a first demo | [README quickstart](../README.md#1-try-it-now) |
+| Keep all-market hourly data collecting | [CLI: hourly collector](cli.md#durable-hourly-collection) |
+| Run one active-market refresh | [CLI: active refresh](cli.md#active-market-refresh) |
+| Query data with SQL | [Interfaces: SQL and DuckDB](interfaces.md#sql-first-querying) |
+| Learn the core joins | [Schema: minimum joins](schema.md#minimum-joins-analysts-need) |
+| Operate or reset cursors | [Operations: hourly collector](operations.md#hourly-collector-operations) |
 
-- **Done** — shipped in v0.2
-- **Partial** — some capability exists; gaps documented
-- **Deferred** — planned; not in v0.2 binary
+## Run Data Collection
 
-See [roadmap.md](roadmap.md) for milestones and deferred features.
+| Document | Use it for |
+|----------|------------|
+| [cli.md](cli.md) | Analyst workflows, copy-paste commands, restart behavior |
+| [operations.md](operations.md) | Config, Kalshi keys, rate limits, forever collector cursors |
+| [metadata.md](metadata.md) | Run logs, sync state, cursor inspection |
 
-## Documentation index
+## Query Data
 
-### Core
+| Document | Use it for |
+|----------|------------|
+| [interfaces.md](interfaces.md) | `oddsfox sql`, DuckDB, local HTTP API, direct Parquet scans |
+| [schema.md](schema.md) | Table meanings, join keys, source conventions |
+| [../examples/starter_queries.sql](../examples/starter_queries.sql) | Copy-paste SQL recipes |
 
-| Document | Description |
-|----------|-------------|
-| [overview.md](overview.md) | Product definition and success criteria |
-| [architecture.md](architecture.md) | Lake layout and data flow |
-| [roadmap.md](roadmap.md) | Milestones and deferred features |
-| [cli.md](cli.md) | CLI workflows and recipes |
+## Understand The Lake
+
+| Document | Use it for |
+|----------|------------|
+| [storage.md](storage.md) | Parquet layout, hourly price files, raw and quarantine directories |
+| [metadata.md](metadata.md) | Completed-run visibility, checkpoints, contract files |
+| [overview.md](overview.md) | Product goals and non-goals |
+
+## Examples
+
+- [Active refresh walkthrough](../examples/01_sync_active_markets.md)
+- [Kalshi market workflow](../examples/02_kalshi_market_sync.md)
+- [User PnL workflow](../examples/03_user_pnl.md)
+- [Starter SQL queries](../examples/starter_queries.sql)
+
+## Internal And Contributor Reference
+
+| Document | Use it for |
+|----------|------------|
+| [architecture.md](architecture.md) | Data flow and implementation shape |
+| [roadmap.md](roadmap.md) | Milestones and deferred work |
 | [compliance.md](compliance.md) | Safety and data policy |
 
-### Layers and query surfaces
-
-| Document | v0.2 area |
-|----------|-----------|
-| [storage.md](storage.md) | Bronze / gold layout, partitioning, quarantine |
-| [metadata.md](metadata.md) | Runs, sync state, contract, quality manifests |
-| [schema.md](schema.md) | Table purposes, join keys, source conventions |
-| [interfaces.md](interfaces.md) | DuckDB views, HTTP API, external engines |
-| [operations.md](operations.md) | `oddsfox.toml` configuration |
-
-### Examples
-
-Walkthroughs live in [`../examples/`](../examples/):
-
-- [01_sync_active_markets.md](../examples/01_sync_active_markets.md)
-- [02_kalshi_market_sync.md](../examples/02_kalshi_market_sync.md)
-- [03_user_pnl.md](../examples/03_user_pnl.md)
-- [starter_queries.sql](../examples/starter_queries.sql)
-
-## Quick links
-
-- User-facing quick start: [README.md](../README.md)
-- Agent/CI instructions: [AGENTS.md](../AGENTS.md)
+Current release: v0.2.0.

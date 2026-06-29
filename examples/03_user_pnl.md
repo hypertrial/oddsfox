@@ -2,7 +2,11 @@
 
 Sync read-only fills and positions for a user-supplied Polymarket wallet and/or configured Kalshi credentials, then summarize PnL.
 
-Polymarket requires a public wallet or proxy address. Kalshi uses `[kalshi]` credentials from config.
+Prerequisites:
+
+- Polymarket requires a public wallet or proxy address.
+- Kalshi uses read-only `[kalshi]` credentials from config.
+- Use `--limit` only for smoke tests; omit it for a complete sync.
 
 ```bash
 oddsfox init --out ./lake
@@ -18,6 +22,13 @@ oddsfox pnl --source all --format json --out ./lake
 
 oddsfox duckdb --out ./lake --db ./lake/catalog.duckdb
 oddsfox sql "SELECT source, user_id, market_id, total_pnl FROM gold_user_pnl ORDER BY total_pnl DESC" --limit 20 --out ./lake
+```
+
+Verify inputs and rollup:
+
+```bash
+oddsfox sql "SELECT source, user_id, COUNT(*) AS fills FROM bronze_user_fills GROUP BY source, user_id" --out ./lake
+oddsfox sql "SELECT source, user_id, SUM(total_pnl) AS total_pnl FROM gold_user_pnl GROUP BY source, user_id" --out ./lake
 ```
 
 Query rolled-up PnL:

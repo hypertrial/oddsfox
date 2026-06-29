@@ -14,6 +14,46 @@ oddsfox schema user_fills
 oddsfox contract --out ~/.oddsfox
 ```
 
+## Minimum Joins Analysts Need
+
+Most analysis starts with three joins:
+
+### Markets To Prices
+
+Use this for probability time series, latest prices, and volume-ranked markets.
+
+```sql
+SELECT m.market_id, m.question, o.outcome_name, p.ts, p.price
+FROM bronze_markets m
+JOIN bronze_outcomes o ON m.market_id = o.market_id
+JOIN bronze_prices p ON o.token_id = p.token_id
+ORDER BY p.ts DESC
+LIMIT 20;
+```
+
+### Markets To Resolutions
+
+Use this for resolved-market analysis and forecast scoring checks.
+
+```sql
+SELECT m.market_id, m.question, r.winning_outcome, r.resolved_at
+FROM bronze_markets m
+JOIN bronze_resolutions r ON m.market_id = r.market_id
+ORDER BY r.resolved_at DESC
+LIMIT 20;
+```
+
+### User PnL
+
+Use `gold_user_pnl` for the rollup first. Join fills only when you need trade-level detail.
+
+```sql
+SELECT source, user_id, market_id, total_pnl, realized_pnl, unrealized_pnl
+FROM gold_user_pnl
+ORDER BY total_pnl DESC
+LIMIT 20;
+```
+
 ## Source and ID conventions
 
 Every bronze row includes ingest metadata: `source`, `raw_url`, `raw_sha256`, `ingested_at`, `run_id`.

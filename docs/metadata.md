@@ -48,6 +48,16 @@ Tracks incremental cursors so reruns skip already-fetched data.
 
 Passing `--since` on `sync user` overrides the stored watermark. Price sync uses `--overwrite` to ignore checkpoints.
 
+For the hourly collector, the important field is `next_start_ts`: it is the next UTC hour the collector will request for that token. `done=true` means a closed or resolved token has reached its final window.
+
+Inspect hourly cursors:
+
+```bash
+oddsfox sql "SELECT cursor_key, cursor_value FROM read_json_auto('~/.oddsfox/_metadata/sync_state.parquet') WHERE cursor_key LIKE 'collect:hourly:%'" --limit 20
+```
+
+Reset only the one cursor you intend to refetch. Deleting broad sync-state rows can cause a large historical refetch on the next collector run.
+
 ## Schema registry (`schemas.parquet`)
 
 One row per bronze table: `table`, `schema_version`, `column_count`, `columns_json`, `updated_at`. Updated when tables are written.
@@ -95,12 +105,12 @@ oddsfox check --out ~/.oddsfox
 oddsfox repair --out ~/.oddsfox
 ```
 
-Query manifest data via DuckDB after registering views, or read Parquet directly:
+Query manifest data via DuckDB with `read_json_auto`:
 
 ```bash
 oddsfox duckdb --out ~/.oddsfox
 # In DuckDB shell:
-# SELECT * FROM read_parquet('~/.oddsfox/_metadata/runs.parquet') ORDER BY started_at DESC LIMIT 10;
+# SELECT * FROM read_json_auto('~/.oddsfox/_metadata/runs.parquet') ORDER BY started_at DESC LIMIT 10;
 ```
 
 ## Related docs

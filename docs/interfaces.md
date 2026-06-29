@@ -1,24 +1,58 @@
 # Query interfaces
 
-## Purpose
-
-v0.2 exposes the lake through DuckDB SQL, a local read-only HTTP API, and direct Parquet scans. This page catalogs the supported query surfaces so analysts can choose the right entry point.
+oddsfox exposes the same local lake through shell SQL, interactive DuckDB, a localhost HTTP API, and direct Parquet scans. Most analysts should start with `oddsfox sql`.
 
 Implementation: [`src/duckdb_engine.rs`](../src/duckdb_engine.rs), [`src/server/mod.rs`](../src/server/mod.rs).
 
-## DuckDB
+## SQL-First Querying
 
-### Commands
+Print a result table from the shell:
 
 ```bash
-oddsfox duckdb --out ~/.oddsfox --db ~/.oddsfox/catalog.duckdb
-oddsfox sql "SELECT COUNT(*) FROM bronze_markets" --out ~/.oddsfox
+oddsfox sql "SELECT COUNT(*) AS markets FROM bronze_markets"
 oddsfox sql "SELECT market_id, question, volume_24h FROM bronze_markets ORDER BY volume_24h DESC NULLS LAST" --limit 10
 ```
 
-`duckdb` creates or refreshes views over existing Parquet. Views are omitted when no files exist for that table. `sql` prints tab-separated output with a header row; `--limit 0` removes the default 100-row print cap.
+`oddsfox sql` creates DuckDB views when needed and prints tab-separated output with a header row. Null cells print empty. The default print cap is 100 rows; `--limit 0` removes it.
 
-### Bronze views
+Useful first queries:
+
+```sql
+SELECT market_id, question, volume_24h
+FROM bronze_markets
+ORDER BY volume_24h DESC NULLS LAST
+LIMIT 20;
+
+SELECT m.question, o.outcome_name, p.ts, p.price
+FROM bronze_prices p
+JOIN bronze_outcomes o ON p.token_id = o.token_id
+JOIN bronze_markets m ON o.market_id = m.market_id
+ORDER BY p.ts DESC
+LIMIT 20;
+
+SELECT source, user_id, market_id, total_pnl
+FROM gold_user_pnl
+ORDER BY total_pnl DESC
+LIMIT 20;
+```
+
+More recipes: [examples/starter_queries.sql](../examples/starter_queries.sql).
+
+## Interactive DuckDB
+
+Open a DuckDB shell with oddsfox views registered:
+
+```bash
+oddsfox duckdb --out ~/.oddsfox
+```
+
+Use `--db` when you want a persistent catalog file at a custom path:
+
+```bash
+oddsfox duckdb --out ~/.oddsfox --db ~/.oddsfox/catalog.duckdb
+```
+
+### Bronze Views
 
 Created from `bronze/{table}/**/*.parquet`. Run-partitioned tables filter to completed runs only.
 
@@ -35,7 +69,7 @@ Created from `bronze/{table}/**/*.parquet`. Run-partitioned tables filter to com
 | `bronze_user_fills` | user_fills |
 | `bronze_user_positions` | user_positions |
 
-### Gold views
+### Gold Views
 
 Created from `gold/{name}/**/*.parquet` when present.
 
@@ -47,34 +81,20 @@ Created from `gold/{name}/**/*.parquet` when present.
 | `gold_accuracy` | accuracy |
 | `gold_user_pnl` | user_pnl |
 
-Example:
-
-```sql
-SELECT metric_name, AVG(value) AS avg_value
-FROM gold_metric_points
-GROUP BY metric_name;
-```
-
-More queries: [examples/starter_queries.sql](../examples/starter_queries.sql).
-
-### Serve vs DuckDB catalog
-
-`oddsfox serve` reads Parquet directly and does **not** require `catalog.duckdb`. Use `duckdb` or `sql --db` when you want persistent views in a catalog file.
-
 ## Local HTTP API
 
-Read-only axum server bound to **localhost** by default. No authentication.
+Run a read-only localhost server:
 
 ```bash
 oddsfox serve --port 8787 --out ~/.oddsfox
 curl http://127.0.0.1:8787/health
 ```
 
-### Routes
+`serve` reads Parquet directly and does not require `catalog.duckdb`.
 
 | Method | Route | Purpose |
 |--------|-------|---------|
-| GET | `/health` | Liveness (`{"status":"ok"}`) |
+| GET | `/health` | Liveness |
 | GET | `/markets` | List markets (`?active=`, `?tag=`, `?order=volume\|spread\|liquidity`) |
 | GET | `/markets/{market_id}` | Market detail |
 | GET | `/events` | List events |
@@ -90,21 +110,19 @@ curl http://127.0.0.1:8787/health
 | GET | `/search?q=` | Full-text search over local markets/events |
 | GET | `/` | Static minimal web UI |
 
-Responses are JSON arrays or objects. The bundled UI at `/` links to common endpoints.
+## Direct Parquet
 
-## External engines
-
-Bronze and gold paths are standard Parquet. Any columnar engine can scan them directly:
+Bronze and gold files are standard Parquet:
 
 ```python
 import duckdb
 duckdb.sql("SELECT * FROM read_parquet('~/.oddsfox/bronze/markets/**/*.parquet') LIMIT 5")
 ```
 
-For run-partitioned bronze tables, prefer oddsfox-managed DuckDB views (which apply completed-run filtering) or replicate the `run_id IN (...)` filter from [`src/duckdb_engine.rs`](../src/duckdb_engine.rs).
+For run-partitioned bronze tables, prefer oddsfox-managed DuckDB views because they filter to completed runs. If scanning Parquet directly, replicate the completed-run filter from [`src/duckdb_engine.rs`](../src/duckdb_engine.rs).
 
-## Related docs
+## Related Docs
 
-- [schema.md](schema.md) — table and join reference
-- [cli.md](cli.md) — sync, compute, and serve workflows
-- [operations.md](operations.md) — config and lake root
+- [schema.md](schema.md) - table and join reference
+- [cli.md](cli.md) - collection workflows
+- [operations.md](operations.md) - config and lake operations

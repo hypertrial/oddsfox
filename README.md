@@ -3,27 +3,23 @@
 [![CI](https://github.com/hypertrial/oddsfox/actions/workflows/ci.yml/badge.svg)](https://github.com/hypertrial/oddsfox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A self-hosted, MIT-licensed FOSS data lake creator for prediction-market research.
-It builds a local Parquet + DuckDB lake so analysts can make sense of Polymarket and Kalshi end-to-end.
+A local-first prediction-market analytics lake for Polymarket and Kalshi.
+oddsfox fetches market data into Parquet, exposes DuckDB views, and gives analysts a CLI, SQL, local API, and small web UI.
 
 ## What it does
 
-- Syncs Polymarket events and markets from Gamma
-- Syncs Kalshi markets, candlesticks, trades, and order book snapshots
-- Syncs read-only user positions/fills for user-supplied Polymarket wallets and Kalshi keys
-- Stores prices, order books, trades, and resolutions locally in a medallion lake
-- Computes user PnL by source or across Polymarket and Kalshi
-- Computes liquidity and forecasting metrics
-- Exposes CLI, SQL, local HTTP API, and minimal web UI
-- Keeps the full workflow local: fetch, normalize, catalog, compute, query, and serve
+- Builds a local Parquet lake for events, markets, outcomes, prices, books, trades, resolutions, and user PnL
+- Collects Polymarket Gamma/CLOB data and Kalshi market-data reads
+- Runs durable hourly collection with per-token resume cursors
+- Computes liquidity, accuracy, calibration, and user PnL outputs
+- Keeps analysis local: fetch, normalize, query, serve
 
 ## What it does not do
 
-- Does not place trades
-- Does not provide financial advice
+- Does not place trades or provide financial advice
+- Does not custody wallets, submit orders, or sign trades
 - Does not redistribute Polymarket or Kalshi data
-- Does not bypass API limits or geo restrictions
-- Does not submit orders, custody wallets, or host user account data
+- Does not bypass API limits, access controls, or geo restrictions
 
 ## Install
 
@@ -39,11 +35,13 @@ From a source checkout:
 cargo install --path .
 ```
 
-First build compiles bundled DuckDB and may take several minutes.
+First source build compiles bundled DuckDB and may take several minutes. `cargo build` only updates `target/debug/oddsfox`; run `cargo install --path .` when you want the `oddsfox` command on your PATH to use the checkout.
 
-## Quickstart
+## Start Here
 
-One command builds a small active-market lake, creates DuckDB views, and starts the local UI:
+### 1. Try it now
+
+Build a small active-market lake and start the local UI:
 
 ```bash
 oddsfox quickstart
@@ -51,32 +49,60 @@ oddsfox quickstart
 
 Open <http://127.0.0.1:8787>. `quickstart` keeps serving until you stop it.
 
-For durable hourly collection across every discovered Polymarket and Kalshi market:
+### 2. Collect production data
+
+Run durable hourly collection across every discovered Polymarket and Kalshi market:
 
 ```bash
 oddsfox collect hourly --source all --since 2024-01-01
 ```
 
-The collector stores per-token hourly cursors, so restarting the same command continues from the next uncollected UTC hour.
+The first run requires `--since`. Restarting the same command resumes from each token's next uncollected UTC hour. For cron or CI, run one catch-up pass:
 
-For active 1-minute prices over the last 24 hours (both sources):
+```bash
+oddsfox collect hourly --source all --once
+```
+
+### 3. Refresh active markets
+
+For a rolling 24-hour active-market refresh at 1-minute fidelity:
+
+```bash
+oddsfox backfill --source all --active
+```
+
+Equivalent explicit commands:
 
 ```bash
 oddsfox sync markets --active
-oddsfox sync prices --active
+oddsfox sync prices --active --source polymarket
 oddsfox sync markets --source kalshi --status open
 oddsfox sync prices --active --source kalshi
-# or: oddsfox backfill --source all --active
 ```
 
-For a longer-running full analyst lake (all markets + CLOB price history + DuckDB catalog):
+### 4. Query the lake
+
+Print TSV with headers:
 
 ```bash
-oddsfox backfill --fidelity 60
-oddsfox backfill --source kalshi --fidelity 60 --limit 25
+oddsfox sql "SELECT market_id, question, volume_24h FROM bronze_markets ORDER BY volume_24h DESC NULLS LAST" --limit 10
 ```
 
-For Kalshi:
+Open DuckDB views:
+
+```bash
+oddsfox duckdb --out ~/.oddsfox
+```
+
+Serve the local API and UI:
+
+```bash
+oddsfox serve --port 8787
+```
+
+### 5. Optional analyst workflows
+
+Kalshi single-market workflow:
 
 ```bash
 oddsfox sync markets --source kalshi --status open --limit 100
@@ -85,7 +111,7 @@ oddsfox sync trades --source kalshi --market KXEXAMPLE-26
 oddsfox snapshot books --source kalshi --market KXEXAMPLE-26 --depth 20
 ```
 
-For user PnL:
+User PnL:
 
 ```bash
 oddsfox sync user --source polymarket --user 0xabc... --limit 100
@@ -93,30 +119,30 @@ oddsfox sync user --source kalshi --limit 100
 oddsfox pnl --source all --format json
 ```
 
-`sync user` is safe to rerun: fills are deduplicated, latest positions win, and stored watermarks avoid refetching old activity unless `--since` is passed.
+Metrics:
 
-## CLI commands
+```bash
+oddsfox compute liquidity --active
+oddsfox compute accuracy --since 2024-01-01
+oddsfox compute calibration --since 2024-01-01
+```
 
-| Command | Description |
-|---------|-------------|
-| `init` | Scaffold lake at `~/.oddsfox` |
-| `backfill` | Init → sync markets → sync price history → DuckDB catalog |
-| `collect hourly` | Continuously collect hourly prices with per-token resume cursors |
-| `quickstart` | Init → sync → snapshot → compute → DuckDB → serve |
-| `sync markets` | Sync Polymarket or Kalshi events/markets/outcomes |
-| `sync prices` | Sync Polymarket CLOB or Kalshi candlestick price history |
-| `sync trades` | Sync Kalshi trades |
-| `sync user` | Sync read-only user fills/positions |
-| `snapshot books` | Fetch order book snapshots |
-| `watch` | Record WebSocket market events |
-| `compute liquidity/accuracy/calibration/all` | Derive gold metrics |
-| `search`, `market`, `event`, `resolved`, `top` | Explore local data |
-| `check`, `repair`, `clean`, `stats`, `head` | Lake maintenance |
-| `duckdb`, `sql` | Query via DuckDB |
-| `pnl` | Summarize user PnL |
-| `serve` | Local read-only HTTP API + UI |
+## Which command should I use?
 
-## Lake layout
+| Analyst task | Command |
+|--------------|---------|
+| First local demo | `oddsfox quickstart` |
+| Durable all-market hourly collection | `oddsfox collect hourly --source all --since YYYY-MM-DD` |
+| One collector catch-up pass | `oddsfox collect hourly --source all --once` |
+| Rolling active-market refresh | `oddsfox backfill --source all --active` |
+| One source/range price fetch | `oddsfox sync prices ...` |
+| User PnL inputs and rollup | `oddsfox sync user`, then `oddsfox pnl` |
+| SQL from the shell | `oddsfox sql "SELECT ..."` |
+| Interactive DuckDB | `oddsfox duckdb` |
+| Local API and UI | `oddsfox serve` |
+| Lake health | `oddsfox check`, `oddsfox repair`, `oddsfox stats`, `oddsfox head` |
+
+## Lake Layout
 
 ```text
 ~/.oddsfox/
@@ -126,19 +152,24 @@ oddsfox pnl --source all --format json
   _raw/ _metadata/ _quarantine/
 ```
 
-See [docs/](docs/README.md) for architecture, storage, schema, and API reference.
+Main SQL views:
+
+- `bronze_markets`, `bronze_outcomes`, `bronze_prices`
+- `bronze_orderbooks`, `bronze_book_levels`, `bronze_trades`, `bronze_resolutions`
+- `gold_metric_points`, `gold_calibration`, `gold_accuracy`, `gold_user_pnl`
 
 ## Documentation
 
-| Topic | Document |
-|-------|----------|
-| Index | [docs/README.md](docs/README.md) |
+| Need | Document |
+|------|----------|
+| Analyst docs index | [docs/README.md](docs/README.md) |
+| Workflows and commands | [docs/cli.md](docs/cli.md) |
+| SQL, DuckDB, API | [docs/interfaces.md](docs/interfaces.md) |
+| Tables and joins | [docs/schema.md](docs/schema.md) |
 | Storage layout | [docs/storage.md](docs/storage.md) |
-| Schema and joins | [docs/schema.md](docs/schema.md) |
-| DuckDB and HTTP API | [docs/interfaces.md](docs/interfaces.md) |
-| CLI workflows | [docs/cli.md](docs/cli.md) |
-| Examples | [examples/](examples/) |
+| Operations and cursors | [docs/operations.md](docs/operations.md) |
+| Copy-paste SQL | [examples/starter_queries.sql](examples/starter_queries.sql) |
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).
