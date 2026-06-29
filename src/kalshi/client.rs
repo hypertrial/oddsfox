@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use base64::Engine;
@@ -112,6 +113,7 @@ impl KalshiClient {
     ) -> Result<KalshiMarketResponse> {
         let mut out = Vec::new();
         let mut cursor = None;
+        let mut seen_cursors = BTreeSet::new();
         loop {
             let mut url = self.url("/markets");
             {
@@ -128,8 +130,17 @@ impl KalshiClient {
                 }
             }
             let page: KalshiMarketResponse = self.get_json(url).await?;
+            let count = page.markets.len();
             out.extend(page.markets);
             cursor = page.cursor.filter(|c| !c.is_empty());
+            if count == 0 {
+                break;
+            }
+            if let Some(cursor) = cursor.as_ref() {
+                if !seen_cursors.insert(cursor.clone()) {
+                    break;
+                }
+            }
             if cursor.is_none() || limit.is_some_and(|max| out.len() >= max) {
                 break;
             }
@@ -391,5 +402,32 @@ mod tests {
             client.get_historical_cutoff().await.unwrap(),
             Some(1700000000)
         );
+    }
+
+    #[tokio::test]
+    async fn stops_market_pagination_on_empty_cursor_page() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/markets"))
+            .and(query_param("status", "open"))
+            .and(query_param_is_missing("cursor"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "markets": [],
+                "cursor": "same"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = KalshiClient::new(
+            server.uri(),
+            crate::http::HttpClient::new(100.0, 0, "test").unwrap(),
+            None,
+        );
+        let markets = client
+            .get_markets(KalshiStatus::Open, None, None)
+            .await
+            .unwrap();
+        assert!(markets.markets.is_empty());
     }
 }

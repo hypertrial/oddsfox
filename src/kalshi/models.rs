@@ -1,5 +1,28 @@
 use serde::{Deserialize, Serialize};
 
+fn de_opt_ts_secs<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    match value {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::Number(number)) => number
+            .as_i64()
+            .ok_or_else(|| serde::de::Error::custom("invalid timestamp"))
+            .map(Some),
+        Some(serde_json::Value::String(raw)) if raw.trim().is_empty() => Ok(None),
+        Some(serde_json::Value::String(raw)) => raw
+            .parse::<i64>()
+            .or_else(|_| chrono::DateTime::parse_from_rfc3339(&raw).map(|dt| dt.timestamp()))
+            .map(Some)
+            .map_err(serde::de::Error::custom),
+        Some(other) => Err(serde::de::Error::custom(format!(
+            "expected timestamp number or string, got {other}"
+        ))),
+    }
+}
+
 fn de_opt_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -64,6 +87,7 @@ pub struct KalshiMarket {
     pub expiration_time: Option<String>,
     pub settlement_timer_seconds: Option<i64>,
     pub settlement_time: Option<String>,
+    #[serde(default, deserialize_with = "de_opt_ts_secs")]
     pub settlement_ts: Option<i64>,
     pub result: Option<String>,
     pub volume: Option<f64>,
@@ -85,7 +109,9 @@ pub struct KalshiCandlestickResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct KalshiCandlestick {
+    #[serde(default, deserialize_with = "de_opt_ts_secs")]
     pub end_period_ts: Option<i64>,
+    #[serde(default, deserialize_with = "de_opt_ts_secs")]
     pub start_period_ts: Option<i64>,
     pub price: Option<KalshiCandlePrice>,
     pub yes_bid: Option<KalshiCandlePrice>,
@@ -136,6 +162,7 @@ pub struct KalshiFill {
     #[serde(default, deserialize_with = "de_opt_f64")]
     pub fee_cost: Option<f64>,
     pub created_time: Option<String>,
+    #[serde(default, deserialize_with = "de_opt_ts_secs")]
     pub created_ts: Option<i64>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
@@ -192,6 +219,7 @@ pub struct KalshiTrade {
     pub ticker: Option<String>,
     pub market_ticker: Option<String>,
     pub created_time: Option<String>,
+    #[serde(default, deserialize_with = "de_opt_ts_secs")]
     pub created_ts: Option<i64>,
     pub yes_price: Option<f64>,
     pub yes_price_dollars: Option<f64>,
@@ -208,6 +236,7 @@ pub struct KalshiOrderbookEnvelope {
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct HistoricalCutoff {
+    #[serde(default, deserialize_with = "de_opt_ts_secs")]
     pub cutoff_ts: Option<i64>,
     pub cutoff_time: Option<String>,
 }
@@ -225,6 +254,7 @@ mod tests {
                 "series_ticker": "KX",
                 "title": "Will it happen?",
                 "status": "open",
+                "settlement_ts": "2026-06-29T13:46:00.271704Z",
                 "volume": 12,
                 "yes_bid": 48,
                 "yes_ask": 52
@@ -233,6 +263,7 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(markets.markets[0].ticker, "KXTEST-26");
+        assert_eq!(markets.markets[0].settlement_ts, Some(1_782_740_760));
 
         let event: KalshiEventEnvelope = serde_json::from_value(serde_json::json!({
             "event": {"event_ticker": "KXTEST", "title": "Event"},
@@ -256,7 +287,7 @@ mod tests {
 
         let candles: KalshiCandlestickResponse = serde_json::from_value(serde_json::json!({
             "candlesticks": [{
-                "end_period_ts": 1700000000,
+                "end_period_ts": "1700000000",
                 "price": {"close_dollars": 0.4}
             }]
         }))
@@ -264,7 +295,7 @@ mod tests {
         assert_eq!(candles.candlesticks[0].end_period_ts, Some(1700000000));
 
         let cutoff: HistoricalCutoff =
-            serde_json::from_value(serde_json::json!({"cutoff_ts": 1700000000})).unwrap();
+            serde_json::from_value(serde_json::json!({"cutoff_ts": "1700000000"})).unwrap();
         assert_eq!(cutoff.cutoff_ts, Some(1700000000));
     }
 

@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use crate::error::Result;
+use crate::error::{OddsfoxError, Result};
 use crate::http::HttpClient;
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
@@ -81,7 +81,7 @@ pub async fn fetch_all_events(
     let page_size = params.limit.max(1);
     let mut offset = params.offset;
     loop {
-        let page = fetch_events(
+        let page = match fetch_events(
             client,
             FetchEventsParams {
                 base_url: params.base_url,
@@ -92,7 +92,12 @@ pub async fn fetch_all_events(
                 offset,
             },
         )
-        .await?;
+        .await
+        {
+            Ok(page) => page,
+            Err(err) if is_gamma_offset_end(&err, offset, params.offset, all.len()) => break,
+            Err(err) => return Err(err),
+        };
         if page.is_empty() {
             break;
         }
@@ -110,4 +115,29 @@ pub async fn fetch_all_events(
         offset += page_size;
     }
     Ok(all)
+}
+
+fn is_gamma_offset_end(
+    err: &OddsfoxError,
+    offset: usize,
+    start_offset: usize,
+    collected: usize,
+) -> bool {
+    matches!(err, OddsfoxError::Http { status: 422, .. }) && offset > start_offset && collected > 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gamma_offset_422_after_pages_is_end_of_pagination() {
+        let err = OddsfoxError::Http {
+            url: "https://gamma-api.polymarket.com/events?limit=100&offset=2100".into(),
+            status: 422,
+        };
+
+        assert!(is_gamma_offset_end(&err, 2_100, 0, 2_100));
+        assert!(!is_gamma_offset_end(&err, 0, 0, 0));
+    }
 }
