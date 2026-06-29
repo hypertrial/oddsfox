@@ -58,6 +58,7 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
     let merge_window = options.recent_hours.is_some();
     let total = pairs.len();
     let processed = Arc::new(AtomicUsize::new(0));
+    let skipped = Arc::new(AtomicUsize::new(0));
     let total_points = Arc::new(AtomicI64::new(0));
     let concurrency = options.concurrency.max(1);
 
@@ -68,21 +69,32 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
             let run_id = run_id.clone();
             let interval = interval.map(str::to_string);
             let processed = Arc::clone(&processed);
+            let skipped = Arc::clone(&skipped);
             let total_points = Arc::clone(&total_points);
             let start_ts = time_range.start_ts;
             let end_ts = time_range.end_ts;
             let checkpoint = checkpoint.clone();
-            let checkpoint_matches = checkpoints
-                .get(&token_id)
-                .is_some_and(|existing| existing == &checkpoint);
+            let stored_checkpoint = checkpoints.get(&token_id).cloned();
             async move {
                 let output_path = paths.token_partition_file(Table::Prices, &token_id);
-                if output_path.exists() && !overwrite && !merge_window && checkpoint_matches {
+                if price_token_up_to_date(
+                    &output_path,
+                    overwrite,
+                    merge_window,
+                    &checkpoint,
+                    stored_checkpoint.as_ref(),
+                ) {
+                    skipped.fetch_add(1, Ordering::Relaxed);
                     let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
                     if done == total || done.is_multiple_of(25) {
-                        print_progress(done, total, total_points.load(Ordering::Relaxed));
+                        print_progress(
+                            done,
+                            total,
+                            total_points.load(Ordering::Relaxed),
+                            skipped.load(Ordering::Relaxed),
+                        );
                     }
-                    return Ok::<_, OddsfoxError>(None);
+                    return Ok::<_, OddsfoxError>(Some(checkpoint.sync_state(&token_id)?));
                 }
 
                 let mut history = clob
@@ -101,7 +113,12 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
                 if history.is_empty() {
                     let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
                     if done == total || done.is_multiple_of(25) {
-                        print_progress(done, total, total_points.load(Ordering::Relaxed));
+                        print_progress(
+                            done,
+                            total,
+                            total_points.load(Ordering::Relaxed),
+                            skipped.load(Ordering::Relaxed),
+                        );
                     }
                     return Ok(None);
                 }
@@ -120,7 +137,12 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
                 let state = checkpoint.sync_state(&token_id)?;
                 let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
                 if done == total || done.is_multiple_of(25) {
-                    print_progress(done, total, total_points.load(Ordering::Relaxed));
+                    print_progress(
+                        done,
+                        total,
+                        total_points.load(Ordering::Relaxed),
+                        skipped.load(Ordering::Relaxed),
+                    );
                 }
                 Ok(Some(state))
             }
@@ -134,9 +156,10 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
     }
 
     let points_written = total_points.load(Ordering::Relaxed);
+    let skipped_tokens = skipped.load(Ordering::Relaxed);
     run.complete(points_written)?;
     log_progress(format!(
-        "sync prices complete: {points_written} points across {total} tokens (run={run_id})"
+        "sync prices complete: {points_written} points written, {skipped_tokens} skipped, {total} tokens (run={run_id})"
     ));
     Ok(())
 }
@@ -286,10 +309,34 @@ pub fn load_price_history(path: &Path) -> Result<Vec<PriceHistoryPoint>> {
     Ok(points)
 }
 
-fn print_progress(done: usize, total: usize, points: i64) {
-    log_progress(format!(
-        "sync prices progress: {done}/{total} tokens, {points} points"
-    ));
+fn price_token_up_to_date(
+    output_path: &Path,
+    overwrite: bool,
+    merge_window: bool,
+    checkpoint: &PriceCheckpoint,
+    stored_checkpoint: Option<&PriceCheckpoint>,
+) -> bool {
+    if overwrite || merge_window || !output_path.exists() {
+        return false;
+    }
+    match stored_checkpoint {
+        Some(stored) if stored == checkpoint => true,
+        Some(_) => false,
+        // ponytail: backfill can finish writing parquet before sync_state is flushed; use --overwrite to refetch
+        None => true,
+    }
+}
+
+fn print_progress(done: usize, total: usize, points: i64, skipped: usize) {
+    if skipped > 0 {
+        log_progress(format!(
+            "sync prices progress: {done}/{total} tokens, {points} points written, {skipped} skipped"
+        ));
+    } else {
+        log_progress(format!(
+            "sync prices progress: {done}/{total} tokens, {points} points written"
+        ));
+    }
 }
 
 #[cfg(test)]
@@ -305,5 +352,45 @@ mod checkpoint_tests {
         assert_eq!(state.source, "polymarket");
         assert_eq!(state.cursor_key, "prices:polymarket:tok-1");
         assert_eq!(parse_price_checkpoint(&state), Some(checkpoint));
+    }
+
+    #[test]
+    fn price_token_up_to_date_matches_stored_checkpoint() {
+        let checkpoint = PriceCheckpoint::new("polymarket", Some(1), None, None, Some(1440));
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("part.parquet");
+        std::fs::write(&path, b"x").unwrap();
+        assert!(price_token_up_to_date(
+            &path,
+            false,
+            false,
+            &checkpoint,
+            Some(&checkpoint),
+        ));
+    }
+
+    #[test]
+    fn price_token_up_to_date_skips_existing_file_without_stored_checkpoint() {
+        let checkpoint = PriceCheckpoint::new("polymarket", Some(1), None, None, Some(1440));
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("part.parquet");
+        std::fs::write(&path, b"x").unwrap();
+        assert!(price_token_up_to_date(&path, false, false, &checkpoint, None));
+    }
+
+    #[test]
+    fn price_token_up_to_date_refetches_when_stored_checkpoint_differs() {
+        let checkpoint = PriceCheckpoint::new("polymarket", Some(1), None, None, Some(1440));
+        let other = PriceCheckpoint::new("polymarket", Some(2), None, None, Some(1440));
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("part.parquet");
+        std::fs::write(&path, b"x").unwrap();
+        assert!(!price_token_up_to_date(
+            &path,
+            false,
+            false,
+            &checkpoint,
+            Some(&other),
+        ));
     }
 }

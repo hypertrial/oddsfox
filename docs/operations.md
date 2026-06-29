@@ -149,7 +149,8 @@ Long-running sync and collection commands prefix progress and completion lines w
 
 ```text
 2026-06-29T17:15:00.123456+00:00 sync markets complete: 2100 events, 20293 markets (run=...)
-2026-06-29T17:15:01.234567+00:00 sync prices progress: 25/22292 tokens, 510 points
+2026-06-29T17:15:01.234567+00:00 sync prices progress: 25/22292 tokens, 0 points written, 25 skipped
+2026-06-29T17:15:01.500000+00:00 sync prices complete: 0 points written, 22292 skipped, 22292 tokens (run=...)
 2026-06-29T17:15:02.345678+00:00 collect hourly progress (polymarket): 25/24600 tokens, 1800 windows, 14200 rows
 2026-06-29T17:20:00.000000+00:00 duckdb: building catalog at `/path/.oddsfox/catalog.duckdb` for lake `/path/.oddsfox`
 2026-06-29T17:20:01.000000+00:00 duckdb: registering view bronze_prices
@@ -158,7 +159,7 @@ Long-running sync and collection commands prefix progress and completion lines w
 2026-06-29T17:20:45.200000+00:00 backfill: lake check ok
 ```
 
-`sync prices` and `backfill` report progress every 25 tokens/markets. After price sync, `backfill` logs DuckDB catalog registration (one line per view, `bronze_prices` can take a while on large lakes), a lake check, then completion. `collect hourly` also logs every 100 hour-windows processed.
+`sync prices` and `backfill` report progress every 25 tokens/markets. On resume, existing token parquet files are skipped without API calls when checkpoints match or when a backfill was interrupted before sync state flushed; progress shows `skipped` counts and `points written` is new rows only. After price sync, `backfill` logs DuckDB catalog registration (one line per view, `bronze_prices` can take a while on large lakes), a lake check, then completion. `collect hourly` also logs every 100 hour-windows processed.
 
 ## Hourly Collector Operations
 

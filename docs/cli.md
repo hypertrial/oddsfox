@@ -94,7 +94,7 @@ oddsfox backfill --source kalshi --fidelity 60 --limit 25
 
 Defaults are `--all` markets, `--interval max`, `--fidelity 60`, `--rps 5`, and `--concurrency 4`.
 
-Resume by re-running the same command. Snapshot-style bronze runs become visible only after the manifest run is complete. Price sync resumes per token using stored range/fidelity checkpoints; use `--overwrite` to refetch.
+Resume by re-running the same command. Snapshot-style bronze runs become visible only after the manifest run is complete. Price sync resumes per token using stored range/fidelity checkpoints, or skips existing token parquet when a backfill was interrupted before sync state flushed; use `--overwrite` to refetch.
 
 ## Query The Results
 
