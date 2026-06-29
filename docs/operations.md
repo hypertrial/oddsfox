@@ -6,6 +6,27 @@ oddsfox reads optional settings from `oddsfox.toml`. Most commands also accept C
 
 Config types: [`src/settings.rs`](../src/settings.rs). Default lake root: `~/.oddsfox`.
 
+## Lake and build paths on an external SSD
+
+When the repo lives on an external volume (e.g. `/Volumes/Mac SSD/...`), keep **all heavy I/O on that volume**:
+
+| What | Recommended location | Notes |
+|------|---------------------|-------|
+| Lake (parquet, manifests, catalog) | `/Volumes/<YourVolume>/.oddsfox` | Set `[data].home` in `oddsfox.toml` or pass `--out` |
+| Cargo build output | `{repo}/target` | Already pinned in [`.cargo/config.toml`](../.cargo/config.toml) |
+| Rust compile scratch (`TMPDIR`) | `{repo}/.tmp-cargo` | Same config; avoids `/var/folders` on the system volume |
+
+Symlink `~/.oddsfox` → `/Volumes/<YourVolume>/.oddsfox` if you want default commands (no `--out`) to hit the SSD without changing shell habits.
+
+Optional: point `CARGO_HOME` at the SSD (e.g. `/Volumes/<YourVolume>/.cargo`) in your shell profile to keep the registry and installed binaries off the system volume.
+
+Clean build scratch periodically:
+
+```bash
+cargo clean
+rm -rf .tmp-cargo/rustc*
+```
+
 ## Config file location
 
 Resolution order:
