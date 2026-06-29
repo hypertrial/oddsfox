@@ -1,7 +1,7 @@
 # Architecture
 
 oddsfox is an end-to-end local data lake creator: public source APIs land in `_raw`, become bronze/silver/gold Parquet, are registered in DuckDB, and are exposed through CLI, SQL, HTTP API, and UI.
-The current source implementations are Polymarket and Kalshi. Both write the same bronze tables using `source` and prefixed IDs.
+The current source implementations are Polymarket and Kalshi. Both write the same bronze tables; Polymarket rows use `source=gamma` with native ids, Kalshi rows use `source=kalshi` with `kalshi:`-prefixed ids.
 Read-only user PnL sync adds `bronze_user_fills`, `bronze_user_positions`, and `gold_user_pnl` for user-supplied Polymarket wallets/proxy addresses and authenticated Kalshi portfolio reads.
 
 ```mermaid
@@ -42,3 +42,10 @@ Published at `_metadata/contract.json`. Bump `lake_contract_version()` on breaki
 `_metadata/runs.parquet` is the local commit log. Sync and compute commands append `started`, then append `complete` only after durable writes finish; handled errors append `failed`. Readers filter run-partitioned bronze tables to completed `run_id`s, so partial runs left by crashes are invisible. Price files are token-partitioned and resume from per-token checkpoints in `_metadata/sync_state.parquet`.
 
 `oddsfox check` reports stale started/failed runs, orphan `run=*` partitions, and leftover temp files. `oddsfox repair` removes temp files and moves orphan run partitions to `_quarantine/orphan_runs/`.
+
+## Related docs
+
+- [storage.md](storage.md) — directory tree and partitioning
+- [metadata.md](metadata.md) — runs, sync state, contract
+- [schema.md](schema.md) — table semantics and join keys
+- [interfaces.md](interfaces.md) — DuckDB views and HTTP API

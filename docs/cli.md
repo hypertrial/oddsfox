@@ -127,3 +127,46 @@ oddsfox head --limit 30 --export-dir ./heads
 ```
 
 `head` prints the first 30 rows of every registered bronze and gold table to stdout and writes one CSV per table. Empty tables get a header-only CSV. Default export directory: `{lake}/_exports/heads/`.
+
+## WebSocket watch
+
+Record live Polymarket CLOB WebSocket events to `_raw/websocket/`. Use for capturing raw market messages; use `sync prices` for durable price history in bronze.
+
+```bash
+oddsfox watch --active --top-volume 50 --out ~/.oddsfox
+oddsfox watch --market <market_id> --out ~/.oddsfox
+```
+
+Watch selects token ids from active markets (or a single `--market`), connects to the configured WebSocket URL, and writes JSON captures plus a session log. It stops after 100 events per run.
+
+## Schema and contract
+
+Inspect Arrow schemas and the published lake contract without opening Parquet manually:
+
+```bash
+oddsfox schema markets
+oddsfox schema prices
+oddsfox contract --out ~/.oddsfox
+```
+
+`contract` refreshes `_metadata/contract.json` and prints the JSON. Column-level detail also lives in [schema.md](schema.md).
+
+## Per-market metrics
+
+Dump recent gold metric points for one market (same data as `GET /markets/{id}/metrics`):
+
+```bash
+oddsfox compute liquidity --active
+oddsfox metrics market <market_id> --out ~/.oddsfox
+```
+
+## Clean quarantine
+
+Inspect or acknowledge the quarantine directory:
+
+```bash
+oddsfox clean --dry-run --out ~/.oddsfox
+oddsfox clean --out ~/.oddsfox
+```
+
+`--dry-run` reports what would be inspected; default run logs the quarantine path. Orphan run data is handled by `repair`, not `clean`.

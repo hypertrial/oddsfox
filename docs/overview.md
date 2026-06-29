@@ -3,7 +3,7 @@
 **oddsfox** is a self-hosted, MIT-licensed FOSS data lake creator for prediction-market research.
 v0.2.0 builds a local Polymarket and Kalshi lake end-to-end: fetch, normalize, catalog, compute, query, and serve.
 
-It answers five research questions locally:
+It answers six research questions locally:
 
 1. What markets exist?
 2. What were their probabilities over time?

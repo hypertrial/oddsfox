@@ -118,7 +118,18 @@ oddsfox quickstart
   _raw/ _metadata/ _quarantine/
 ```
 
-See [docs/](docs/README.md) for architecture and roadmap.
+See [docs/](docs/README.md) for architecture, storage, schema, and API reference.
+
+## Documentation
+
+| Topic | Document |
+|-------|----------|
+| Index | [docs/README.md](docs/README.md) |
+| Storage layout | [docs/storage.md](docs/storage.md) |
+| Schema and joins | [docs/schema.md](docs/schema.md) |
+| DuckDB and HTTP API | [docs/interfaces.md](docs/interfaces.md) |
+| CLI workflows | [docs/cli.md](docs/cli.md) |
+| Examples | [examples/](examples/) |
 
 ## License
 
