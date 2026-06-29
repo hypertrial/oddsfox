@@ -122,6 +122,18 @@ oddsfox --config /path/to/oddsfox.toml sync markets --active
 
 See [metadata.md](metadata.md) for manifest details.
 
+## Hourly collector cursors
+
+`oddsfox collect hourly` stores resume state in `{lake}/_metadata/sync_state.parquet` using cursor keys shaped like `collect:hourly:{source}:{token_id}`. Each cursor records the next UTC hour to collect and whether a closed or resolved token is done.
+
+To inspect cursors:
+
+```bash
+oddsfox sql "SELECT source, cursor_key, cursor_value FROM read_json_auto('~/.oddsfox/_metadata/sync_state.parquet') WHERE cursor_key LIKE 'collect:hourly:%'" --limit 20
+```
+
+To reset one token, remove that specific sync-state row or recreate the lake. The next collector run will reinitialize the token from the stored collector seed date or from `--since`.
+
 ## Related docs
 
 - [cli.md](cli.md) — workflows and Kalshi setup

@@ -9,6 +9,7 @@
 
 ### Changed
 
+- Added `collect hourly` for durable UTC-hour price collection across Polymarket and Kalshi with per-token resume cursors.
 - `quickstart` now starts the local read-only UI after building the demo lake.
 - `sql` now prints tab-separated multi-column output with headers and a configurable `--limit`.
 - README and CLI docs now lead with quickstart and release installer usage for analyst onboarding.

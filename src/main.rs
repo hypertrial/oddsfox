@@ -5,8 +5,8 @@ use tracing_subscriber::EnvFilter;
 
 use oddsfox::cli::{
     base_snapshot_books_options, base_sync_markets_options, base_sync_prices_options,
-    base_sync_user_options, lake_root_from_config, Cli, Commands, ComputeCommands, MetricsCommands,
-    SnapshotCommands, SyncCommands,
+    base_sync_user_options, lake_root_from_config, Cli, CollectCommands, Commands, ComputeCommands,
+    MetricsCommands, SnapshotCommands, SyncCommands,
 };
 use oddsfox::config::{
     apply_active_minute_defaults, parse_date, Source, Table, TopBy, DEFAULT_BACKFILL_CONCURRENCY,
@@ -115,6 +115,45 @@ async fn main() -> Result<()> {
             })
             .await?;
         }
+        Commands::Collect { target } => match target {
+            CollectCommands::Hourly {
+                source,
+                since,
+                out,
+                rps,
+                concurrency,
+                lag_minutes,
+                once,
+            } => {
+                let root = lake_root_from_config(cli.config.as_deref(), out.clone())?;
+                oddsfox::collect::run(oddsfox::config::CollectHourlyOptions {
+                    out: root,
+                    source: *source,
+                    since: since.as_ref().map(|s| parse_date(s)).transpose()?,
+                    requests_per_second: rps
+                        .or(config.backfill.requests_per_second)
+                        .unwrap_or(DEFAULT_BACKFILL_REQUESTS_PER_SECOND),
+                    concurrency: concurrency
+                        .or(config.backfill.concurrency)
+                        .unwrap_or(DEFAULT_BACKFILL_CONCURRENCY),
+                    lag_minutes: *lag_minutes,
+                    once: *once,
+                    max_retries: config.sync.max_retries,
+                    user_agent: config.sync.user_agent.clone(),
+                    gamma_base_url: config.polymarket.gamma_base_url.clone(),
+                    clob_base_url: config.polymarket.clob_base_url.clone(),
+                    kalshi_rest_base_url: config.kalshi.rest_base_url.clone(),
+                    kalshi_key_id: config.kalshi.key_id.clone(),
+                    kalshi_private_key_path: config
+                        .kalshi
+                        .private_key_path
+                        .clone()
+                        .map(PathBuf::from),
+                    raw_retention_days: config.data.raw_retention_days,
+                })
+                .await?;
+            }
+        },
         Commands::Sync { target } => match target {
             SyncCommands::Markets {
                 source,

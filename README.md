@@ -51,6 +51,14 @@ oddsfox quickstart
 
 Open <http://127.0.0.1:8787>. `quickstart` keeps serving until you stop it.
 
+For durable hourly collection across every discovered Polymarket and Kalshi market:
+
+```bash
+oddsfox collect hourly --source all --since 2024-01-01
+```
+
+The collector stores per-token hourly cursors, so restarting the same command continues from the next uncollected UTC hour.
+
 For active 1-minute prices over the last 24 hours (both sources):
 
 ```bash
@@ -93,6 +101,7 @@ oddsfox pnl --source all --format json
 |---------|-------------|
 | `init` | Scaffold lake at `~/.oddsfox` |
 | `backfill` | Init → sync markets → sync price history → DuckDB catalog |
+| `collect hourly` | Continuously collect hourly prices with per-token resume cursors |
 | `quickstart` | Init → sync → snapshot → compute → DuckDB → serve |
 | `sync markets` | Sync Polymarket or Kalshi events/markets/outcomes |
 | `sync prices` | Sync Polymarket CLOB or Kalshi candlestick price history |

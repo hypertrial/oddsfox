@@ -12,6 +12,24 @@ oddsfox quickstart
 
 Open <http://127.0.0.1:8787>. `quickstart` keeps serving until you stop it.
 
+## Hourly forever collector
+
+Collect hourly price history across every discovered Polymarket and Kalshi market:
+
+```bash
+oddsfox collect hourly --source all --since 2024-01-01
+```
+
+First run requires `--since` so historical collection starts from an explicit UTC date. The command refreshes market metadata, collects one UTC hour per token at a time, and stores per-token cursors under `_metadata/sync_state.parquet`. Restarting the same command continues from each token's next uncollected hour. Closed or resolved markets stop once their final hourly window is collected.
+
+Useful bounded run for cron or CI:
+
+```bash
+oddsfox collect hourly --source all --once
+```
+
+`--lag-minutes` defaults to `5`, so the collector only asks providers for hourly windows that ended at least five minutes ago.
+
 ## Active minute refresh (last 24 hours)
 
 Sync only active markets/events at 1-minute fidelity for the rolling last 24 hours:

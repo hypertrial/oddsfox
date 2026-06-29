@@ -41,6 +41,17 @@ pub fn write_token_series(
     write_batches(&path, batches)
 }
 
+pub fn write_hourly_price_window(
+    lake: &LakePaths,
+    source: &str,
+    token_id: &str,
+    start_ts: i64,
+    batches: &[RecordBatch],
+) -> Result<std::path::PathBuf> {
+    let path = lake.hourly_price_window_file(source, token_id, start_ts);
+    write_batches(&path, batches)
+}
+
 pub fn write_batches(path: &Path, batches: &[RecordBatch]) -> Result<std::path::PathBuf> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;

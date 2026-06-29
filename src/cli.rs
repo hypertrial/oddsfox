@@ -72,6 +72,10 @@ pub enum Commands {
         #[arg(long, default_value_t = 8787)]
         port: u16,
     },
+    Collect {
+        #[command(subcommand)]
+        target: CollectCommands,
+    },
     Sync {
         #[command(subcommand)]
         target: SyncCommands,
@@ -192,6 +196,26 @@ pub enum Commands {
         export_dir: Option<PathBuf>,
         #[arg(long, default_value_t = 30)]
         limit: usize,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum CollectCommands {
+    Hourly {
+        #[arg(long, value_enum, default_value_t = BackfillSource::All)]
+        source: BackfillSource,
+        #[arg(long)]
+        since: Option<String>,
+        #[arg(long)]
+        out: Option<PathBuf>,
+        #[arg(long)]
+        rps: Option<f64>,
+        #[arg(long)]
+        concurrency: Option<usize>,
+        #[arg(long, default_value_t = 5)]
+        lag_minutes: u32,
+        #[arg(long, default_value_t = false)]
+        once: bool,
     },
 }
 
@@ -608,6 +632,29 @@ mod tests {
     #[test]
     fn parses_sql_limit() {
         Cli::try_parse_from(["oddsfox", "sql", "SELECT 1", "--limit", "10"]).unwrap();
+    }
+
+    #[test]
+    fn parses_collect_hourly() {
+        Cli::try_parse_from([
+            "oddsfox",
+            "collect",
+            "hourly",
+            "--source",
+            "all",
+            "--since",
+            "2024-01-01",
+        ])
+        .unwrap();
+        Cli::try_parse_from([
+            "oddsfox",
+            "collect",
+            "hourly",
+            "--once",
+            "--lag-minutes",
+            "5",
+        ])
+        .unwrap();
     }
 
     #[test]

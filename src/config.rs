@@ -352,6 +352,25 @@ pub struct QuickstartOptions {
 }
 
 #[derive(Debug, Clone)]
+pub struct CollectHourlyOptions {
+    pub out: PathBuf,
+    pub source: BackfillSource,
+    pub since: Option<NaiveDate>,
+    pub requests_per_second: f64,
+    pub concurrency: usize,
+    pub lag_minutes: u32,
+    pub once: bool,
+    pub max_retries: u32,
+    pub user_agent: String,
+    pub gamma_base_url: String,
+    pub clob_base_url: String,
+    pub kalshi_rest_base_url: String,
+    pub kalshi_key_id: Option<String>,
+    pub kalshi_private_key_path: Option<PathBuf>,
+    pub raw_retention_days: u32,
+}
+
+#[derive(Debug, Clone)]
 pub struct BackfillOptions {
     pub out: PathBuf,
     pub db: PathBuf,

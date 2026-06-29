@@ -25,7 +25,7 @@ use crate::quarantine::{sha256_hex, write_raw_json};
 
 use client::{KalshiAuth, KalshiClient};
 
-fn client_from_parts(
+pub(crate) fn client_from_parts(
     base_url: String,
     key_id: Option<String>,
     private_key_path: Option<std::path::PathBuf>,

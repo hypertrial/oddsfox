@@ -43,6 +43,7 @@ Tracks incremental cursors so reruns skip already-fetched data.
 | Use | `source` | `cursor_key` | `cursor_value` |
 |-----|----------|--------------|----------------|
 | Price resume | e.g. `polymarket` | token id | range + fidelity checkpoint |
+| Hourly collect resume | `collect` | `collect:hourly:{source}:{token_id}` | JSON cursor (next UTC hour, done flag) |
 | User fill watermark | user source | user id | last-seen fill timestamp |
 
 Passing `--since` on `sync user` overrides the stored watermark. Price sync uses `--overwrite` to ignore checkpoints.

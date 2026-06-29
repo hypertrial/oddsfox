@@ -3,6 +3,7 @@ pub mod check;
 pub mod clean;
 pub mod cli;
 pub mod clob;
+pub mod collect;
 pub mod config;
 pub mod contract;
 pub mod data;

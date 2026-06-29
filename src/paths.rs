@@ -105,6 +105,14 @@ impl LakePaths {
             .join("part.parquet")
     }
 
+    pub fn hourly_price_window_file(&self, source: &str, token_id: &str, start_ts: i64) -> PathBuf {
+        self.bronze_table_dir(Table::Prices)
+            .join("windows")
+            .join(source)
+            .join(safe_path_segment(token_id))
+            .join(format!("{start_ts}.parquet"))
+    }
+
     pub fn quarantine_bad_rows(&self, table: Table, run_id: &str) -> PathBuf {
         self.root
             .join("_quarantine")
@@ -155,6 +163,19 @@ impl LakePaths {
         }
         Ok(())
     }
+}
+
+fn safe_path_segment(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '=') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]

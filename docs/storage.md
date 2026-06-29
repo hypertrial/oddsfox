@@ -102,7 +102,13 @@ bronze/prices/token=<token_id>/part.parquet
 
 Price sync merges into existing token files using per-token checkpoints in `_metadata/sync_state.parquet`. Re-running the same range/fidelity is a no-op; `--overwrite` refetches. Active rolling sync merges inside the requested window instead of skipping.
 
-DuckDB reads all price Parquet files without run filtering.
+`collect hourly` writes one file per UTC hour under a separate windows tree (same bronze `prices` schema):
+
+```text
+bronze/prices/windows/{source}/{token_id}/{start_ts}.parquet
+```
+
+DuckDB reads all price Parquet files (token partitions and hourly windows) without run filtering.
 
 ### Silver layer
 
