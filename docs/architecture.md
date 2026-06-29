@@ -36,3 +36,9 @@ See [AGENTS.md](../AGENTS.md) for file-level responsibilities.
 ## Lake contract
 
 Published at `_metadata/contract.json`. Bump `lake_contract_version()` on breaking schema changes.
+
+## Run commit log
+
+`_metadata/runs.parquet` is the local commit log. Sync and compute commands append `started`, then append `complete` only after durable writes finish; handled errors append `failed`. Readers filter run-partitioned bronze tables to completed `run_id`s, so partial runs left by crashes are invisible. Price files are token-partitioned and resume from per-token checkpoints in `_metadata/sync_state.parquet`.
+
+`oddsfox check` reports stale started/failed runs, orphan `run=*` partitions, and leftover temp files. `oddsfox repair` removes temp files and moves orphan run partitions to `_quarantine/orphan_runs/`.

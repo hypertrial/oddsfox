@@ -80,6 +80,10 @@ impl Table {
                 | Table::UserPositions
         )
     }
+
+    pub fn is_run_partitioned(self) -> bool {
+        !matches!(self, Table::Prices)
+    }
 }
 
 impl FromStr for Table {
@@ -232,7 +236,6 @@ pub struct SyncMarketsOptions {
     pub tag: Option<String>,
     pub since: Option<NaiveDate>,
     pub limit: Option<usize>,
-    pub resume: bool,
     pub overwrite: bool,
     pub gamma_base_url: String,
     pub kalshi_rest_base_url: String,

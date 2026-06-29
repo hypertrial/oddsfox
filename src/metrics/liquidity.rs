@@ -6,18 +6,17 @@ use arrow::array::{
 use chrono::Utc;
 
 use crate::config::Table;
-use crate::duckdb_engine::{open_connection, read_parquet_sql};
+use crate::duckdb_engine::{bronze_source_sql, open_connection};
 use crate::error::Result;
 use crate::paths::LakePaths;
 use crate::schema::metrics as metrics_schema;
 
 pub fn compute_liquidity_metrics(out: &std::path::Path, active_only: bool) -> Result<i64> {
     let paths = LakePaths::new(out);
-    let glob = paths.duckdb_parquet_glob(Table::Orderbooks);
-    let source = read_parquet_sql(&glob);
+    let source = bronze_source_sql(&paths, Table::Orderbooks);
     let conn = open_connection(None)?;
     let filter = if active_only {
-        let markets_source = read_parquet_sql(&paths.duckdb_parquet_glob(Table::Markets));
+        let markets_source = bronze_source_sql(&paths, Table::Markets);
         format!(
             "WHERE ob.market_id IN (SELECT market_id FROM {markets_source} WHERE active = true)"
         )

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -12,7 +13,7 @@ use crate::clob::ClobClient;
 use crate::config::{resolve_price_time_range, SyncPricesOptions, Table, TokenPairFilter};
 use crate::error::{OddsfoxError, Result};
 use crate::http::HttpClient;
-use crate::manifest::{new_run_id, ManifestStore};
+use crate::manifest::{new_run_id, ManifestStore, SyncStateRecord};
 use crate::normalize::{merge_price_history, point_timestamp_secs, prices_batch};
 use crate::parquet::{read_all_batches, write_token_series};
 use crate::paths::LakePaths;
@@ -23,6 +24,7 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
     let store = ManifestStore::open(&options.out)?;
     let run_id = new_run_id();
     let started = Utc::now();
+    let run = store.start_run("sync prices", &run_id, started)?;
     let http = HttpClient::new(
         options.requests_per_second,
         options.max_retries,
@@ -41,6 +43,14 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
 
     let time_range = resolve_price_time_range(options.since, options.until, options.recent_hours);
     let interval = effective_interval(&options);
+    let checkpoint = PriceCheckpoint::new(
+        "polymarket",
+        time_range.start_ts,
+        time_range.end_ts,
+        interval,
+        options.fidelity,
+    );
+    let checkpoints = price_checkpoints(&store, "polymarket", &pairs);
     let fidelity_minutes = options.fidelity.map(|f| f as i32);
     let fidelity = options.fidelity;
     let overwrite = options.overwrite;
@@ -50,7 +60,7 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
     let total_points = Arc::new(AtomicI64::new(0));
     let concurrency = options.concurrency.max(1);
 
-    stream::iter(pairs)
+    let states = stream::iter(pairs)
         .map(|(token_id, market_id)| {
             let clob = clob.clone();
             let paths = paths.clone();
@@ -60,14 +70,18 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
             let total_points = Arc::clone(&total_points);
             let start_ts = time_range.start_ts;
             let end_ts = time_range.end_ts;
+            let checkpoint = checkpoint.clone();
+            let checkpoint_matches = checkpoints
+                .get(&token_id)
+                .is_some_and(|existing| existing == &checkpoint);
             async move {
                 let output_path = paths.token_partition_file(Table::Prices, &token_id);
-                if output_path.exists() && !overwrite && !merge_window {
+                if output_path.exists() && !overwrite && !merge_window && checkpoint_matches {
                     let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
                     if done == total || done.is_multiple_of(25) {
                         print_progress(done, total, total_points.load(Ordering::Relaxed));
                     }
-                    return Ok::<(), OddsfoxError>(());
+                    return Ok::<_, OddsfoxError>(None);
                 }
 
                 let mut history = clob
@@ -88,7 +102,7 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
                     if done == total || done.is_multiple_of(25) {
                         print_progress(done, total, total_points.load(Ordering::Relaxed));
                     }
-                    return Ok::<(), OddsfoxError>(());
+                    return Ok(None);
                 }
 
                 let batch = prices_batch(
@@ -102,19 +116,24 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
                 let points = batch.num_rows() as i64;
                 write_token_series(&paths, Table::Prices, &token_id, &[batch])?;
                 total_points.fetch_add(points, Ordering::Relaxed);
+                let state = checkpoint.sync_state(&token_id)?;
                 let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
                 if done == total || done.is_multiple_of(25) {
                     print_progress(done, total, total_points.load(Ordering::Relaxed));
                 }
-                Ok::<(), OddsfoxError>(())
+                Ok(Some(state))
             }
         })
         .buffer_unordered(concurrency)
-        .try_collect::<Vec<()>>()
+        .try_collect::<Vec<_>>()
         .await?;
 
+    for state in states.into_iter().flatten() {
+        store.upsert_sync_state(state)?;
+    }
+
     let points_written = total_points.load(Ordering::Relaxed);
-    store.append_completed_run("sync prices", &run_id, started, points_written)?;
+    run.complete(points_written)?;
     println!("sync prices complete: {points_written} points across {total} tokens (run={run_id})");
     Ok(())
 }
@@ -125,6 +144,69 @@ fn effective_interval(options: &SyncPricesOptions) -> Option<&str> {
     } else {
         options.interval.as_deref()
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct PriceCheckpoint {
+    provider: String,
+    start_ts: Option<i64>,
+    end_ts: Option<i64>,
+    interval: Option<String>,
+    fidelity: Option<u32>,
+}
+
+impl PriceCheckpoint {
+    pub fn new(
+        provider: &str,
+        start_ts: Option<i64>,
+        end_ts: Option<i64>,
+        interval: Option<&str>,
+        fidelity: Option<u32>,
+    ) -> Self {
+        Self {
+            provider: provider.into(),
+            start_ts,
+            end_ts,
+            interval: interval.map(str::to_string),
+            fidelity,
+        }
+    }
+
+    pub fn sync_state(&self, token_id: &str) -> Result<SyncStateRecord> {
+        Ok(SyncStateRecord {
+            source: self.provider.clone(),
+            cursor_key: price_cursor_key(&self.provider, token_id),
+            cursor_value: serde_json::to_string(self)?,
+            last_ts: self
+                .end_ts
+                .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0)),
+            updated_at: Utc::now(),
+        })
+    }
+}
+
+pub fn price_cursor_key(source: &str, token_id: &str) -> String {
+    format!("prices:{source}:{token_id}")
+}
+
+pub fn parse_price_checkpoint(record: &SyncStateRecord) -> Option<PriceCheckpoint> {
+    serde_json::from_str(&record.cursor_value).ok()
+}
+
+fn price_checkpoints(
+    store: &ManifestStore,
+    source: &str,
+    pairs: &[(String, String)],
+) -> HashMap<String, PriceCheckpoint> {
+    pairs
+        .iter()
+        .filter_map(|(token_id, _)| {
+            store
+                .sync_state(source, &price_cursor_key(source, token_id))
+                .and_then(|record| parse_price_checkpoint(&record))
+                .map(|checkpoint| (token_id.clone(), checkpoint))
+        })
+        .collect()
 }
 
 async fn select_token_pairs(options: &SyncPricesOptions) -> Result<Vec<(String, String)>> {
@@ -203,4 +285,20 @@ pub fn load_price_history(path: &Path) -> Result<Vec<PriceHistoryPoint>> {
 
 fn print_progress(done: usize, total: usize, points: i64) {
     println!("sync prices progress: {done}/{total} tokens, {points} points");
+}
+
+#[cfg(test)]
+mod checkpoint_tests {
+    use super::*;
+
+    #[test]
+    fn price_checkpoint_roundtrips_through_sync_state() {
+        let checkpoint =
+            PriceCheckpoint::new("polymarket", Some(10), Some(20), Some("max"), Some(60));
+        let state = checkpoint.sync_state("tok-1").unwrap();
+
+        assert_eq!(state.source, "polymarket");
+        assert_eq!(state.cursor_key, "prices:polymarket:tok-1");
+        assert_eq!(parse_price_checkpoint(&state), Some(checkpoint));
+    }
 }

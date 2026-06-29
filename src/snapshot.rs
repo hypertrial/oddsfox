@@ -6,7 +6,7 @@ use chrono::Utc;
 use crate::clob::book::parse_book;
 use crate::clob::ClobClient;
 use crate::config::{SnapshotBooksOptions, Table, TopBy};
-use crate::duckdb_engine::{open_connection, read_parquet_sql};
+use crate::duckdb_engine::{bronze_source_sql, open_connection};
 use crate::error::Result;
 use crate::http::HttpClient;
 use crate::manifest::{new_run_id, ManifestStore};
@@ -20,6 +20,7 @@ pub async fn snapshot_books(options: SnapshotBooksOptions) -> Result<()> {
     let store = ManifestStore::open(&options.out)?;
     let run_id = new_run_id();
     let started = Utc::now();
+    let run = store.start_run("snapshot books", &run_id, started)?;
     let http = HttpClient::new(
         options.requests_per_second,
         options.max_retries,
@@ -43,6 +44,7 @@ pub async fn snapshot_books(options: SnapshotBooksOptions) -> Result<()> {
 
     if records.is_empty() {
         println!("snapshot books: no tokens selected");
+        run.complete(0)?;
         return Ok(());
     }
 
@@ -51,7 +53,7 @@ pub async fn snapshot_books(options: SnapshotBooksOptions) -> Result<()> {
     write_snapshot(&paths, Table::Orderbooks, &run_id, &[books_batch])?;
     write_snapshot(&paths, Table::BookLevels, &run_id, &[levels_batch])?;
 
-    store.append_completed_run("snapshot books", &run_id, started, records.len() as i64)?;
+    run.complete(records.len() as i64)?;
     println!(
         "snapshot books complete: {} snapshots (run={run_id})",
         records.len()
@@ -82,8 +84,7 @@ pub fn top_markets(
     tag: Option<&str>,
 ) -> Result<Vec<MarketSummary>> {
     let paths = LakePaths::new(out);
-    let glob = paths.duckdb_parquet_glob(Table::Markets);
-    let markets_source = read_parquet_sql(&glob);
+    let markets_source = bronze_source_sql(&paths, Table::Markets);
     let orderbooks_glob = paths.duckdb_parquet_glob(Table::Orderbooks);
     let has_orderbooks = crate::duckdb_engine::glob_exists(&orderbooks_glob);
     let events_glob = paths.duckdb_parquet_glob(Table::Events);
@@ -109,7 +110,7 @@ pub fn top_markets(
         }
     );
     if has_orderbooks {
-        let orderbooks_source = read_parquet_sql(&orderbooks_glob);
+        let orderbooks_source = bronze_source_sql(&paths, Table::Orderbooks);
         sql.push_str(&format!(
             " LEFT JOIN (
                 SELECT market_id, spread,
@@ -121,7 +122,7 @@ pub fn top_markets(
     }
     let mut params = Vec::new();
     if tag.is_some() {
-        let events_source = read_parquet_sql(&events_glob);
+        let events_source = bronze_source_sql(&paths, Table::Events);
         sql.push_str(&format!(
             " JOIN {events_source} e ON m.event_id = e.event_id"
         ));

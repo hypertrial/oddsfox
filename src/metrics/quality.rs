@@ -1,17 +1,15 @@
 use chrono::Utc;
 
 use crate::config::Table;
-use crate::duckdb_engine::{open_connection, read_parquet_sql};
+use crate::duckdb_engine::{bronze_source_sql, open_connection};
 use crate::error::Result;
 use crate::manifest::DataQualityRecord;
 use crate::paths::LakePaths;
 
 pub fn run_quality_checks(out: &std::path::Path) -> Result<Vec<DataQualityRecord>> {
     let paths = LakePaths::new(out);
-    let markets_glob = paths.duckdb_parquet_glob(Table::Markets);
-    let outcomes_glob = paths.duckdb_parquet_glob(Table::Outcomes);
-    let markets_source = read_parquet_sql(&markets_glob);
-    let outcomes_source = read_parquet_sql(&outcomes_glob);
+    let markets_source = bronze_source_sql(&paths, Table::Markets);
+    let outcomes_source = bronze_source_sql(&paths, Table::Outcomes);
     let conn = open_connection(None)?;
     let mut records = Vec::new();
     let now = Utc::now();

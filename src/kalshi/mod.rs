@@ -2,6 +2,7 @@ pub mod client;
 pub mod models;
 pub mod normalize;
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -13,12 +14,13 @@ use crate::config::{
     kalshi_period_interval, resolve_price_time_range, KalshiStatus, SnapshotBooksOptions,
     SyncMarketsOptions, SyncPricesOptions, Table,
 };
-use crate::duckdb_engine::{open_connection, read_parquet_sql};
+use crate::duckdb_engine::{bronze_source_sql, open_connection};
 use crate::error::{OddsfoxError, Result};
 use crate::http::HttpClient;
 use crate::manifest::{new_run_id, ManifestStore, SyncStateRecord};
 use crate::parquet::{write_snapshot, write_token_series};
 use crate::paths::LakePaths;
+use crate::prices::{parse_price_checkpoint, price_cursor_key, PriceCheckpoint};
 use crate::quarantine::{sha256_hex, write_raw_json};
 
 use client::{KalshiAuth, KalshiClient};
@@ -44,6 +46,7 @@ pub async fn sync_markets(options: SyncMarketsOptions) -> Result<crate::sync::Sy
     let store = ManifestStore::open(&options.out)?;
     let run_id = new_run_id();
     let started = Utc::now();
+    let run = store.start_run("sync markets --source kalshi", &run_id, started)?;
     let client = client_from_parts(
         options.kalshi_rest_base_url.clone(),
         options.kalshi_key_id.clone(),
@@ -102,12 +105,7 @@ pub async fn sync_markets(options: SyncMarketsOptions) -> Result<crate::sync::Sy
     store.write_schema_records()?;
     crate::contract::refresh_contract(&paths)?;
 
-    store.append_completed_run(
-        "sync markets --source kalshi",
-        &run_id,
-        started,
-        (events.len() + markets.len()) as i64,
-    )?;
+    run.complete((events.len() + markets.len()) as i64)?;
 
     println!(
         "sync kalshi markets complete: {} events, {} markets (run={run_id})",
@@ -126,6 +124,7 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
     let store = ManifestStore::open(&options.out)?;
     let run_id = new_run_id();
     let started = Utc::now();
+    let run = store.start_run("sync prices --source kalshi", &run_id, started)?;
     let client = client_from_parts(
         options.kalshi_rest_base_url.clone(),
         options.kalshi_key_id.clone(),
@@ -138,6 +137,8 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
     let (start_ts, end_ts) = required_candlestick_range(&time_range)?;
     let period = kalshi_period_interval(options.period.or(options.fidelity))?;
     let fidelity = Some(period as i32);
+    let checkpoint =
+        PriceCheckpoint::new("kalshi", Some(start_ts), Some(end_ts), None, Some(period));
     let merge_window = options.recent_hours.is_some();
     let concurrency = options.concurrency.max(1);
     let overwrite = options.overwrite;
@@ -168,18 +169,29 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
     }
 
     let total = markets.len();
+    let checkpoints = kalshi_price_checkpoints(&store, &markets);
     let processed = Arc::new(AtomicUsize::new(0));
     let total_points = Arc::new(AtomicI64::new(0));
 
-    stream::iter(markets)
+    let states = stream::iter(markets)
         .map(|(market_id, series)| {
             let client = client.clone();
             let paths = paths.clone();
             let run_id = run_id.clone();
             let processed = Arc::clone(&processed);
             let total_points = Arc::clone(&total_points);
+            let checkpoint = checkpoint.clone();
+            let ticker = normalize::strip_kalshi_market_id(&market_id);
+            let yes_token = normalize::kalshi_token_id(ticker, "yes");
+            let no_token = normalize::kalshi_token_id(ticker, "no");
+            let yes_checkpoint_matches = checkpoints
+                .get(&yes_token)
+                .is_some_and(|existing| existing == &checkpoint);
+            let no_checkpoint_matches = checkpoints
+                .get(&no_token)
+                .is_some_and(|existing| existing == &checkpoint);
             async move {
-                let rows = sync_market_prices(KalshiMarketPriceSync {
+                let (rows, states) = sync_market_prices(KalshiMarketPriceSync {
                     client: &client,
                     paths: &paths,
                     run_id: &run_id,
@@ -191,6 +203,9 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
                     end_ts,
                     merge_window,
                     overwrite,
+                    checkpoint,
+                    yes_checkpoint_matches,
+                    no_checkpoint_matches,
                 })
                 .await?;
                 total_points.fetch_add(rows, Ordering::Relaxed);
@@ -201,15 +216,19 @@ pub async fn sync_prices(options: SyncPricesOptions) -> Result<()> {
                         total_points.load(Ordering::Relaxed)
                     );
                 }
-                Ok::<(), OddsfoxError>(())
+                Ok::<_, OddsfoxError>(states)
             }
         })
         .buffer_unordered(concurrency)
-        .try_collect::<Vec<()>>()
+        .try_collect::<Vec<_>>()
         .await?;
 
+    for state in states.into_iter().flatten() {
+        store.upsert_sync_state(state)?;
+    }
+
     let rows = total_points.load(Ordering::Relaxed);
-    store.append_completed_run("sync prices --source kalshi", &run_id, started, rows)?;
+    run.complete(rows)?;
     println!("sync kalshi prices complete: {rows} points across {total} markets (run={run_id})");
     Ok(())
 }
@@ -222,7 +241,7 @@ pub fn active_markets_for_prices(
     if !crate::duckdb_engine::glob_exists(&glob) {
         return Ok(Vec::new());
     }
-    let source = read_parquet_sql(&glob);
+    let source = bronze_source_sql(&paths, Table::Markets);
     let conn = open_connection(None)?;
     let limit = options
         .limit
@@ -250,7 +269,7 @@ pub fn active_markets_for_prices(
         .map_err(Into::into)
 }
 
-async fn sync_market_prices(ctx: KalshiMarketPriceSync<'_>) -> Result<i64> {
+async fn sync_market_prices(ctx: KalshiMarketPriceSync<'_>) -> Result<(i64, Vec<SyncStateRecord>)> {
     let ticker = normalize::strip_kalshi_market_id(ctx.market_id);
     let series = ctx
         .series
@@ -277,25 +296,19 @@ async fn sync_market_prices(ctx: KalshiMarketPriceSync<'_>) -> Result<i64> {
     let yes_token = normalize::kalshi_token_id(ticker, "yes");
     let no_token = normalize::kalshi_token_id(ticker, "no");
     let mut rows = 0;
+    let mut states = Vec::new();
+    let yes_path = ctx.paths.token_partition_file(Table::Prices, &yes_token);
+    let no_path = ctx.paths.token_partition_file(Table::Prices, &no_token);
 
     if ctx.merge_window {
-        yes = merge_side_prices(
-            &ctx.paths.token_partition_file(Table::Prices, &yes_token),
-            &yes,
-            ctx.start_ts,
-            ctx.end_ts,
-        )?;
-        no = merge_side_prices(
-            &ctx.paths.token_partition_file(Table::Prices, &no_token),
-            &no,
-            ctx.start_ts,
-            ctx.end_ts,
-        )?;
+        yes = merge_side_prices(&yes_path, &yes, ctx.start_ts, ctx.end_ts)?;
+        no = merge_side_prices(&no_path, &no, ctx.start_ts, ctx.end_ts)?;
     } else {
-        let yes_path = ctx.paths.token_partition_file(Table::Prices, &yes_token);
-        let no_path = ctx.paths.token_partition_file(Table::Prices, &no_token);
-        if !ctx.overwrite && (yes_path.exists() || no_path.exists()) {
-            return Ok(0);
+        if !ctx.overwrite && yes_path.exists() && ctx.yes_checkpoint_matches {
+            yes.clear();
+        }
+        if !ctx.overwrite && no_path.exists() && ctx.no_checkpoint_matches {
+            no.clear();
         }
     }
 
@@ -310,6 +323,7 @@ async fn sync_market_prices(ctx: KalshiMarketPriceSync<'_>) -> Result<i64> {
         )?;
         rows += batch.num_rows() as i64;
         write_token_series(ctx.paths, Table::Prices, &yes_token, &[batch])?;
+        states.push(ctx.checkpoint.sync_state(&yes_token)?);
     }
     if !no.is_empty() {
         let batch = crate::normalize::prices_batch(
@@ -322,8 +336,9 @@ async fn sync_market_prices(ctx: KalshiMarketPriceSync<'_>) -> Result<i64> {
         )?;
         rows += batch.num_rows() as i64;
         write_token_series(ctx.paths, Table::Prices, &no_token, &[batch])?;
+        states.push(ctx.checkpoint.sync_state(&no_token)?);
     }
-    Ok(rows)
+    Ok((rows, states))
 }
 
 struct KalshiMarketPriceSync<'a> {
@@ -338,6 +353,31 @@ struct KalshiMarketPriceSync<'a> {
     end_ts: i64,
     merge_window: bool,
     overwrite: bool,
+    checkpoint: PriceCheckpoint,
+    yes_checkpoint_matches: bool,
+    no_checkpoint_matches: bool,
+}
+
+fn kalshi_price_checkpoints(
+    store: &ManifestStore,
+    markets: &[(String, Option<String>)],
+) -> HashMap<String, PriceCheckpoint> {
+    markets
+        .iter()
+        .flat_map(|(market_id, _)| {
+            let ticker = normalize::strip_kalshi_market_id(market_id);
+            [
+                normalize::kalshi_token_id(ticker, "yes"),
+                normalize::kalshi_token_id(ticker, "no"),
+            ]
+        })
+        .filter_map(|token_id| {
+            store
+                .sync_state("kalshi", &price_cursor_key("kalshi", &token_id))
+                .and_then(|record| parse_price_checkpoint(&record))
+                .map(|checkpoint| (token_id, checkpoint))
+        })
+        .collect()
 }
 
 fn required_candlestick_range(time_range: &crate::config::PriceTimeRange) -> Result<(i64, i64)> {
@@ -369,6 +409,7 @@ pub async fn sync_trades(options: SyncPricesOptions) -> Result<()> {
     let store = ManifestStore::open(&options.out)?;
     let run_id = new_run_id();
     let started = Utc::now();
+    let run = store.start_run("sync trades --source kalshi", &run_id, started)?;
     let client = client_from_parts(
         options.kalshi_rest_base_url.clone(),
         options.kalshi_key_id.clone(),
@@ -395,12 +436,13 @@ pub async fn sync_trades(options: SyncPricesOptions) -> Result<()> {
         .await?;
     if trades.is_empty() {
         println!("sync kalshi trades: no trades selected");
+        run.complete(0)?;
         return Ok(());
     }
     let batch = normalize::trades_batch(&trades, &run_id)?;
     let rows = batch.num_rows() as i64;
     write_snapshot(&paths, Table::Trades, &run_id, &[batch])?;
-    store.append_completed_run("sync trades --source kalshi", &run_id, started, rows)?;
+    run.complete(rows)?;
     println!("sync kalshi trades complete: {rows} trades (run={run_id})");
     Ok(())
 }
@@ -410,6 +452,7 @@ pub async fn snapshot_books(options: SnapshotBooksOptions) -> Result<()> {
     let store = ManifestStore::open(&options.out)?;
     let run_id = new_run_id();
     let started = Utc::now();
+    let run = store.start_run("snapshot books --source kalshi", &run_id, started)?;
     let client = client_from_parts(
         options.kalshi_rest_base_url.clone(),
         options.kalshi_key_id.clone(),
@@ -429,18 +472,14 @@ pub async fn snapshot_books(options: SnapshotBooksOptions) -> Result<()> {
     let records = normalize::snapshot_records_from_orderbook(ticker, &book);
     if records.is_empty() {
         println!("snapshot kalshi books: no levels");
+        run.complete(0)?;
         return Ok(());
     }
     let books_batch = crate::normalize::orderbooks_batch(&records, "kalshi_orderbook", &run_id)?;
     let levels_batch = crate::normalize::book_levels_batch(&records, "kalshi_orderbook", &run_id)?;
     write_snapshot(&paths, Table::Orderbooks, &run_id, &[books_batch])?;
     write_snapshot(&paths, Table::BookLevels, &run_id, &[levels_batch])?;
-    store.append_completed_run(
-        "snapshot books --source kalshi",
-        &run_id,
-        started,
-        records.len() as i64,
-    )?;
+    run.complete(records.len() as i64)?;
     println!(
         "snapshot kalshi books complete: {} snapshots (run={run_id})",
         records.len()

@@ -3,14 +3,13 @@ use std::path::Path;
 use chrono::NaiveDate;
 
 use crate::config::Table;
-use crate::duckdb_engine::{open_connection, read_parquet_sql};
+use crate::duckdb_engine::{bronze_source_sql, open_connection};
 use crate::error::{OddsfoxError, Result};
 use crate::paths::LakePaths;
 
 pub fn search(out: &Path, query: &str) -> Result<Vec<SearchHit>> {
     let paths = LakePaths::new(out);
-    let glob = paths.duckdb_parquet_glob(Table::Markets);
-    let source = read_parquet_sql(&glob);
+    let source = bronze_source_sql(&paths, Table::Markets);
     let conn = open_connection(None)?;
     let sql = format!(
         "SELECT market_id, question, active, volume_24h
@@ -34,10 +33,8 @@ pub fn search(out: &Path, query: &str) -> Result<Vec<SearchHit>> {
 
 pub fn market_detail(out: &Path, market_id: &str) -> Result<MarketDetail> {
     let paths = LakePaths::new(out);
-    let markets_glob = paths.duckdb_parquet_glob(Table::Markets);
-    let outcomes_glob = paths.duckdb_parquet_glob(Table::Outcomes);
-    let markets_source = read_parquet_sql(&markets_glob);
-    let outcomes_source = read_parquet_sql(&outcomes_glob);
+    let markets_source = bronze_source_sql(&paths, Table::Markets);
+    let outcomes_source = bronze_source_sql(&paths, Table::Outcomes);
     let conn = open_connection(None)?;
     let sql = format!(
         "SELECT market_id, event_id, question, active, closed, resolved, volume, volume_24h, liquidity
@@ -88,8 +85,7 @@ pub fn market_detail(out: &Path, market_id: &str) -> Result<MarketDetail> {
 
 pub fn event_detail(out: &Path, event_id: &str) -> Result<EventDetail> {
     let paths = LakePaths::new(out);
-    let glob = paths.duckdb_parquet_glob(Table::Events);
-    let source = read_parquet_sql(&glob);
+    let source = bronze_source_sql(&paths, Table::Events);
     let conn = open_connection(None)?;
     let sql = format!(
         "SELECT event_id, slug, title, category, active, closed
@@ -114,8 +110,7 @@ pub fn event_detail(out: &Path, event_id: &str) -> Result<EventDetail> {
 
 pub fn resolved_markets(out: &Path, since: Option<NaiveDate>) -> Result<Vec<MarketDetail>> {
     let paths = LakePaths::new(out);
-    let glob = paths.duckdb_parquet_glob(Table::Markets);
-    let source = read_parquet_sql(&glob);
+    let source = bronze_source_sql(&paths, Table::Markets);
     let conn = open_connection(None)?;
     let since_filter = if since.is_some() {
         " AND resolution_time >= CAST(? AS TIMESTAMP)"
@@ -237,6 +232,10 @@ mod tests {
         ];
         let batch = markets_batch(&markets, "gamma", "http://test", "sha", "run-1").unwrap();
         write_snapshot(&paths, Table::Markets, "run-1", &[batch]).unwrap();
+        crate::manifest::ManifestStore::open(dir.path())
+            .unwrap()
+            .append_completed_run("test", "run-1", chrono::Utc::now(), 2)
+            .unwrap();
 
         let since = chrono::NaiveDate::from_ymd_opt(2024, 1, 1);
         let resolved = resolved_markets(dir.path(), since).unwrap();

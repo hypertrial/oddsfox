@@ -38,7 +38,7 @@ Defaults (overridable via flags or `[backfill]` in `oddsfox.toml`):
 - `--fidelity 60` (minutes between price points)
 - `--rps 5` and `--concurrency 4`
 
-Resume a partial backfill by re-running the same command (skips tokens already written). Use `--overwrite` to refetch.
+Resume a partial backfill by re-running the same command. Snapshot-style bronze runs are visible only after their manifest run is marked complete, so partial run directories left by a crash are ignored until `repair` quarantines them. Price sync resumes per token using stored range/fidelity checkpoints; use `--overwrite` to refetch.
 
 Query the catalog:
 
@@ -65,11 +65,13 @@ Reruns are safe: user fills are deduplicated by source/fill id, latest positions
 
 | Command | Rerun behavior |
 |---------|----------------|
-| `sync markets` | Appends a new run snapshot; DuckDB queries see all snapshots. |
-| `sync prices` | Skips existing token files unless `--overwrite`; rolling active sync merges the requested window. |
-| `sync trades` | Appends a new run snapshot; repeated ranges can duplicate public trades. |
+| `sync markets` | Appends a run snapshot; readers see it only after the run is marked complete. |
+| `sync prices` | Skips existing token files only when the stored checkpoint matches the requested range/fidelity; rolling active sync merges the requested window. |
+| `sync trades` | Appends a run snapshot; readers see it only after the run is marked complete. |
 | `sync user` | Appends bronze rows, dedupes fills and keeps latest positions in PnL, then advances user watermarks after successful gold refresh. |
-| `snapshot books` | Appends a new run snapshot. |
+| `snapshot books` | Appends a run snapshot; readers see it only after the run is marked complete. |
+
+`check` reports incomplete runs, orphan run partitions, and leftover temp files. `repair` removes temp files and moves orphan run partitions under `_quarantine/orphan_runs/` without deleting their data.
 
 ## Core workflow
 

@@ -29,8 +29,9 @@ pub async fn compute_liquidity(options: &ComputeOptions) -> Result<()> {
     let store = ManifestStore::open(&options.out)?;
     let run_id = new_run_id();
     let started = Utc::now();
+    let run = store.start_run("compute liquidity", &run_id, started)?;
     let rows = compute_liquidity_metrics(&options.out, options.active)?;
-    store.append_completed_run("compute liquidity", &run_id, started, rows)?;
+    run.complete(rows)?;
     println!("compute liquidity complete: {rows} metric points");
     Ok(())
 }
@@ -39,8 +40,9 @@ pub async fn compute_accuracy(options: &ComputeOptions) -> Result<()> {
     let store = ManifestStore::open(&options.out)?;
     let run_id = new_run_id();
     let started = Utc::now();
+    let run = store.start_run("compute accuracy", &run_id, started)?;
     let rows = compute_accuracy_metrics(&options.out, options.since)?;
-    store.append_completed_run("compute accuracy", &run_id, started, rows)?;
+    run.complete(rows)?;
     println!("compute accuracy complete: {rows} metric points");
     Ok(())
 }
@@ -49,8 +51,9 @@ pub async fn compute_calibration_metrics(options: &ComputeOptions) -> Result<()>
     let store = ManifestStore::open(&options.out)?;
     let run_id = new_run_id();
     let started = Utc::now();
+    let run = store.start_run("compute calibration", &run_id, started)?;
     let rows = compute_calibration(&options.out, options.bucket_width)?;
-    store.append_completed_run("compute calibration", &run_id, started, rows)?;
+    run.complete(rows)?;
     println!("compute calibration complete: {rows} buckets");
     Ok(())
 }

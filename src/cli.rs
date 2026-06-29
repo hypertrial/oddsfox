@@ -422,7 +422,6 @@ pub fn base_sync_markets_options(
         tag: None,
         since: None,
         limit: None,
-        resume: true,
         overwrite: false,
         gamma_base_url: config.polymarket.gamma_base_url.clone(),
         kalshi_rest_base_url: config.kalshi.rest_base_url.clone(),

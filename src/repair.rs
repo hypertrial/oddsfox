@@ -1,32 +1,80 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use crate::config::SyncMarketsOptions;
+use crate::check::{orphan_run_partitions, temp_files};
 use crate::error::Result;
+use crate::manifest::ManifestStore;
+use crate::paths::LakePaths;
 
 pub async fn run(out: &Path) -> Result<()> {
-    let options = SyncMarketsOptions {
-        out: out.to_path_buf(),
-        source: crate::config::Source::Polymarket,
-        active: true,
-        closed: false,
-        all: false,
-        status: None,
-        series: None,
-        event: None,
-        tag: None,
-        since: None,
-        limit: None,
-        resume: false,
-        overwrite: true,
-        gamma_base_url: crate::config::DEFAULT_GAMMA_BASE_URL.into(),
-        kalshi_rest_base_url: crate::config::DEFAULT_KALSHI_REST_BASE_URL.into(),
-        kalshi_key_id: None,
-        kalshi_private_key_path: None,
-        requests_per_second: crate::config::DEFAULT_REQUESTS_PER_SECOND,
-        max_retries: crate::config::DEFAULT_MAX_RETRIES,
-        user_agent: crate::config::DEFAULT_USER_AGENT.into(),
-        raw_retention_days: crate::config::DEFAULT_RAW_RETENTION_DAYS,
-    };
-    crate::sync::sync_markets(options).await?;
+    let paths = LakePaths::new(out);
+    let store = ManifestStore::open(out)?;
+
+    let mut removed = 0;
+    for path in temp_files(out) {
+        std::fs::remove_file(&path)?;
+        removed += 1;
+    }
+
+    let mut quarantined = 0;
+    let completed = store.completed_run_ids();
+    for (table, run_id, path) in orphan_run_partitions(&paths, &completed) {
+        let dest = unique_dest(
+            paths
+                .root
+                .join("_quarantine")
+                .join("orphan_runs")
+                .join(table.as_str())
+                .join(format!("run={run_id}")),
+        );
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::rename(&path, &dest)?;
+        quarantined += 1;
+    }
+
+    println!("repair complete: removed {removed} temp file(s), quarantined {quarantined} run(s)");
     Ok(())
+}
+
+fn unique_dest(path: PathBuf) -> PathBuf {
+    if !path.exists() {
+        return path;
+    }
+    for idx in 1.. {
+        let candidate = path.with_file_name(format!(
+            "{}-{idx}",
+            path.file_name().unwrap_or_default().to_string_lossy()
+        ));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    unreachable!()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Table;
+
+    #[tokio::test]
+    async fn repair_removes_temps_and_quarantines_orphan_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = LakePaths::new(dir.path());
+        paths.scaffold_dirs().unwrap();
+        let temp = paths.root.join("_raw").join("partial.json.tmp");
+        std::fs::write(&temp, b"partial").unwrap();
+        let orphan = paths.bronze_table_dir(Table::Events).join("run=orphan");
+        std::fs::create_dir_all(&orphan).unwrap();
+
+        run(dir.path()).await.unwrap();
+
+        assert!(!temp.exists());
+        assert!(!orphan.exists());
+        assert!(paths
+            .root
+            .join("_quarantine/orphan_runs/events/run=orphan")
+            .exists());
+    }
 }

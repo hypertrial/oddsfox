@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{File, OpenOptions};
 use std::path::PathBuf;
 
@@ -12,6 +13,10 @@ use crate::schema;
 
 use super::records::{RunRecord, SyncStateRecord, VersionRecord};
 
+pub const RUN_STARTED: &str = "started";
+pub const RUN_COMPLETE: &str = "complete";
+pub const RUN_FAILED: &str = "failed";
+
 pub fn new_run_id() -> String {
     Uuid::new_v4().to_string()
 }
@@ -19,6 +24,14 @@ pub fn new_run_id() -> String {
 pub struct ManifestStore {
     paths: LakePaths,
     _lake_lock: File,
+}
+
+pub struct RunGuard<'a> {
+    store: &'a ManifestStore,
+    command: String,
+    run_id: String,
+    started_at: chrono::DateTime<Utc>,
+    completed: bool,
 }
 
 fn acquire_lake_lock_exclusive(paths: &LakePaths) -> Result<File> {
@@ -100,6 +113,40 @@ impl ManifestStore {
         append_json_line(&path, &run)
     }
 
+    pub fn append_started_run(
+        &self,
+        command: impl Into<String>,
+        run_id: &str,
+        started_at: chrono::DateTime<Utc>,
+    ) -> Result<()> {
+        self.append_run(RunRecord {
+            run_id: run_id.to_string(),
+            command: command.into(),
+            started_at,
+            finished_at: None,
+            status: RUN_STARTED.into(),
+            rows_written: 0,
+            oddsfox_version: env!("CARGO_PKG_VERSION").into(),
+        })
+    }
+
+    pub fn start_run(
+        &self,
+        command: impl Into<String>,
+        run_id: &str,
+        started_at: chrono::DateTime<Utc>,
+    ) -> Result<RunGuard<'_>> {
+        let command = command.into();
+        self.append_started_run(command.clone(), run_id, started_at)?;
+        Ok(RunGuard {
+            store: self,
+            command,
+            run_id: run_id.to_string(),
+            started_at,
+            completed: false,
+        })
+    }
+
     pub fn append_completed_run(
         &self,
         command: impl Into<String>,
@@ -112,10 +159,43 @@ impl ManifestStore {
             command: command.into(),
             started_at,
             finished_at: Some(Utc::now()),
-            status: "complete".into(),
+            status: RUN_COMPLETE.into(),
             rows_written,
             oddsfox_version: env!("CARGO_PKG_VERSION").into(),
         })
+    }
+
+    pub fn append_failed_run(
+        &self,
+        command: impl Into<String>,
+        run_id: &str,
+        started_at: chrono::DateTime<Utc>,
+        _error: impl std::fmt::Display,
+    ) -> Result<()> {
+        self.append_run(RunRecord {
+            run_id: run_id.to_string(),
+            command: command.into(),
+            started_at,
+            finished_at: Some(Utc::now()),
+            status: RUN_FAILED.into(),
+            rows_written: 0,
+            oddsfox_version: env!("CARGO_PKG_VERSION").into(),
+        })
+    }
+
+    pub fn run_records(&self) -> Vec<RunRecord> {
+        read_json_lines(&self.paths.runs_manifest())
+    }
+
+    pub fn completed_run_ids(&self) -> BTreeSet<String> {
+        completed_run_ids_from_records(self.run_records())
+    }
+
+    pub fn incomplete_run_ids(&self) -> BTreeSet<String> {
+        latest_run_statuses(self.run_records())
+            .into_iter()
+            .filter_map(|(run_id, status)| (status != RUN_COMPLETE).then_some(run_id))
+            .collect()
     }
 
     pub fn upsert_sync_state(&self, record: SyncStateRecord) -> Result<()> {
@@ -160,6 +240,54 @@ impl ManifestStore {
             .collect();
         write_json(&self.paths.schemas_manifest(), &records)
     }
+}
+
+impl RunGuard<'_> {
+    pub fn complete(mut self, rows_written: i64) -> Result<()> {
+        let result = self.store.append_completed_run(
+            self.command.clone(),
+            &self.run_id,
+            self.started_at,
+            rows_written,
+        );
+        if result.is_ok() {
+            self.completed = true;
+        }
+        result
+    }
+}
+
+impl Drop for RunGuard<'_> {
+    fn drop(&mut self) {
+        if !self.completed {
+            let _ = self.store.append_failed_run(
+                self.command.clone(),
+                &self.run_id,
+                self.started_at,
+                "run exited before completion",
+            );
+        }
+    }
+}
+
+pub fn completed_run_ids_from_lake(lake_root: impl Into<PathBuf>) -> BTreeSet<String> {
+    let paths = LakePaths::new(lake_root);
+    completed_run_ids_from_records(read_json_lines(&paths.runs_manifest()))
+}
+
+fn completed_run_ids_from_records(records: Vec<RunRecord>) -> BTreeSet<String> {
+    latest_run_statuses(records)
+        .into_iter()
+        .filter_map(|(run_id, status)| (status == RUN_COMPLETE).then_some(run_id))
+        .collect()
+}
+
+fn latest_run_statuses(records: Vec<RunRecord>) -> BTreeMap<String, String> {
+    let mut latest = BTreeMap::new();
+    for record in records {
+        latest.insert(record.run_id, record.status);
+    }
+    latest
 }
 
 fn write_json<T: serde::Serialize>(path: &std::path::Path, value: &T) -> Result<()> {
@@ -216,8 +344,34 @@ mod tests {
         let run: RunRecord = serde_json::from_str(raw.trim()).unwrap();
         assert_eq!(run.run_id, "run-1");
         assert_eq!(run.command, "sync test");
-        assert_eq!(run.status, "complete");
+        assert_eq!(run.status, RUN_COMPLETE);
         assert_eq!(run.rows_written, 7);
         assert!(run.finished_at.is_some());
+    }
+
+    #[test]
+    fn completed_run_ids_use_latest_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ManifestStore::open(dir.path()).unwrap();
+        let started = Utc::now();
+        store
+            .append_started_run("sync test", "run-1", started)
+            .unwrap();
+        store
+            .append_completed_run("sync test", "run-2", started, 1)
+            .unwrap();
+        store
+            .append_failed_run("sync test", "run-2", started, "boom")
+            .unwrap();
+        store
+            .append_completed_run("sync test", "run-3", started, 1)
+            .unwrap();
+
+        let ids = store.completed_run_ids();
+        assert_eq!(ids.into_iter().collect::<Vec<_>>(), vec!["run-3"]);
+        assert_eq!(
+            store.incomplete_run_ids().into_iter().collect::<Vec<_>>(),
+            vec!["run-1", "run-2"]
+        );
     }
 }

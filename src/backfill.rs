@@ -61,7 +61,6 @@ fn base_sync_markets_options(options: &BackfillOptions, source: Source) -> SyncM
         tag: None,
         since: None,
         limit: options.limit,
-        resume: true,
         overwrite: false,
         gamma_base_url: options.gamma_base_url.clone(),
         kalshi_rest_base_url: options.kalshi_rest_base_url.clone(),

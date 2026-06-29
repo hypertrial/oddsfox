@@ -55,7 +55,9 @@ pub fn write_raw_json(
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(&path, body)?;
+    let temp = path.with_extension("json.tmp");
+    std::fs::write(&temp, body)?;
+    std::fs::rename(&temp, &path)?;
     Ok(path)
 }
 
@@ -63,4 +65,19 @@ use sha2::{Digest, Sha256};
 
 pub fn sha256_hex(body: &[u8]) -> String {
     format!("{:x}", Sha256::digest(body))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_raw_json_publishes_final_file_without_temp() {
+        let dir = tempfile::tempdir().unwrap();
+        let lake = LakePaths::new(dir.path());
+        let path = write_raw_json(&lake, "gamma", "events.json", br#"{"ok":true}"#).unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), br#"{"ok":true}"#);
+        assert!(!path.with_extension("json.tmp").exists());
+    }
 }

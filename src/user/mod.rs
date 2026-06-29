@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 
 use crate::config::{OutputFormat, PnlOptions, SyncUserOptions, Table, UserSource};
 use crate::data::{DataClient, PolymarketUserActivity, PolymarketUserPosition};
-use crate::duckdb_engine::{glob_exists, open_connection, read_parquet_sql};
+use crate::duckdb_engine::{bronze_source_sql, glob_exists, open_connection};
 use crate::error::{OddsfoxError, Result};
 use crate::http::HttpClient;
 use crate::kalshi::client::{KalshiAuth, KalshiClient};
@@ -103,7 +103,6 @@ pub async fn sync_user(options: SyncUserOptions) -> Result<UserSyncSummary> {
         if let Some(state) = result.state {
             store.upsert_sync_state(state)?;
         }
-        store.append_completed_run(result.command, &result.run_id, result.started, result.rows)?;
     }
     println!(
         "sync user complete: {} fills, {} positions",
@@ -114,10 +113,6 @@ pub async fn sync_user(options: SyncUserOptions) -> Result<UserSyncSummary> {
 
 struct SourceUserSync {
     summary: UserSyncSummary,
-    command: &'static str,
-    run_id: String,
-    started: chrono::DateTime<Utc>,
-    rows: i64,
     state: Option<SyncStateRecord>,
 }
 
@@ -146,12 +141,12 @@ pub fn pnl_rows(
     }
 
     let positions = if has_positions {
-        read_parquet_sql(&positions_glob)
+        bronze_source_sql(&lake, Table::UserPositions)
     } else {
         "(SELECT NULL::VARCHAR AS source, NULL::VARCHAR AS user_id, NULL::VARCHAR AS market_id, NULL::VARCHAR AS token_id, 0::BIGINT AS as_of, 0::BIGINT AS ingested_at, 0.0::DOUBLE AS realized_pnl, 0.0::DOUBLE AS unrealized_pnl, 0.0::DOUBLE AS mark_value, 0.0::DOUBLE AS total_pnl WHERE false)".into()
     };
     let fills = if has_fills {
-        read_parquet_sql(&fills_glob)
+        bronze_source_sql(&lake, Table::UserFills)
     } else {
         "(SELECT NULL::VARCHAR AS source, NULL::VARCHAR AS user_id, NULL::VARCHAR AS market_id, NULL::VARCHAR AS fill_id, 0::BIGINT AS ingested_at, 0.0::DOUBLE AS fee WHERE false)".into()
     };
@@ -281,6 +276,7 @@ async fn sync_polymarket_user(
     let paths = LakePaths::new(&options.out);
     let run_id = new_run_id();
     let started = Utc::now();
+    let run = store.start_run("sync user --source polymarket", &run_id, started)?;
     let http = HttpClient::new(
         options.requests_per_second,
         options.max_retries,
@@ -315,6 +311,7 @@ async fn sync_polymarket_user(
         .collect();
     write_user_batches(&paths, &run_id, &fills, &positions)?;
     let rows = (fills.len() + positions.len()) as i64;
+    run.complete(rows)?;
     let state = latest_fill_secs(&fills)
         .map(|ts| user_sync_state(POLYMARKET, polymarket_activity_cursor_key(user_id), ts));
     Ok(SourceUserSync {
@@ -322,10 +319,6 @@ async fn sync_polymarket_user(
             fills: fills.len(),
             positions: positions.len(),
         },
-        command: "sync user --source polymarket",
-        run_id,
-        started,
-        rows,
         state,
     })
 }
@@ -344,6 +337,7 @@ async fn sync_kalshi_user(
     let paths = LakePaths::new(&options.out);
     let run_id = new_run_id();
     let started = Utc::now();
+    let run = store.start_run("sync user --source kalshi", &run_id, started)?;
     let http = HttpClient::new(
         options.requests_per_second,
         options.max_retries,
@@ -370,6 +364,7 @@ async fn sync_kalshi_user(
         .collect();
     write_user_batches(&paths, &run_id, &fills, &positions)?;
     let rows = (fills.len() + positions.len()) as i64;
+    run.complete(rows)?;
     let state = latest_fill_secs(&fills)
         .map(|ts| user_sync_state(KALSHI, kalshi_fills_cursor_key(&key_id), ts));
     Ok(SourceUserSync {
@@ -377,10 +372,6 @@ async fn sync_kalshi_user(
             fills: fills.len(),
             positions: positions.len(),
         },
-        command: "sync user --source kalshi",
-        run_id,
-        started,
-        rows,
         state,
     })
 }
@@ -962,6 +953,13 @@ mod tests {
             source: POLYMARKET,
         }];
         write_user_batches(&lake, "run-2", &fills, &newer_positions).unwrap();
+        let store = crate::manifest::ManifestStore::open(dir.path()).unwrap();
+        store
+            .append_completed_run("test", "run-1", chrono::Utc::now(), 2)
+            .unwrap();
+        store
+            .append_completed_run("test", "run-2", chrono::Utc::now(), 2)
+            .unwrap();
         let rows = pnl_rows(dir.path(), UserSource::All, Some("u1")).unwrap();
         assert_eq!(rows.len(), 1);
         assert!((rows[0].total_pnl - 0.49).abs() < 1e-9);

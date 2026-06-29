@@ -1,7 +1,7 @@
 use chrono::Utc;
 
 use crate::config::{SyncMarketsOptions, Table, TokenPairFilter};
-use crate::duckdb_engine::{open_connection, read_parquet_sql};
+use crate::duckdb_engine::{bronze_source_sql, open_connection};
 use crate::error::Result;
 use crate::gamma::{fetch_all_events, FetchEventsParams, GammaEvent, GammaMarket};
 use crate::http::HttpClient;
@@ -18,6 +18,7 @@ pub async fn sync_markets(options: SyncMarketsOptions) -> Result<SyncSummary> {
     let store = ManifestStore::open(&options.out)?;
     let run_id = new_run_id();
     let started = Utc::now();
+    let run = store.start_run("sync markets", &run_id, started)?;
     let http = HttpClient::new(
         options.requests_per_second,
         options.max_retries,
@@ -75,7 +76,7 @@ pub async fn sync_markets(options: SyncMarketsOptions) -> Result<SyncSummary> {
     crate::contract::refresh_contract(&paths)?;
 
     let rows = events.len() as i64 + markets.len() as i64;
-    store.append_completed_run("sync markets", &run_id, started, rows)?;
+    run.complete(rows)?;
 
     println!(
         "sync markets complete: {} events, {} markets (run={run_id})",
@@ -110,8 +111,7 @@ fn collect_markets(events: &[GammaEvent]) -> Vec<GammaMarket> {
 
 pub async fn token_ids_for_market(out: &std::path::Path, market_id: &str) -> Result<Vec<String>> {
     let paths = LakePaths::new(out);
-    let glob = paths.duckdb_parquet_glob(Table::Outcomes);
-    let source = read_parquet_sql(&glob);
+    let source = bronze_source_sql(&paths, Table::Outcomes);
     let conn = open_connection(None)?;
     let sql = format!("SELECT token_id FROM {source} WHERE market_id = ? AND token_id IS NOT NULL");
     let mut stmt = crate::duckdb_engine::map_duckdb(conn.prepare(&sql))?;
@@ -132,10 +132,8 @@ pub async fn top_token_ids(out: &std::path::Path, limit: usize) -> Result<Vec<St
 
 pub async fn top_token_pairs(out: &std::path::Path, limit: usize) -> Result<Vec<(String, String)>> {
     let paths = LakePaths::new(out);
-    let markets_glob = paths.duckdb_parquet_glob(Table::Markets);
-    let outcomes_glob = paths.duckdb_parquet_glob(Table::Outcomes);
-    let markets_source = read_parquet_sql(&markets_glob);
-    let outcomes_source = read_parquet_sql(&outcomes_glob);
+    let markets_source = bronze_source_sql(&paths, Table::Markets);
+    let outcomes_source = bronze_source_sql(&paths, Table::Outcomes);
     let conn = open_connection(None)?;
     let sql = format!(
         "SELECT o.token_id, o.market_id
@@ -153,12 +151,9 @@ pub async fn all_token_pairs(
     filter: &TokenPairFilter,
 ) -> Result<Vec<(String, String)>> {
     let paths = LakePaths::new(out);
-    let markets_glob = paths.duckdb_parquet_glob(Table::Markets);
-    let outcomes_glob = paths.duckdb_parquet_glob(Table::Outcomes);
-    let events_glob = paths.duckdb_parquet_glob(Table::Events);
-    let markets_source = read_parquet_sql(&markets_glob);
-    let outcomes_source = read_parquet_sql(&outcomes_glob);
-    let events_source = read_parquet_sql(&events_glob);
+    let markets_source = bronze_source_sql(&paths, Table::Markets);
+    let outcomes_source = bronze_source_sql(&paths, Table::Outcomes);
+    let events_source = bronze_source_sql(&paths, Table::Events);
     let conn = open_connection(None)?;
 
     let mut sql = format!(
@@ -217,6 +212,7 @@ fn query_token_pairs(
 mod token_pair_tests {
     use super::*;
     use crate::config::Table;
+    use crate::manifest::ManifestStore;
     use crate::normalize::{markets_batch, outcomes_batch};
     use crate::parquet::write_snapshot;
 
@@ -258,6 +254,10 @@ mod token_pair_tests {
             outcomes_batch(&markets, "gamma", "http://test", "sha", run_id).unwrap();
         write_snapshot(&paths, Table::Markets, run_id, &[markets_data]).unwrap();
         write_snapshot(&paths, Table::Outcomes, run_id, &[outcomes_data]).unwrap();
+        ManifestStore::open(dir.path())
+            .unwrap()
+            .append_completed_run("test", run_id, chrono::Utc::now(), 2)
+            .unwrap();
 
         let pairs = all_token_pairs(dir.path(), &TokenPairFilter::default())
             .await
@@ -333,6 +333,10 @@ mod token_pair_tests {
             outcomes_batch(&markets, "gamma", "http://test", "sha", run_id).unwrap();
         write_snapshot(&paths, Table::Markets, run_id, &[markets_data]).unwrap();
         write_snapshot(&paths, Table::Outcomes, run_id, &[outcomes_data]).unwrap();
+        ManifestStore::open(dir.path())
+            .unwrap()
+            .append_completed_run("test", run_id, chrono::Utc::now(), 2)
+            .unwrap();
 
         let active_pairs = all_token_pairs(
             dir.path(),

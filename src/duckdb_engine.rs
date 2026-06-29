@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use duckdb::Connection;
 
+use crate::config::Table;
 use crate::error::{OddsfoxError, Result};
+use crate::manifest::completed_run_ids_from_lake;
 use crate::paths::LakePaths;
 
 pub const GOLD_TABLES: [&str; 5] = [
@@ -36,13 +38,30 @@ pub(crate) fn read_parquet_sql(glob: &str) -> String {
     format!("read_parquet('{}')", escape_sql_string(glob))
 }
 
+pub fn bronze_source_sql(lake: &LakePaths, table: Table) -> String {
+    let source = read_parquet_sql(&lake.duckdb_parquet_glob(table));
+    if !table.is_run_partitioned() {
+        return source;
+    }
+    let ids = completed_run_ids_from_lake(lake.root.clone());
+    if ids.is_empty() {
+        return format!("(SELECT * FROM {source} WHERE false)");
+    }
+    let ids = ids
+        .into_iter()
+        .map(|id| format!("'{}'", escape_sql_string(&id)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("(SELECT * FROM {source} WHERE run_id IN ({ids}))")
+}
+
 pub fn register_layer_views(conn: &Connection, lake: &LakePaths) -> Result<usize> {
     let mut created = 0;
     for table in crate::config::Table::all() {
         let glob = lake.duckdb_parquet_glob(*table);
         if glob_exists(&glob) {
             let view = format!("bronze_{}", table.as_str());
-            let source = read_parquet_sql(&glob);
+            let source = bronze_source_sql(lake, *table);
             let sql = format!("CREATE OR REPLACE VIEW {view} AS SELECT * FROM {source}");
             map_duckdb(conn.execute(&sql, []))?;
             created += 1;
@@ -115,5 +134,49 @@ mod tests {
             sql,
             "read_parquet('/tmp/lake''s/bronze/events/**/*.parquet')"
         );
+    }
+
+    #[test]
+    fn bronze_source_filters_run_partitioned_tables() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = LakePaths::new(dir.path());
+        let sql = bronze_source_sql(&paths, Table::Events);
+        assert!(sql.contains("WHERE false"));
+
+        let price_sql = bronze_source_sql(&paths, Table::Prices);
+        assert!(!price_sql.contains("run_id IN"));
+    }
+
+    #[test]
+    fn bronze_source_hides_uncommitted_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = LakePaths::new(dir.path());
+        paths.scaffold_dirs().unwrap();
+        let raw = r#"[{"id":"e1","title":"Event","markets":[]}]"#;
+        let events: Vec<crate::gamma::GammaEvent> = serde_json::from_str(raw).unwrap();
+        let batch =
+            crate::normalize::events_batch(&events, "gamma", "url", "sha", "run-1").unwrap();
+        crate::parquet::write_snapshot(&paths, Table::Events, "run-1", &[batch]).unwrap();
+
+        let conn = open_connection(None).unwrap();
+        let source = bronze_source_sql(&paths, Table::Events);
+        let count: i64 = conn
+            .query_row(&format!("SELECT COUNT(*) FROM {source}"), [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 0);
+
+        crate::manifest::ManifestStore::open(dir.path())
+            .unwrap()
+            .append_completed_run("test", "run-1", chrono::Utc::now(), 1)
+            .unwrap();
+        let source = bronze_source_sql(&paths, Table::Events);
+        let count: i64 = conn
+            .query_row(&format!("SELECT COUNT(*) FROM {source}"), [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 1);
     }
 }

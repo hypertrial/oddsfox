@@ -18,7 +18,6 @@ pub async fn run(options: QuickstartOptions) -> Result<()> {
         tag: None,
         since: None,
         limit: Some(100),
-        resume: true,
         overwrite: false,
         gamma_base_url: crate::config::DEFAULT_GAMMA_BASE_URL.into(),
         kalshi_rest_base_url: crate::config::DEFAULT_KALSHI_REST_BASE_URL.into(),

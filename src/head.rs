@@ -5,7 +5,8 @@ use duckdb::Connection;
 
 use crate::config::Table;
 use crate::duckdb_engine::{
-    escape_sql_string, glob_exists, map_duckdb, open_connection, read_parquet_sql, GOLD_TABLES,
+    bronze_source_sql, escape_sql_string, glob_exists, map_duckdb, open_connection,
+    read_parquet_sql, GOLD_TABLES,
 };
 use crate::error::Result;
 use crate::paths::LakePaths;
@@ -30,15 +31,33 @@ pub fn run(options: &HeadOptions) -> Result<()> {
     for table in Table::all() {
         let label = format!("bronze_{}", table.as_str());
         let glob = paths.duckdb_parquet_glob(*table);
+        let source = bronze_source_sql(&paths, *table);
         let csv_path = csv_file_path(&options.export_dir, &label);
-        process_table(&conn, &label, &glob, &csv_path, options.limit, Some(*table))?;
+        process_table(
+            &conn,
+            &label,
+            &glob,
+            &source,
+            &csv_path,
+            options.limit,
+            Some(*table),
+        )?;
     }
 
     for name in GOLD_TABLES {
         let label = format!("gold_{name}");
         let glob = paths.layer_parquet_glob("gold", name);
+        let source = read_parquet_sql(&glob);
         let csv_path = csv_file_path(&options.export_dir, &label);
-        process_table(&conn, &label, &glob, &csv_path, options.limit, None)?;
+        process_table(
+            &conn,
+            &label,
+            &glob,
+            &source,
+            &csv_path,
+            options.limit,
+            None,
+        )?;
     }
 
     Ok(())
@@ -52,14 +71,15 @@ fn process_table(
     conn: &Connection,
     label: &str,
     glob: &str,
+    source: &str,
     csv_path: &Path,
     limit: usize,
     bronze_table: Option<Table>,
 ) -> Result<()> {
     println!("=== {label} (limit {limit}) ===");
     if glob_exists(glob) {
-        let row_count = print_preview(conn, glob, limit)?;
-        export_populated_table(conn, glob, csv_path, limit)?;
+        let row_count = print_preview(conn, source, limit)?;
+        export_populated_table(conn, source, csv_path, limit)?;
         println!("wrote {} ({row_count} rows)", csv_path.display());
     } else {
         println!("(empty — no parquet files)");
@@ -70,8 +90,7 @@ fn process_table(
     Ok(())
 }
 
-fn print_preview(conn: &Connection, glob: &str, limit: usize) -> Result<usize> {
-    let source = read_parquet_sql(glob);
+fn print_preview(conn: &Connection, source: &str, limit: usize) -> Result<usize> {
     let sql = format!("SELECT * FROM {source} LIMIT {limit}");
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt.query([])?;
@@ -95,11 +114,10 @@ fn print_preview(conn: &Connection, glob: &str, limit: usize) -> Result<usize> {
 
 fn export_populated_table(
     conn: &Connection,
-    glob: &str,
+    source: &str,
     csv_path: &Path,
     limit: usize,
 ) -> Result<()> {
-    let source = read_parquet_sql(glob);
     let csv_path = escape_sql_string(&csv_path.to_string_lossy());
     let sql = format!(
         "COPY (SELECT * FROM {source} LIMIT {limit}) \
@@ -171,6 +189,10 @@ mod tests {
         let events_data =
             events_batch(&events, "gamma", "http://test/events", "sha", "run-1").unwrap();
         write_snapshot(&paths, Table::Events, "run-1", &[events_data]).unwrap();
+        crate::manifest::ManifestStore::open(dir.path())
+            .unwrap()
+            .append_completed_run("test", "run-1", chrono::Utc::now(), 1)
+            .unwrap();
 
         let export_dir = dir.path().join("heads");
         run(&HeadOptions {

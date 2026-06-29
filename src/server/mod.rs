@@ -12,7 +12,7 @@ use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 
 use crate::config::{parse_date, ServeOptions, TopBy, UserSource};
-use crate::duckdb_engine::{open_connection, read_parquet_sql};
+use crate::duckdb_engine::{bronze_source_sql, open_connection, read_parquet_sql};
 use crate::error::Result;
 use crate::explore::{event_detail, market_detail, resolved_markets, search};
 use crate::metrics::market_metrics;
@@ -97,9 +97,8 @@ async fn get_market(
 }
 
 async fn list_events(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let glob =
-        crate::paths::LakePaths::new(&state.out).duckdb_parquet_glob(crate::config::Table::Events);
-    let source = read_parquet_sql(&glob);
+    let paths = crate::paths::LakePaths::new(&state.out);
+    let source = bronze_source_sql(&paths, crate::config::Table::Events);
     let conn = match open_connection(None) {
         Ok(c) => c,
         Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
@@ -172,9 +171,8 @@ async fn latest_orderbook(
     State(state): State<Arc<AppState>>,
     Path(market_id): Path<String>,
 ) -> impl IntoResponse {
-    let glob = crate::paths::LakePaths::new(&state.out)
-        .duckdb_parquet_glob(crate::config::Table::Orderbooks);
-    let source = read_parquet_sql(&glob);
+    let paths = crate::paths::LakePaths::new(&state.out);
+    let source = bronze_source_sql(&paths, crate::config::Table::Orderbooks);
     let conn = match open_connection(None) {
         Ok(c) => c,
         Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),

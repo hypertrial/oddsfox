@@ -17,6 +17,7 @@ pub async fn watch_markets(options: WatchOptions) -> Result<()> {
     let store = ManifestStore::open(&options.out)?;
     let run_id = new_run_id();
     let started = Utc::now();
+    let run = store.start_run("watch", &run_id, started)?;
     let token_ids = resolve_watch_tokens(&options).await?;
     if token_ids.is_empty() {
         return Err(OddsfoxError::SyncIncomplete {
@@ -64,7 +65,7 @@ pub async fn watch_markets(options: WatchOptions) -> Result<()> {
         }
     }
 
-    store.append_completed_run("watch", &run_id, started, events)?;
+    run.complete(events)?;
 
     println!(
         "watch complete: recorded {events} websocket events ({})",

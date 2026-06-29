@@ -4,18 +4,16 @@ use arrow::array::{
 use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 
 use crate::config::Table;
-use crate::duckdb_engine::{open_connection, read_parquet_sql};
+use crate::duckdb_engine::{bronze_source_sql, open_connection, read_parquet_sql};
 use crate::error::Result;
 use crate::paths::LakePaths;
 
 pub fn compute_calibration(out: &std::path::Path, bucket_width: f64) -> Result<i64> {
     let width = bucket_width.max(0.01);
     let paths = LakePaths::new(out);
-    let markets_glob = paths.duckdb_parquet_glob(Table::Markets);
-    let outcomes_glob = paths.duckdb_parquet_glob(Table::Outcomes);
     let prices_glob = paths.duckdb_parquet_glob(Table::Prices);
-    let markets_source = read_parquet_sql(&markets_glob);
-    let outcomes_source = read_parquet_sql(&outcomes_glob);
+    let markets_source = bronze_source_sql(&paths, Table::Markets);
+    let outcomes_source = bronze_source_sql(&paths, Table::Outcomes);
     let prices_source = read_parquet_sql(&prices_glob);
     let conn = open_connection(None)?;
     let sql = format!(
@@ -151,6 +149,10 @@ mod tests {
             .unwrap()],
         )
         .unwrap();
+        crate::manifest::ManifestStore::open(dir.path())
+            .unwrap()
+            .append_completed_run("test", "run-1", chrono::Utc::now(), 2)
+            .unwrap();
 
         assert_eq!(compute_calibration(dir.path(), 0.05).unwrap(), 1);
         assert!(crate::duckdb_engine::glob_exists(
