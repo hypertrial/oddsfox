@@ -3,22 +3,38 @@ use crate::config::{
     SyncMarketsOptions, SyncPricesOptions, DEFAULT_BACKFILL_INTERVAL,
 };
 use crate::error::Result;
+use crate::manifest::{new_run_id, ManifestStore};
 use crate::progress_log::log_progress;
 
 pub async fn run(mut options: BackfillOptions) -> Result<()> {
+    crate::init::run_quiet(&options.out)?;
+
+    let command = format!(
+        "backfill --source {}",
+        backfill_source_label(options.source)
+    );
+    let run_id = new_run_id();
+    let started = chrono::Utc::now();
+    let store = ManifestStore::open(&options.out)?;
+    let run = store.start_run(command, &run_id, started)?;
+
+    run_inner(&mut options).await?;
+    run.complete(0)?;
+    Ok(())
+}
+
+async fn run_inner(options: &mut BackfillOptions) -> Result<()> {
     let (fidelity, recent_hours) =
         apply_active_minute_defaults(options.active, options.fidelity, options.recent_hours);
     options.fidelity = fidelity;
     options.recent_hours = recent_hours;
 
-    crate::init::run_quiet(&options.out)?;
-
     match options.source {
-        BackfillSource::Polymarket => backfill_polymarket(&options).await?,
-        BackfillSource::Kalshi => backfill_kalshi(&options).await?,
+        BackfillSource::Polymarket => backfill_polymarket(options).await?,
+        BackfillSource::Kalshi => backfill_kalshi(options).await?,
         BackfillSource::All => {
-            backfill_polymarket(&options).await?;
-            backfill_kalshi(&options).await?;
+            backfill_polymarket(options).await?;
+            backfill_kalshi(options).await?;
         }
     }
 
@@ -38,7 +54,10 @@ pub async fn run(mut options: BackfillOptions) -> Result<()> {
         }
     }
 
-    log_progress(format!("backfill complete: catalog at `{}`", db_path.display()));
+    log_progress(format!(
+        "backfill complete: catalog at `{}`",
+        db_path.display()
+    ));
     println!(
         "query: `oddsfox sql \"SELECT market_id, question, volume_24h FROM bronze_markets ORDER BY volume_24h DESC NULLS LAST\" --limit 10 --out {} --db {}`",
         options.out.display(),
@@ -51,6 +70,14 @@ pub async fn run(mut options: BackfillOptions) -> Result<()> {
         options.port
     );
     Ok(())
+}
+
+fn backfill_source_label(source: BackfillSource) -> &'static str {
+    match source {
+        BackfillSource::Polymarket => "polymarket",
+        BackfillSource::Kalshi => "kalshi",
+        BackfillSource::All => "all",
+    }
 }
 
 fn base_sync_markets_options(options: &BackfillOptions, source: Source) -> SyncMarketsOptions {

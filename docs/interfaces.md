@@ -106,9 +106,14 @@ curl http://127.0.0.1:8787/health
 | GET | `/metrics/liquidity` | Aggregate liquidity metrics |
 | GET | `/pnl` | User PnL summary |
 | GET | `/users/{user_id}/pnl` | PnL for one user |
+| GET | `/usage` | Local command usage, run status, lake issues, and suggested next commands |
 | GET | `/resolved` | Resolved markets (`?since=` date filter) |
 | GET | `/search?q=` | Full-text search over local markets/events |
-| GET | `/` | Static minimal web UI |
+| GET | `/` | Static analyst UI with Usage, health, suggestions, and top markets |
+
+### Usage View
+
+The Usage view is local-only. It reads the run manifest and `check` output from the selected lake root; it does not send telemetry or write read events. It is meant to answer whether the toolkit has run recently, whether any runs failed or remain incomplete, how many rows completed runs wrote, and which maintenance command is useful next.
 
 ## Direct Parquet
 

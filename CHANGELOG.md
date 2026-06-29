@@ -9,6 +9,7 @@
 
 ### Changed
 
+- Added a local Usage dashboard and `GET /usage` endpoint showing recent runs, failures, row counts, lake health issues, and suggested next commands.
 - Sync and backfill progress lines (`sync markets complete`, `sync prices progress`, Kalshi price sync) now include RFC3339 UTC timestamps, matching `collect hourly` output.
 - Backfill now logs DuckDB catalog registration and lake check steps after price sync completes.
 - `collect hourly` now fetches price history in 7-day API chunks (Polymarket `interval=max`) instead of one call per UTC hour per token; hourly parquet layout and cursor keys are unchanged.

@@ -45,6 +45,7 @@ pub async fn serve(options: ServeOptions) -> Result<()> {
         .route("/metrics/liquidity", get(liquidity))
         .route("/pnl", get(pnl_handler))
         .route("/users/{user_id}/pnl", get(user_pnl_handler))
+        .route("/usage", get(usage_handler))
         .route("/resolved", get(resolved))
         .route("/search", get(search_handler))
         .nest_service("/", ServeDir::new(web_dir))
@@ -253,6 +254,13 @@ async fn user_pnl_handler(
     };
     match crate::user::pnl_rows(&state.out, source, Some(&user_id)) {
         Ok(rows) => Json(serde_json::json!({ "user_id": user_id, "pnl": rows })).into_response(),
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
+    }
+}
+
+async fn usage_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match crate::usage::usage_report(&state.out) {
+        Ok(report) => Json(report).into_response(),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
     }
 }

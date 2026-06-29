@@ -17,7 +17,7 @@ use crate::duckdb_engine::{bronze_source_sql, open_connection};
 use crate::error::{OddsfoxError, Result};
 use crate::http::HttpClient;
 use crate::kalshi::normalize::{price_points_from_candlesticks, strip_kalshi_market_id};
-use crate::manifest::{ManifestStore, SyncStateRecord};
+use crate::manifest::{new_run_id, ManifestStore, SyncStateRecord};
 use crate::normalize::{point_timestamp_secs, prices_batch};
 use crate::parquet::write_hourly_price_window;
 use crate::paths::LakePaths;
@@ -32,7 +32,13 @@ type CursorLock = Arc<tokio::sync::Mutex<()>>;
 pub async fn run(options: CollectHourlyOptions) -> Result<()> {
     crate::init::run_quiet(&options.out)?;
     loop {
+        let command = collect_command(&options);
+        let run_id = new_run_id();
+        let started = Utc::now();
+        let store = ManifestStore::open(&options.out)?;
+        let run = store.start_run(command, &run_id, started)?;
         let progress = run_once(&options).await?;
+        run.complete(progress.rows_written)?;
         log_collect(format!(
             "collect hourly complete: {} windows, {} rows",
             progress.windows_written, progress.rows_written
@@ -42,6 +48,20 @@ pub async fn run(options: CollectHourlyOptions) -> Result<()> {
         }
         tokio::time::sleep(sleep_until_next_horizon(options.lag_minutes)).await;
     }
+}
+
+fn collect_command(options: &CollectHourlyOptions) -> String {
+    let mut command = format!(
+        "collect hourly --source {}",
+        collect_source_label(options.source)
+    );
+    if options.active {
+        command.push_str(" --active");
+    }
+    if options.once {
+        command.push_str(" --once");
+    }
+    command
 }
 
 async fn run_once(options: &CollectHourlyOptions) -> Result<CollectProgress> {
@@ -343,10 +363,9 @@ where
     F: Fn(HourlyToken, i64, i64) -> Fut,
     Fut: std::future::Future<Output = Result<Vec<PriceHistoryPoint>>>,
 {
-    let mut cursor =
-        load_cursor_locked(ctx.out, token.source, &token.token_id, ctx.cursor_lock)
-            .await?
-            .unwrap_or_else(|| HourlyCursor::new(&token, seed_ts));
+    let mut cursor = load_cursor_locked(ctx.out, token.source, &token.token_id, ctx.cursor_lock)
+        .await?
+        .unwrap_or_else(|| HourlyCursor::new(&token, seed_ts));
     if cursor.done {
         return Ok(CollectProgress::default());
     }
@@ -425,7 +444,11 @@ fn group_points_by_hour(points: Vec<PriceHistoryPoint>) -> BTreeMap<i64, Vec<Pri
     by_hour
 }
 
-fn hourly_tokens(out: &std::path::Path, source: Source, active_only: bool) -> Result<Vec<HourlyToken>> {
+fn hourly_tokens(
+    out: &std::path::Path,
+    source: Source,
+    active_only: bool,
+) -> Result<Vec<HourlyToken>> {
     let paths = LakePaths::new(out);
     let markets = bronze_source_sql(&paths, Table::Markets);
     let outcomes = bronze_source_sql(&paths, Table::Outcomes);
@@ -600,6 +623,14 @@ fn selected_sources(source: BackfillSource) -> Vec<Source> {
     }
 }
 
+fn collect_source_label(source: BackfillSource) -> &'static str {
+    match source {
+        BackfillSource::Polymarket => "polymarket",
+        BackfillSource::Kalshi => "kalshi",
+        BackfillSource::All => "all",
+    }
+}
+
 fn sum_progress(results: Vec<CollectProgress>) -> CollectProgress {
     results
         .into_iter()
@@ -659,13 +690,7 @@ fn format_ts(ts: i64) -> String {
         .unwrap_or_else(|| ts.to_string())
 }
 
-fn print_collect_progress(
-    source: Source,
-    done: usize,
-    total: usize,
-    windows: usize,
-    rows: i64,
-) {
+fn print_collect_progress(source: Source, done: usize, total: usize, windows: usize, rows: i64) {
     log_collect_progress(format!(
         "collect hourly progress ({}): {done}/{total} tokens, {windows} windows, {rows} rows",
         source_label(source)
@@ -771,11 +796,11 @@ struct CollectProgress {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicUsize;
     use crate::config::{Source, Table};
     use crate::gamma::GammaMarket;
     use crate::normalize::{markets_batch, outcomes_batch};
     use crate::parquet::write_snapshot;
+    use std::sync::atomic::AtomicUsize;
 
     fn token() -> HourlyToken {
         HourlyToken {
@@ -963,12 +988,7 @@ mod tests {
             token(),
             HOUR_SECS * 3,
             0,
-            |_token, start, _end| async move {
-                Ok(vec![PriceHistoryPoint {
-                    t: start,
-                    p: 0.42,
-                }])
-            },
+            |_token, start, _end| async move { Ok(vec![PriceHistoryPoint { t: start, p: 0.42 }]) },
         )
         .await
         .unwrap();
@@ -1091,38 +1111,48 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = LakePaths::new(dir.path());
         paths.scaffold_dirs().unwrap();
-        let active_market = test_market("m-active", true, false, false, "tok-active-yes", "tok-active-no");
-        let closed_market = test_market("m-closed", false, true, true, "tok-closed-yes", "tok-closed-no");
+        let active_market = test_market(
+            "m-active",
+            true,
+            false,
+            false,
+            "tok-active-yes",
+            "tok-active-no",
+        );
+        let closed_market = test_market(
+            "m-closed",
+            false,
+            true,
+            true,
+            "tok-closed-yes",
+            "tok-closed-no",
+        );
         write_snapshot(
             &paths,
             Table::Markets,
             "run-1",
-            &[
-                markets_batch(
-                    &[active_market.clone(), closed_market.clone()],
-                    "gamma",
-                    "http://test",
-                    "sha",
-                    "run-1",
-                )
-                .unwrap(),
-            ],
+            &[markets_batch(
+                &[active_market.clone(), closed_market.clone()],
+                "gamma",
+                "http://test",
+                "sha",
+                "run-1",
+            )
+            .unwrap()],
         )
         .unwrap();
         write_snapshot(
             &paths,
             Table::Outcomes,
             "run-1",
-            &[
-                outcomes_batch(
-                    &[active_market, closed_market],
-                    "gamma",
-                    "http://test",
-                    "sha",
-                    "run-1",
-                )
-                .unwrap(),
-            ],
+            &[outcomes_batch(
+                &[active_market, closed_market],
+                "gamma",
+                "http://test",
+                "sha",
+                "run-1",
+            )
+            .unwrap()],
         )
         .unwrap();
         crate::manifest::ManifestStore::open(dir.path())

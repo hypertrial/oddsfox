@@ -94,11 +94,13 @@ Open DuckDB views:
 oddsfox duckdb --out ~/.oddsfox
 ```
 
-Serve the local API and UI:
+Serve the local API and analyst UI:
 
 ```bash
 oddsfox serve --port 8787
 ```
+
+The UI includes a local Usage view backed by `_metadata/runs.parquet` so analysts can see recent commands, failed or incomplete runs, lake health issues, and suggested next commands.
 
 ### 5. Optional analyst workflows
 

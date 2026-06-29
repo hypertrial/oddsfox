@@ -32,6 +32,8 @@ Fields: `run_id`, `command`, `started_at`, `finished_at`, `status`, `rows_writte
 
 Run-partitioned bronze and gold tables are visible to DuckDB **only** when their `run_id` appears in completed runs. Crashed jobs leave orphan partitions that `check` reports and `repair` quarantines.
 
+`oddsfox serve` exposes the same local run log through `GET /usage` and the Usage dashboard. This is operational usage for the current lake only: recent commands, statuses, row counts, lake issues, and suggested next commands. It is not remote telemetry.
+
 ```bash
 oddsfox check --out ~/.oddsfox
 ```
