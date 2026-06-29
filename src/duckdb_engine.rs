@@ -7,6 +7,7 @@ use crate::config::Table;
 use crate::error::{OddsfoxError, Result};
 use crate::manifest::completed_run_ids_from_lake;
 use crate::paths::LakePaths;
+use crate::progress_log::log_progress;
 
 pub const GOLD_TABLES: [&str; 5] = [
     "metric_points",
@@ -88,6 +89,7 @@ pub fn register_layer_views(conn: &Connection, lake: &LakePaths) -> Result<usize
         let glob = lake.duckdb_parquet_glob(*table);
         if glob_exists(&glob) {
             let view = format!("bronze_{}", table.as_str());
+            log_progress(format!("duckdb: registering view {view}"));
             let source = bronze_source_sql(lake, *table);
             let sql = format!("CREATE OR REPLACE VIEW {view} AS SELECT * FROM {source}");
             map_duckdb(conn.execute(&sql, []))?;
@@ -98,6 +100,7 @@ pub fn register_layer_views(conn: &Connection, lake: &LakePaths) -> Result<usize
         let glob = lake.layer_parquet_glob("gold", name);
         if glob_exists(&glob) {
             let view = format!("gold_{name}");
+            log_progress(format!("duckdb: registering view {view}"));
             let source = read_parquet_sql(&glob);
             let sql = format!("CREATE OR REPLACE VIEW {view} AS SELECT * FROM {source}");
             map_duckdb(conn.execute(&sql, []))?;

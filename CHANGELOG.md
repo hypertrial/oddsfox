@@ -10,6 +10,7 @@
 ### Changed
 
 - Sync and backfill progress lines (`sync markets complete`, `sync prices progress`, Kalshi price sync) now include RFC3339 UTC timestamps, matching `collect hourly` output.
+- Backfill now logs DuckDB catalog registration and lake check steps after price sync completes.
 - `collect hourly` now fetches price history in 7-day API chunks (Polymarket `interval=max`) instead of one call per UTC hour per token; hourly parquet layout and cursor keys are unchanged.
 - Added `collect hourly --active` to collect only tokens from markets where `active = true`.
 - Added `collect hourly` for durable UTC-hour price collection across Polymarket and Kalshi with per-token resume cursors.

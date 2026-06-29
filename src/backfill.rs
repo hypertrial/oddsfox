@@ -3,6 +3,7 @@ use crate::config::{
     SyncMarketsOptions, SyncPricesOptions, DEFAULT_BACKFILL_INTERVAL,
 };
 use crate::error::Result;
+use crate::progress_log::log_progress;
 
 pub async fn run(mut options: BackfillOptions) -> Result<()> {
     let (fidelity, recent_hours) =
@@ -27,14 +28,17 @@ pub async fn run(mut options: BackfillOptions) -> Result<()> {
         db: db_path.clone(),
     })?;
 
+    log_progress("backfill: checking lake");
     let report = crate::check::check_lake(&options.out)?;
-    if !report.issues.is_empty() {
+    if report.issues.is_empty() {
+        log_progress("backfill: lake check ok");
+    } else {
         for issue in report.issues {
-            println!("backfill warning: {issue}");
+            log_progress(format!("backfill warning: {issue}"));
         }
     }
 
-    println!("backfill complete: catalog at `{}`", db_path.display());
+    log_progress(format!("backfill complete: catalog at `{}`", db_path.display()));
     println!(
         "query: `oddsfox sql \"SELECT market_id, question, volume_24h FROM bronze_markets ORDER BY volume_24h DESC NULLS LAST\" --limit 10 --out {} --db {}`",
         options.out.display(),
@@ -140,10 +144,10 @@ async fn backfill_polymarket(options: &BackfillOptions) -> Result<()> {
     })
     .await?;
 
-    println!(
+    log_progress(format!(
         "polymarket backfill complete: {} events, {} markets",
         sync_summary.events, sync_summary.markets
-    );
+    ));
     Ok(())
 }
 
@@ -164,10 +168,10 @@ async fn backfill_kalshi(options: &BackfillOptions) -> Result<()> {
     }
     let sync_summary = crate::kalshi::sync_markets(markets_options).await?;
     crate::kalshi::sync_prices(kalshi_price_options(options)).await?;
-    println!(
+    log_progress(format!(
         "kalshi backfill complete: {} events, {} markets",
         sync_summary.events, sync_summary.markets
-    );
+    ));
     Ok(())
 }
 
