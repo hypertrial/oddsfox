@@ -59,6 +59,17 @@ oddsfox sql "SELECT source, user_id, market_id, total_pnl FROM gold_user_pnl ORD
 ```
 
 `sync user --source all` syncs both sources; pass `--user` for the Polymarket identity. Kalshi uses `[kalshi] key_id` as the local user id.
+Reruns are safe: user fills are deduplicated by source/fill id, latest positions replace older snapshots, and source/user watermarks avoid refetching old fills. Passing `--since` overrides the stored watermark. Use `--limit` only for smoke tests or bounded debugging, not a complete historical sync.
+
+## Restart behavior
+
+| Command | Rerun behavior |
+|---------|----------------|
+| `sync markets` | Appends a new run snapshot; DuckDB queries see all snapshots. |
+| `sync prices` | Skips existing token files unless `--overwrite`; rolling active sync merges the requested window. |
+| `sync trades` | Appends a new run snapshot; repeated ranges can duplicate public trades. |
+| `sync user` | Appends bronze rows, dedupes fills and keeps latest positions in PnL, then advances user watermarks after successful gold refresh. |
+| `snapshot books` | Appends a new run snapshot. |
 
 ## Core workflow
 

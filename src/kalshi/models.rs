@@ -1,5 +1,27 @@
 use serde::{Deserialize, Serialize};
 
+fn de_opt_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    match value {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::Number(number)) => number
+            .as_f64()
+            .ok_or_else(|| serde::de::Error::custom("invalid number"))
+            .map(Some),
+        Some(serde_json::Value::String(raw)) if raw.trim().is_empty() => Ok(None),
+        Some(serde_json::Value::String(raw)) => raw
+            .parse::<f64>()
+            .map(Some)
+            .map_err(serde::de::Error::custom),
+        Some(other) => Err(serde::de::Error::custom(format!(
+            "expected number or string, got {other}"
+        ))),
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct KalshiMarketResponse {
     #[serde(default)]
@@ -99,12 +121,20 @@ pub struct KalshiFill {
     pub market_ticker: Option<String>,
     pub action: Option<String>,
     pub side: Option<String>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub yes_price: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub yes_price_dollars: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub count: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub count_fp: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub fee: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub fee_dollars: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
+    pub fee_cost: Option<f64>,
     pub created_time: Option<String>,
     pub created_ts: Option<i64>,
     #[serde(flatten)]
@@ -124,16 +154,33 @@ pub struct KalshiPositionsResponse {
 pub struct KalshiPosition {
     pub ticker: Option<String>,
     pub market_ticker: Option<String>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub position: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
+    pub position_fp: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub yes_count: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
+    pub yes_count_fp: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub no_count: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
+    pub no_count_fp: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub market_exposure: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub market_exposure_dollars: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub realized_pnl: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub realized_pnl_dollars: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub total_traded: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub resting_order_count: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub fees_paid: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_f64")]
     pub fees_paid_dollars: Option<f64>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
@@ -219,5 +266,41 @@ mod tests {
         let cutoff: HistoricalCutoff =
             serde_json::from_value(serde_json::json!({"cutoff_ts": 1700000000})).unwrap();
         assert_eq!(cutoff.cutoff_ts, Some(1700000000));
+    }
+
+    #[test]
+    fn parses_portfolio_string_decimals() {
+        let fills: KalshiFillsResponse = serde_json::from_value(serde_json::json!({
+            "fills": [{
+                "fill_id": "f1",
+                "ticker": "KXTEST-26",
+                "count_fp": "2.5",
+                "fee_cost": "0.01",
+                "yes_price_dollars": "0.61"
+            }]
+        }))
+        .unwrap();
+        assert_eq!(fills.fills[0].count_fp, Some(2.5));
+        assert_eq!(fills.fills[0].fee_cost, Some(0.01));
+
+        let positions: KalshiPositionsResponse = serde_json::from_value(serde_json::json!({
+            "market_positions": [{
+                "ticker": "KXTEST-26",
+                "position_fp": "3.0",
+                "market_exposure_dollars": "1.25",
+                "realized_pnl_dollars": "0.12",
+                "fees_paid_dollars": "0.02"
+            }]
+        }))
+        .unwrap();
+        assert_eq!(positions.market_positions[0].position_fp, Some(3.0));
+        assert_eq!(
+            positions.market_positions[0].market_exposure_dollars,
+            Some(1.25)
+        );
+        assert_eq!(
+            positions.market_positions[0].realized_pnl_dollars,
+            Some(0.12)
+        );
     }
 }

@@ -6,6 +6,7 @@ use arrow::array::{
 };
 use chrono::{NaiveDate, Utc};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 use crate::config::{OutputFormat, PnlOptions, SyncUserOptions, Table, UserSource};
 use crate::data::{DataClient, PolymarketUserActivity, PolymarketUserPosition};
@@ -15,7 +16,7 @@ use crate::http::HttpClient;
 use crate::kalshi::client::{KalshiAuth, KalshiClient};
 use crate::kalshi::models::{KalshiFill, KalshiPosition};
 use crate::kalshi::normalize::{kalshi_market_id, kalshi_token_id};
-use crate::manifest::{new_run_id, ManifestStore};
+use crate::manifest::{new_run_id, ManifestStore, SyncStateRecord};
 use crate::normalize::IngestMetaBuilders;
 use crate::parquet::{write_gold, write_snapshot};
 use crate::paths::LakePaths;
@@ -79,26 +80,45 @@ pub struct UserPositionRecord {
 }
 
 pub async fn sync_user(options: SyncUserOptions) -> Result<UserSyncSummary> {
+    let store = ManifestStore::open(&options.out)?;
     let mut total = UserSyncSummary {
         fills: 0,
         positions: 0,
     };
+    let mut completed = Vec::new();
     if matches!(options.source, UserSource::Polymarket | UserSource::All) {
-        let summary = sync_polymarket_user(&options).await?;
-        total.fills += summary.fills;
-        total.positions += summary.positions;
+        let result = sync_polymarket_user(&options, &store).await?;
+        total.fills += result.summary.fills;
+        total.positions += result.summary.positions;
+        completed.push(result);
     }
     if matches!(options.source, UserSource::Kalshi | UserSource::All) {
-        let summary = sync_kalshi_user(&options).await?;
-        total.fills += summary.fills;
-        total.positions += summary.positions;
+        let result = sync_kalshi_user(&options, &store).await?;
+        total.fills += result.summary.fills;
+        total.positions += result.summary.positions;
+        completed.push(result);
     }
     refresh_user_pnl(&options.out)?;
+    for result in completed {
+        if let Some(state) = result.state {
+            store.upsert_sync_state(state)?;
+        }
+        store.append_completed_run(result.command, &result.run_id, result.started, result.rows)?;
+    }
     println!(
         "sync user complete: {} fills, {} positions",
         total.fills, total.positions
     );
     Ok(total)
+}
+
+struct SourceUserSync {
+    summary: UserSyncSummary,
+    command: &'static str,
+    run_id: String,
+    started: chrono::DateTime<Utc>,
+    rows: i64,
+    state: Option<SyncStateRecord>,
 }
 
 pub fn run_pnl(options: &PnlOptions) -> Result<()> {
@@ -128,12 +148,12 @@ pub fn pnl_rows(
     let positions = if has_positions {
         read_parquet_sql(&positions_glob)
     } else {
-        "(SELECT NULL::VARCHAR AS source, NULL::VARCHAR AS user_id, NULL::VARCHAR AS market_id, 0.0::DOUBLE AS realized_pnl, 0.0::DOUBLE AS unrealized_pnl, 0.0::DOUBLE AS mark_value, 0.0::DOUBLE AS total_pnl WHERE false)".into()
+        "(SELECT NULL::VARCHAR AS source, NULL::VARCHAR AS user_id, NULL::VARCHAR AS market_id, NULL::VARCHAR AS token_id, 0::BIGINT AS as_of, 0::BIGINT AS ingested_at, 0.0::DOUBLE AS realized_pnl, 0.0::DOUBLE AS unrealized_pnl, 0.0::DOUBLE AS mark_value, 0.0::DOUBLE AS total_pnl WHERE false)".into()
     };
     let fills = if has_fills {
         read_parquet_sql(&fills_glob)
     } else {
-        "(SELECT NULL::VARCHAR AS source, NULL::VARCHAR AS user_id, NULL::VARCHAR AS market_id, 0.0::DOUBLE AS fee WHERE false)".into()
+        "(SELECT NULL::VARCHAR AS source, NULL::VARCHAR AS user_id, NULL::VARCHAR AS market_id, NULL::VARCHAR AS fill_id, 0::BIGINT AS ingested_at, 0.0::DOUBLE AS fee WHERE false)".into()
     };
     let mut where_parts = Vec::new();
     if let Some(source) = source_filter(source) {
@@ -153,20 +173,42 @@ pub fn pnl_rows(
     let pos_filter = filter.clone();
     let fill_filter = filter;
     let sql = format!(
-        "WITH pos AS (
+        "WITH latest_positions AS (
+            SELECT * EXCLUDE (rn)
+            FROM (
+                SELECT *,
+                       row_number() OVER (
+                           PARTITION BY source, user_id, COALESCE(market_id, ''), COALESCE(token_id, '')
+                           ORDER BY as_of DESC, ingested_at DESC
+                       ) AS rn
+                FROM {positions}
+                {pos_filter}
+            )
+            WHERE rn = 1
+        ), dedup_fills AS (
+            SELECT * EXCLUDE (rn)
+            FROM (
+                SELECT *,
+                       row_number() OVER (
+                           PARTITION BY source, fill_id
+                           ORDER BY ingested_at DESC
+                       ) AS rn
+                FROM {fills}
+                {fill_filter}
+            )
+            WHERE rn = 1
+        ), pos AS (
             SELECT source, user_id, COALESCE(market_id, '') AS market_id,
                    SUM(COALESCE(realized_pnl, 0)) AS realized_pnl,
                    SUM(COALESCE(unrealized_pnl, 0)) AS unrealized_pnl,
                    SUM(COALESCE(mark_value, 0)) AS mark_value,
                    SUM(COALESCE(total_pnl, realized_pnl, 0)) AS total_pnl
-            FROM {positions}
-            {pos_filter}
+            FROM latest_positions
             GROUP BY source, user_id, COALESCE(market_id, '')
         ), fees AS (
             SELECT source, user_id, COALESCE(market_id, '') AS market_id,
                    SUM(COALESCE(fee, 0)) AS fees
-            FROM {fills}
-            {fill_filter}
+            FROM dedup_fills
             GROUP BY source, user_id, COALESCE(market_id, '')
         )
         SELECT COALESCE(pos.source, fees.source) AS source,
@@ -226,7 +268,10 @@ pub fn refresh_user_pnl(lake_root: &Path) -> Result<Vec<UserPnlRow>> {
     Ok(rows)
 }
 
-async fn sync_polymarket_user(options: &SyncUserOptions) -> Result<UserSyncSummary> {
+async fn sync_polymarket_user(
+    options: &SyncUserOptions,
+    store: &ManifestStore,
+) -> Result<SourceUserSync> {
     let user_id = options
         .user_id
         .as_deref()
@@ -234,7 +279,6 @@ async fn sync_polymarket_user(options: &SyncUserOptions) -> Result<UserSyncSumma
             message: "pass --user <wallet_or_proxy> for Polymarket user sync".into(),
         })?;
     let paths = LakePaths::new(&options.out);
-    let store = ManifestStore::open(&options.out)?;
     let run_id = new_run_id();
     let started = Utc::now();
     let http = HttpClient::new(
@@ -243,7 +287,13 @@ async fn sync_polymarket_user(options: &SyncUserOptions) -> Result<UserSyncSumma
         options.user_agent.clone(),
     )?;
     let client = DataClient::new(options.data_base_url.clone(), http);
-    let activity = client.fetch_user_activity(user_id, options.limit).await?;
+    let start_ts = effective_start_secs(
+        options.since,
+        store.sync_state(POLYMARKET, &polymarket_activity_cursor_key(user_id)),
+    );
+    let activity = client
+        .fetch_user_activity_since(user_id, start_ts, options.limit)
+        .await?;
     let current = client
         .fetch_current_positions(user_id, options.limit)
         .await?;
@@ -252,7 +302,7 @@ async fn sync_polymarket_user(options: &SyncUserOptions) -> Result<UserSyncSumma
         .await?;
     let _ = client.fetch_user_value(user_id).await.ok();
 
-    let since_ms = since_millis(options.since);
+    let since_ms = start_ts.map(|ts| ts * 1000);
     let fills: Vec<_> = activity
         .iter()
         .filter_map(|activity| polymarket_fill(user_id, activity))
@@ -265,14 +315,25 @@ async fn sync_polymarket_user(options: &SyncUserOptions) -> Result<UserSyncSumma
         .collect();
     write_user_batches(&paths, &run_id, &fills, &positions)?;
     let rows = (fills.len() + positions.len()) as i64;
-    store.append_completed_run("sync user --source polymarket", &run_id, started, rows)?;
-    Ok(UserSyncSummary {
-        fills: fills.len(),
-        positions: positions.len(),
+    let state = latest_fill_secs(&fills)
+        .map(|ts| user_sync_state(POLYMARKET, polymarket_activity_cursor_key(user_id), ts));
+    Ok(SourceUserSync {
+        summary: UserSyncSummary {
+            fills: fills.len(),
+            positions: positions.len(),
+        },
+        command: "sync user --source polymarket",
+        run_id,
+        started,
+        rows,
+        state,
     })
 }
 
-async fn sync_kalshi_user(options: &SyncUserOptions) -> Result<UserSyncSummary> {
+async fn sync_kalshi_user(
+    options: &SyncUserOptions,
+    store: &ManifestStore,
+) -> Result<SourceUserSync> {
     let key_id = options
         .kalshi_key_id
         .clone()
@@ -281,7 +342,6 @@ async fn sync_kalshi_user(options: &SyncUserOptions) -> Result<UserSyncSummary> 
         OddsfoxError::Config("set kalshi.private_key_path for Kalshi user sync".into())
     })?;
     let paths = LakePaths::new(&options.out);
-    let store = ManifestStore::open(&options.out)?;
     let run_id = new_run_id();
     let started = Utc::now();
     let http = HttpClient::new(
@@ -294,9 +354,11 @@ async fn sync_kalshi_user(options: &SyncUserOptions) -> Result<UserSyncSummary> 
         &private_key_path,
     )?);
     let client = KalshiClient::new(options.kalshi_rest_base_url.clone(), http, auth);
-    let fills_raw = client
-        .get_fills(since_secs(options.since), options.limit)
-        .await?;
+    let start_ts = effective_start_secs(
+        options.since,
+        store.sync_state(KALSHI, &kalshi_fills_cursor_key(&key_id)),
+    );
+    let fills_raw = client.get_fills(start_ts, options.limit).await?;
     let positions_raw = client.get_positions(options.limit).await?;
     let fills: Vec<_> = fills_raw
         .iter()
@@ -308,10 +370,18 @@ async fn sync_kalshi_user(options: &SyncUserOptions) -> Result<UserSyncSummary> 
         .collect();
     write_user_batches(&paths, &run_id, &fills, &positions)?;
     let rows = (fills.len() + positions.len()) as i64;
-    store.append_completed_run("sync user --source kalshi", &run_id, started, rows)?;
-    Ok(UserSyncSummary {
-        fills: fills.len(),
-        positions: positions.len(),
+    let state = latest_fill_secs(&fills)
+        .map(|ts| user_sync_state(KALSHI, kalshi_fills_cursor_key(&key_id), ts));
+    Ok(SourceUserSync {
+        summary: UserSyncSummary {
+            fills: fills.len(),
+            positions: positions.len(),
+        },
+        command: "sync user --source kalshi",
+        run_id,
+        started,
+        rows,
+        state,
     })
 }
 
@@ -349,10 +419,26 @@ fn polymarket_fill(user_id: &str, activity: &PolymarketUserActivity) -> Option<U
         .usdc_size
         .or_else(|| price.zip(size).map(|(price, size)| price * size));
     Some(UserFillRecord {
-        fill_id: activity
-            .transaction_hash
-            .clone()
-            .unwrap_or_else(|| format!("polymarket:{user_id}:{ts}:{}", raw_json.len())),
+        fill_id: activity.transaction_hash.clone().unwrap_or_else(|| {
+            deterministic_fill_id(FillIdParts {
+                source: POLYMARKET,
+                user_id,
+                market_id: activity
+                    .market
+                    .as_deref()
+                    .or(activity.condition_id.as_deref()),
+                token_id: activity
+                    .asset_id
+                    .as_deref()
+                    .or(activity.asset.as_deref())
+                    .or(activity.token_id.as_deref()),
+                ts,
+                side: side.as_deref(),
+                price,
+                size,
+                raw_json: &raw_json,
+            })
+        }),
         user_id: activity
             .proxy_wallet
             .clone()
@@ -448,7 +534,19 @@ fn kalshi_fill(user_id: &str, fill: &KalshiFill) -> UserFillRecord {
             .clone()
             .or(fill.trade_id.clone())
             .or(fill.order_id.clone())
-            .unwrap_or_else(|| format!("kalshi:{user_id}:{ticker}:{ts}")),
+            .unwrap_or_else(|| {
+                deterministic_fill_id(FillIdParts {
+                    source: KALSHI,
+                    user_id,
+                    market_id: Some(ticker),
+                    token_id: Some(&side),
+                    ts,
+                    side: Some(&side),
+                    price,
+                    size,
+                    raw_json: &raw_json,
+                })
+            }),
         user_id: user_id.to_string(),
         market_id: Some(kalshi_market_id(ticker)),
         token_id: Some(kalshi_token_id(ticker, &side)),
@@ -457,7 +555,7 @@ fn kalshi_fill(user_id: &str, fill: &KalshiFill) -> UserFillRecord {
         price,
         size,
         cash_delta: price.zip(size).map(|(price, size)| price * size),
-        fee: normalize_price(fill.fee_dollars.or(fill.fee)),
+        fee: normalize_price(fill.fee_dollars.or(fill.fee_cost).or(fill.fee)),
         realized_pnl: None,
         raw_json,
         source: KALSHI,
@@ -471,15 +569,18 @@ fn kalshi_position(user_id: &str, position: &KalshiPosition) -> UserPositionReco
         .as_deref()
         .or(position.market_ticker.as_deref())
         .unwrap_or("unknown");
-    let side = if position.no_count.unwrap_or(0.0) > position.yes_count.unwrap_or(0.0) {
+    let yes_count = position.yes_count_fp.or(position.yes_count);
+    let no_count = position.no_count_fp.or(position.no_count);
+    let side = if no_count.unwrap_or(0.0) > yes_count.unwrap_or(0.0) {
         "no"
     } else {
         "yes"
     };
     let size = position
-        .position
-        .or(position.yes_count)
-        .or_else(|| position.no_count.map(|count| -count));
+        .position_fp
+        .or(position.position)
+        .or(yes_count)
+        .or_else(|| no_count.map(|count| -count));
     let realized_pnl = normalize_price(position.realized_pnl_dollars.or(position.realized_pnl));
     let mark_value = normalize_price(
         position
@@ -509,12 +610,76 @@ fn normalize_price(value: Option<f64>) -> Option<f64> {
     value.map(|value| if value > 1.0 { value / 100.0 } else { value })
 }
 
-fn since_millis(since: Option<NaiveDate>) -> Option<i64> {
-    since.map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp_millis())
-}
-
 fn since_secs(since: Option<NaiveDate>) -> Option<i64> {
     since.map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp())
+}
+
+fn effective_start_secs(since: Option<NaiveDate>, state: Option<SyncStateRecord>) -> Option<i64> {
+    since_secs(since).or_else(|| state.and_then(|state| state.cursor_value.parse::<i64>().ok()))
+}
+
+fn latest_fill_secs(fills: &[UserFillRecord]) -> Option<i64> {
+    fills.iter().map(|fill| fill.ts / 1000).max()
+}
+
+fn polymarket_activity_cursor_key(user_id: &str) -> String {
+    format!("user_activity:{user_id}")
+}
+
+fn kalshi_fills_cursor_key(user_id: &str) -> String {
+    format!("user_fills:{user_id}")
+}
+
+fn user_sync_state(source: &str, cursor_key: String, ts: i64) -> SyncStateRecord {
+    SyncStateRecord {
+        source: source.into(),
+        cursor_key,
+        cursor_value: ts.to_string(),
+        last_ts: chrono::DateTime::from_timestamp(ts, 0),
+        updated_at: Utc::now(),
+    }
+}
+
+struct FillIdParts<'a> {
+    source: &'a str,
+    user_id: &'a str,
+    market_id: Option<&'a str>,
+    token_id: Option<&'a str>,
+    ts: i64,
+    side: Option<&'a str>,
+    price: Option<f64>,
+    size: Option<f64>,
+    raw_json: &'a str,
+}
+
+fn deterministic_fill_id(parts: FillIdParts<'_>) -> String {
+    let mut hasher = Sha256::new();
+    let hash_parts = [
+        parts.source.to_string(),
+        parts.user_id.to_string(),
+        parts.market_id.unwrap_or("").to_string(),
+        parts.token_id.unwrap_or("").to_string(),
+        parts.ts.to_string(),
+        parts.side.unwrap_or("").to_string(),
+        parts.price.map(|v| v.to_string()).unwrap_or_default(),
+        parts.size.map(|v| v.to_string()).unwrap_or_default(),
+        parts.raw_json.to_string(),
+    ];
+    for part in hash_parts {
+        hasher.update(part.as_bytes());
+        hasher.update([0]);
+    }
+    let digest = hasher.finalize();
+    format!("{}:{}", parts.source, hex_prefix(&digest, 16))
+}
+
+fn hex_prefix(bytes: &[u8], n: usize) -> String {
+    bytes
+        .iter()
+        .flat_map(|byte| [byte >> 4, byte & 0x0f])
+        .take(n)
+        .map(|nibble| char::from_digit(u32::from(nibble), 16).unwrap())
+        .collect()
 }
 
 fn source_filter(source: UserSource) -> Option<&'static str> {
@@ -779,9 +944,27 @@ mod tests {
             source: POLYMARKET,
         }];
         write_user_batches(&lake, "run-1", &fills, &positions).unwrap();
+        let newer_positions = vec![UserPositionRecord {
+            position_id: "p2".into(),
+            user_id: "u1".into(),
+            market_id: Some("m1".into()),
+            token_id: Some("t1".into()),
+            as_of: 2,
+            size: Some(2.0),
+            avg_price: Some(0.4),
+            mark_price: Some(0.7),
+            mark_value: Some(1.4),
+            unrealized_pnl: Some(0.3),
+            realized_pnl: Some(0.2),
+            total_pnl: Some(0.5),
+            status: Some("open".into()),
+            raw_json: "{}".into(),
+            source: POLYMARKET,
+        }];
+        write_user_batches(&lake, "run-2", &fills, &newer_positions).unwrap();
         let rows = pnl_rows(dir.path(), UserSource::All, Some("u1")).unwrap();
         assert_eq!(rows.len(), 1);
-        assert!((rows[0].total_pnl - 0.29).abs() < 1e-9);
+        assert!((rows[0].total_pnl - 0.49).abs() < 1e-9);
 
         refresh_user_pnl(dir.path()).unwrap();
         let conn = crate::duckdb_engine::open_connection(None).unwrap();
@@ -793,6 +976,49 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert!((total - 0.29).abs() < 1e-9);
+        assert!((total - 0.49).abs() < 1e-9);
+    }
+
+    #[test]
+    fn user_sync_state_uses_latest_fill_timestamp() {
+        let fills = vec![
+            UserFillRecord {
+                fill_id: "f1".into(),
+                user_id: "u1".into(),
+                market_id: None,
+                token_id: None,
+                ts: 1_700_000_000_000,
+                side: None,
+                price: None,
+                size: None,
+                cash_delta: None,
+                fee: None,
+                realized_pnl: None,
+                raw_json: "{}".into(),
+                source: POLYMARKET,
+            },
+            UserFillRecord {
+                ts: 1_700_000_010_000,
+                fill_id: "f2".into(),
+                user_id: "u1".into(),
+                market_id: None,
+                token_id: None,
+                side: None,
+                price: None,
+                size: None,
+                cash_delta: None,
+                fee: None,
+                realized_pnl: None,
+                raw_json: "{}".into(),
+                source: POLYMARKET,
+            },
+        ];
+        let state = user_sync_state(
+            POLYMARKET,
+            polymarket_activity_cursor_key("u1"),
+            latest_fill_secs(&fills).unwrap(),
+        );
+        assert_eq!(state.cursor_key, "user_activity:u1");
+        assert_eq!(state.cursor_value, "1700000010");
     }
 }

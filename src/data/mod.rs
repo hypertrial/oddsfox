@@ -89,9 +89,47 @@ impl DataClient {
         user_id: &str,
         limit: Option<usize>,
     ) -> Result<Vec<PolymarketUserActivity>> {
-        let url = self.user_url("/activity", user_id, limit);
+        self.fetch_user_activity_since(user_id, None, limit).await
+    }
+
+    pub async fn fetch_user_activity_page(
+        &self,
+        user_id: &str,
+        limit: usize,
+        offset: usize,
+        start_ts: Option<i64>,
+    ) -> Result<Vec<PolymarketUserActivity>> {
+        let url = self.user_activity_url(user_id, limit, offset, start_ts);
         let body = self.http.get_bytes(url.as_str()).await?;
         Ok(serde_json::from_slice(&body).unwrap_or_default())
+    }
+
+    pub async fn fetch_user_activity_since(
+        &self,
+        user_id: &str,
+        start_ts: Option<i64>,
+        max_rows: Option<usize>,
+    ) -> Result<Vec<PolymarketUserActivity>> {
+        let page_size = max_rows.unwrap_or(500).clamp(1, 500);
+        let mut out = Vec::new();
+        let mut offset = 0;
+        loop {
+            let remaining = max_rows.map(|max| max.saturating_sub(out.len()));
+            if remaining == Some(0) {
+                break;
+            }
+            let limit = remaining.unwrap_or(page_size).min(page_size);
+            let page = self
+                .fetch_user_activity_page(user_id, limit, offset, start_ts)
+                .await?;
+            let page_len = page.len();
+            out.extend(page);
+            if page_len < limit {
+                break;
+            }
+            offset += limit;
+        }
+        Ok(out)
     }
 
     pub async fn fetch_current_positions(
@@ -138,8 +176,47 @@ impl DataClient {
         url
     }
 
+    pub fn user_activity_url(
+        &self,
+        user_id: &str,
+        limit: usize,
+        offset: usize,
+        start_ts: Option<i64>,
+    ) -> reqwest::Url {
+        let mut url = self.url("/activity");
+        {
+            let mut pairs = url.query_pairs_mut();
+            pairs.append_pair("user", user_id);
+            pairs.append_pair("limit", &limit.to_string());
+            pairs.append_pair("offset", &offset.to_string());
+            pairs.append_pair("type", "TRADE");
+            if let Some(start_ts) = start_ts {
+                pairs.append_pair("start", &start_ts.to_string());
+            }
+        }
+        url
+    }
+
     fn url(&self, path: &str) -> reqwest::Url {
         reqwest::Url::parse(&format!("{}{}", self.base_url.trim_end_matches('/'), path))
             .expect("valid Polymarket data API URL")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn user_activity_url_includes_incremental_params() {
+        let http = HttpClient::new(1.0, 0, "oddsfox-test").unwrap();
+        let client = DataClient::new("https://data-api.polymarket.com", http);
+        let url = client.user_activity_url("0xabc", 100, 200, Some(1700000000));
+        let rendered = url.as_str();
+        assert!(rendered.contains("user=0xabc"));
+        assert!(rendered.contains("limit=100"));
+        assert!(rendered.contains("offset=200"));
+        assert!(rendered.contains("start=1700000000"));
+        assert!(rendered.contains("type=TRADE"));
     }
 }

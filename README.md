@@ -80,6 +80,8 @@ oddsfox sync user --source kalshi --limit 100
 oddsfox pnl --source all --format json
 ```
 
+`sync user` is safe to rerun: fills are deduplicated, latest positions win, and stored watermarks avoid refetching old activity unless `--since` is passed.
+
 Or one shot demo:
 
 ```bash
