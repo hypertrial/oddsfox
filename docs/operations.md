@@ -130,6 +130,12 @@ Run forever:
 oddsfox collect hourly --source all --since 2024-01-01
 ```
 
+For open-market monitoring (much faster):
+
+```bash
+oddsfox collect hourly --source all --since 2026-06-01 --active
+```
+
 Run one catch-up pass for cron or CI:
 
 ```bash
@@ -138,9 +144,11 @@ oddsfox collect hourly --source all --once
 
 The first run for a source requires `--since`. After that, the seed date is stored; passing `--since` again overrides the stored seed and clears per-token cursors for that source so collection restarts from the new date. `--lag-minutes` defaults to `5`, so the collector waits for an hour to be safely closed before fetching it.
 
-During collection, oddsfox prints a start line per source (token count, since, horizon), progress every 25 tokens, and window progress every 100 hours fetched until the pass completes.
+During collection, oddsfox prints a start line per source (token count, since, horizon), progress every 25 tokens, and window progress every 100 hours processed until the pass completes.
 
-`oddsfox collect hourly` stores resume state in `{lake}/_metadata/sync_state.parquet` using cursor keys shaped like `collect:hourly:{source}:{token_id}`. Each cursor records the next UTC hour to collect, the market id, whether the token is done, and the last window row count.
+Each token is fetched in 7-day API chunks; results are split into hourly parquet files locally. Use `--active` when you only need open markets.
+
+`oddsfox collect hourly` stores resume state in `{lake}/_metadata/sync_state.parquet` using cursor keys shaped like `collect:hourly:{source}:{token_id}`. Each cursor records the next UTC hour to collect, the market id, whether the token is done, and the last chunk row count.
 
 To inspect cursors:
 

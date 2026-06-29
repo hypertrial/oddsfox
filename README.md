@@ -57,7 +57,7 @@ Run durable hourly collection across every discovered Polymarket and Kalshi mark
 oddsfox collect hourly --source all --since 2024-01-01
 ```
 
-The first run requires `--since`. Restarting the same command resumes from each token's next uncollected UTC hour. For cron or CI, run one catch-up pass:
+The first run requires `--since`. Restarting the same command resumes from each token's next uncollected UTC hour. Fetches run in 7-day API chunks (one call per chunk per token); use `--active` to limit collection to open markets. For cron or CI, run one catch-up pass:
 
 ```bash
 oddsfox collect hourly --source all --once

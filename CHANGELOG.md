@@ -9,6 +9,8 @@
 
 ### Changed
 
+- `collect hourly` now fetches price history in 7-day API chunks (Polymarket `interval=max`) instead of one call per UTC hour per token; hourly parquet layout and cursor keys are unchanged.
+- Added `collect hourly --active` to collect only tokens from markets where `active = true`.
 - Added `collect hourly` for durable UTC-hour price collection across Polymarket and Kalshi with per-token resume cursors.
 - `quickstart` now starts the local read-only UI after building the demo lake.
 - `sql` now prints tab-separated multi-column output with headers and a configurable `--limit`.

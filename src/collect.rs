@@ -23,6 +23,8 @@ use crate::parquet::write_hourly_price_window;
 use crate::paths::LakePaths;
 
 const HOUR_SECS: i64 = 3600;
+// ponytail: 7d chunk balances API payload vs call count; env/flag if limits bite.
+const COLLECT_CHUNK_SECS: i64 = 7 * 24 * HOUR_SECS;
 const CURSOR_VERSION: u32 = 1;
 const COLLECT_SOURCE: &str = "collect";
 type CursorLock = Arc<tokio::sync::Mutex<()>>;
@@ -110,7 +112,8 @@ async fn collect_source_once(
         source_label(source)
     ));
     let out = options.out.clone();
-    let tokens = tokio::task::spawn_blocking(move || hourly_tokens(&out, source))
+    let active_only = options.active;
+    let tokens = tokio::task::spawn_blocking(move || hourly_tokens(&out, source, active_only))
         .await
         .map_err(|err| OddsfoxError::SyncIncomplete {
             message: format!("hourly token load failed: {err}"),
@@ -174,27 +177,30 @@ async fn collect_polymarket(
             let total_rows = Arc::clone(&total_rows);
             let windows_done = Arc::clone(&windows_done);
             async move {
-                let progress = collect_token_window(
-                    &out,
-                    &paths,
-                    &cursor_lock,
+                let ctx = CollectContext {
+                    out: &out,
+                    paths: &paths,
+                    cursor_lock: &cursor_lock,
+                    windows_done: Some(windows_done),
+                };
+                let progress = collect_token_range(
+                    ctx,
                     token,
                     horizon_ts,
                     seed_ts,
-                    Some(windows_done),
-                    |token, start, end| {
+                    |token, chunk_start, chunk_end| {
                         let clob = clob.clone();
                         async move {
                             let points = clob
                                 .get_prices_history(
                                     &token.token_id,
-                                    None,
+                                    Some("max"),
                                     Some(60),
-                                    Some(start),
-                                    Some(end),
+                                    Some(chunk_start),
+                                    Some(chunk_end),
                                 )
                                 .await?;
-                            Ok(filter_window(points, start, end))
+                            Ok(filter_window(points, chunk_start, chunk_end))
                         }
                     },
                 )
@@ -255,15 +261,18 @@ async fn collect_kalshi(
             let total_rows = Arc::clone(&total_rows);
             let windows_done = Arc::clone(&windows_done);
             async move {
-                let progress = collect_token_window(
-                    &out,
-                    &paths,
-                    &cursor_lock,
+                let ctx = CollectContext {
+                    out: &out,
+                    paths: &paths,
+                    cursor_lock: &cursor_lock,
+                    windows_done: Some(windows_done),
+                };
+                let progress = collect_token_range(
+                    ctx,
                     token,
                     horizon_ts,
                     seed_ts,
-                    Some(windows_done),
-                    |token, start, end| {
+                    |token, chunk_start, chunk_end| {
                         let client = client.clone();
                         async move {
                             let series = token.series.clone().ok_or_else(|| {
@@ -276,7 +285,13 @@ async fn collect_kalshi(
                             })?;
                             let ticker = strip_kalshi_market_id(&token.market_id).to_string();
                             let candles = client
-                                .get_candlesticks(&series, &ticker, 60, Some(start), Some(end))
+                                .get_candlesticks(
+                                    &series,
+                                    &ticker,
+                                    60,
+                                    Some(chunk_start),
+                                    Some(chunk_end),
+                                )
                                 .await?;
                             let (yes, no, _) = price_points_from_candlesticks(&candles);
                             let points = if token.token_id.ends_with(":yes") {
@@ -284,7 +299,7 @@ async fn collect_kalshi(
                             } else {
                                 no
                             };
-                            Ok(filter_window(points, start, end))
+                            Ok(filter_window(points, chunk_start, chunk_end))
                         }
                     },
                 )
@@ -310,24 +325,28 @@ async fn collect_kalshi(
     Ok(sum_progress(results))
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn collect_token_window<F, Fut>(
-    out: &std::path::Path,
-    paths: &LakePaths,
-    cursor_lock: &CursorLock,
+struct CollectContext<'a> {
+    out: &'a std::path::Path,
+    paths: &'a LakePaths,
+    cursor_lock: &'a CursorLock,
+    windows_done: Option<Arc<AtomicUsize>>,
+}
+
+async fn collect_token_range<F, Fut>(
+    ctx: CollectContext<'_>,
     token: HourlyToken,
     horizon_ts: i64,
     seed_ts: i64,
-    windows_done: Option<Arc<AtomicUsize>>,
     fetch: F,
 ) -> Result<CollectProgress>
 where
     F: Fn(HourlyToken, i64, i64) -> Fut,
     Fut: std::future::Future<Output = Result<Vec<PriceHistoryPoint>>>,
 {
-    let mut cursor = load_cursor_locked(out, token.source, &token.token_id, cursor_lock)
-        .await?
-        .unwrap_or_else(|| HourlyCursor::new(&token, seed_ts));
+    let mut cursor =
+        load_cursor_locked(ctx.out, token.source, &token.token_id, ctx.cursor_lock)
+            .await?
+            .unwrap_or_else(|| HourlyCursor::new(&token, seed_ts));
     if cursor.done {
         return Ok(CollectProgress::default());
     }
@@ -337,59 +356,87 @@ where
     let mut progress = CollectProgress::default();
 
     while cursor.next_start_ts < end_limit {
-        let start_ts = cursor.next_start_ts;
-        let end_ts = (start_ts + HOUR_SECS).min(end_limit);
-        let points = fetch(token.clone(), start_ts, end_ts).await?;
-        let rows = points.len() as i64;
-        if !points.is_empty() {
-            let batch = prices_batch(
-                &token.token_id,
-                Some(&token.market_id),
-                &points,
-                token.price_source_label(),
-                Some(60),
-                "collect-hourly",
-            )?;
-            write_hourly_price_window(
-                paths,
-                token.cursor_source(),
-                &token.token_id,
-                start_ts,
-                &[batch],
-            )?;
+        let chunk_start = cursor.next_start_ts;
+        let chunk_end = chunk_end_ts(chunk_start, end_limit, COLLECT_CHUNK_SECS);
+        let points = fetch(token.clone(), chunk_start, chunk_end).await?;
+        let by_hour = group_points_by_hour(points);
+        let mut chunk_rows = 0i64;
+        let mut hour = chunk_start;
+        while hour < chunk_end {
+            if let Some(hour_points) = by_hour.get(&hour) {
+                let window_points = filter_window(hour_points.clone(), hour, hour + HOUR_SECS);
+                let rows = window_points.len() as i64;
+                if rows > 0 {
+                    let batch = prices_batch(
+                        &token.token_id,
+                        Some(&token.market_id),
+                        &window_points,
+                        token.price_source_label(),
+                        Some(60),
+                        "collect-hourly",
+                    )?;
+                    write_hourly_price_window(
+                        ctx.paths,
+                        token.cursor_source(),
+                        &token.token_id,
+                        hour,
+                        &[batch],
+                    )?;
+                    chunk_rows += rows;
+                    progress.rows_written += rows;
+                }
+            }
+            progress.windows_written += 1;
+            if let Some(windows_done) = &ctx.windows_done {
+                let total = windows_done.fetch_add(1, Ordering::Relaxed) + 1;
+                if total == 1 || total.is_multiple_of(100) {
+                    log_collect(format!(
+                        "collect hourly progress ({}): {} windows processed",
+                        source_label(token.source),
+                        total
+                    ));
+                }
+            }
+            hour += HOUR_SECS;
         }
 
-        cursor.next_start_ts = start_ts + HOUR_SECS;
+        cursor.next_start_ts = chunk_end;
         cursor.done = token.stop_ts.is_some() && cursor.next_start_ts >= stop_ts;
-        save_cursor_locked(out, &cursor, rows, cursor_lock).await?;
-        progress.windows_written += 1;
-        progress.rows_written += rows;
-        if let Some(windows_done) = &windows_done {
-            let total = windows_done.fetch_add(1, Ordering::Relaxed) + 1;
-            if total == 1 || total.is_multiple_of(100) {
-                log_collect(format!(
-                    "collect hourly progress ({}): {} windows fetched",
-                    source_label(token.source),
-                    total
-                ));
-            }
-        }
+        save_cursor_locked(ctx.out, &cursor, chunk_rows, ctx.cursor_lock).await?;
     }
 
     if cursor.next_start_ts >= end_limit && token.stop_ts.is_some() && !cursor.done {
         cursor.done = true;
-        save_cursor_locked(out, &cursor, 0, cursor_lock).await?;
+        save_cursor_locked(ctx.out, &cursor, 0, ctx.cursor_lock).await?;
     }
     Ok(progress)
 }
 
-fn hourly_tokens(out: &std::path::Path, source: Source) -> Result<Vec<HourlyToken>> {
+fn chunk_end_ts(start: i64, end_limit: i64, max_chunk_secs: i64) -> i64 {
+    (start + max_chunk_secs).min(end_limit)
+}
+
+fn group_points_by_hour(points: Vec<PriceHistoryPoint>) -> BTreeMap<i64, Vec<PriceHistoryPoint>> {
+    let mut by_hour: BTreeMap<i64, Vec<PriceHistoryPoint>> = BTreeMap::new();
+    for point in points {
+        let hour = floor_to_hour(point_timestamp_secs(&point));
+        by_hour.entry(hour).or_default().push(point);
+    }
+    by_hour
+}
+
+fn hourly_tokens(out: &std::path::Path, source: Source, active_only: bool) -> Result<Vec<HourlyToken>> {
     let paths = LakePaths::new(out);
     let markets = bronze_source_sql(&paths, Table::Markets);
     let outcomes = bronze_source_sql(&paths, Table::Outcomes);
     let source_filter = match source {
         Source::Polymarket => "gamma",
         Source::Kalshi => "kalshi",
+    };
+    let active_filter = if active_only {
+        " AND m.active = true"
+    } else {
+        ""
     };
     let sql = format!(
         "SELECT o.token_id, o.market_id, m.source, m.active, m.closed, m.resolved,
@@ -398,7 +445,7 @@ fn hourly_tokens(out: &std::path::Path, source: Source) -> Result<Vec<HourlyToke
                 json_extract_string(m.raw_json, '$.series_ticker')
          FROM {outcomes} o
          JOIN {markets} m ON o.market_id = m.market_id
-         WHERE o.token_id IS NOT NULL AND m.source = ?
+         WHERE o.token_id IS NOT NULL AND m.source = ?{active_filter}
          ORDER BY o.token_id"
     );
     let conn = open_connection(None)?;
@@ -720,7 +767,11 @@ struct CollectProgress {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Source;
+    use std::sync::atomic::AtomicUsize;
+    use crate::config::{Source, Table};
+    use crate::gamma::GammaMarket;
+    use crate::normalize::{markets_batch, outcomes_batch};
+    use crate::parquet::write_snapshot;
 
     fn token() -> HourlyToken {
         HourlyToken {
@@ -733,6 +784,29 @@ mod tests {
             stop_ts: None,
             series: None,
         }
+    }
+
+    fn collect_ctx<'a>(
+        dir: &'a std::path::Path,
+        paths: &'a LakePaths,
+        lock: &'a CursorLock,
+    ) -> CollectContext<'a> {
+        CollectContext {
+            out: dir,
+            paths,
+            cursor_lock: lock,
+            windows_done: None,
+        }
+    }
+
+    fn points_per_hour(start: i64, end: i64) -> Vec<PriceHistoryPoint> {
+        let mut points = Vec::new();
+        let mut hour = start;
+        while hour < end {
+            points.push(PriceHistoryPoint { t: hour, p: 0.42 });
+            hour += HOUR_SECS;
+        }
+        points
     }
 
     #[test]
@@ -779,20 +853,32 @@ mod tests {
         );
     }
 
+    #[test]
+    fn group_points_by_hour_assigns_utc_buckets() {
+        let points = vec![
+            PriceHistoryPoint { t: 100, p: 0.1 },
+            PriceHistoryPoint { t: 3_700, p: 0.2 },
+            PriceHistoryPoint { t: 7_200, p: 0.3 },
+        ];
+        let by_hour = group_points_by_hour(points);
+        assert_eq!(by_hour.len(), 3);
+        assert_eq!(by_hour.get(&0).unwrap().len(), 1);
+        assert_eq!(by_hour.get(&3_600).unwrap().len(), 1);
+        assert_eq!(by_hour.get(&7_200).unwrap().len(), 1);
+    }
+
     #[tokio::test]
     async fn window_write_advances_cursor_one_hour() {
         let dir = tempfile::tempdir().unwrap();
         let paths = LakePaths::new(dir.path());
         paths.scaffold_dirs().unwrap();
+        let lock = cursor_lock();
 
-        let progress = collect_token_window(
-            dir.path(),
-            &paths,
-            &cursor_lock(),
+        let progress = collect_token_range(
+            collect_ctx(dir.path(), &paths, &lock),
             token(),
             HOUR_SECS,
             0,
-            None,
             |_token, _start, _end| async { Ok(vec![PriceHistoryPoint { t: 0, p: 0.42 }]) },
         )
         .await
@@ -814,16 +900,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = LakePaths::new(dir.path());
         paths.scaffold_dirs().unwrap();
+        let lock = cursor_lock();
 
-        let progress = collect_token_window(
-            dir.path(),
-            &paths,
-            &cursor_lock(),
+        let progress = collect_token_range(
+            collect_ctx(dir.path(), &paths, &lock),
             token(),
             HOUR_SECS * 2,
             0,
-            None,
-            |_token, start, _| async move { Ok(vec![PriceHistoryPoint { t: start, p: 0.42 }]) },
+            |_token, start, end| async move { Ok(points_per_hour(start, end)) },
         )
         .await
         .unwrap();
@@ -841,15 +925,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = LakePaths::new(dir.path());
         paths.scaffold_dirs().unwrap();
+        let lock = cursor_lock();
 
-        let progress = collect_token_window(
-            dir.path(),
-            &paths,
-            &cursor_lock(),
+        let progress = collect_token_range(
+            collect_ctx(dir.path(), &paths, &lock),
             token(),
             HOUR_SECS,
             0,
-            None,
             |_token, _, _| async { Ok(Vec::new()) },
         )
         .await
@@ -866,23 +948,93 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_hourly_windows_advances_empty_hours() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = LakePaths::new(dir.path());
+        paths.scaffold_dirs().unwrap();
+        let lock = cursor_lock();
+
+        let progress = collect_token_range(
+            collect_ctx(dir.path(), &paths, &lock),
+            token(),
+            HOUR_SECS * 3,
+            0,
+            |_token, start, _end| async move {
+                Ok(vec![PriceHistoryPoint {
+                    t: start,
+                    p: 0.42,
+                }])
+            },
+        )
+        .await
+        .unwrap();
+
+        let cursor = load_cursor(dir.path(), Source::Polymarket, "tok")
+            .unwrap()
+            .unwrap();
+        assert_eq!(cursor.next_start_ts, HOUR_SECS * 3);
+        assert_eq!(progress.windows_written, 3);
+        assert_eq!(progress.rows_written, 1);
+        assert!(paths
+            .hourly_price_window_file("polymarket", "tok", 0)
+            .exists());
+        assert!(!paths
+            .hourly_price_window_file("polymarket", "tok", HOUR_SECS)
+            .exists());
+    }
+
+    #[tokio::test]
+    async fn collect_token_range_one_fetch_writes_multiple_windows() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = LakePaths::new(dir.path());
+        paths.scaffold_dirs().unwrap();
+        let lock = cursor_lock();
+        let fetches = Arc::new(AtomicUsize::new(0));
+
+        let progress = collect_token_range(
+            collect_ctx(dir.path(), &paths, &lock),
+            token(),
+            HOUR_SECS * 3,
+            0,
+            {
+                let fetches = Arc::clone(&fetches);
+                move |_token, start, end| {
+                    let fetches = Arc::clone(&fetches);
+                    async move {
+                        fetches.fetch_add(1, Ordering::Relaxed);
+                        Ok(points_per_hour(start, end))
+                    }
+                }
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(fetches.load(Ordering::Relaxed), 1);
+        assert_eq!(progress.windows_written, 3);
+        assert_eq!(progress.rows_written, 3);
+        let cursor = load_cursor(dir.path(), Source::Polymarket, "tok")
+            .unwrap()
+            .unwrap();
+        assert_eq!(cursor.next_start_ts, HOUR_SECS * 3);
+    }
+
+    #[tokio::test]
     async fn closed_market_cursor_becomes_done() {
         let dir = tempfile::tempdir().unwrap();
         let paths = LakePaths::new(dir.path());
         paths.scaffold_dirs().unwrap();
+        let lock = cursor_lock();
         let mut token = token();
         token.active = false;
         token.closed = true;
         token.stop_ts = Some(1);
 
-        collect_token_window(
-            dir.path(),
-            &paths,
-            &cursor_lock(),
+        collect_token_range(
+            collect_ctx(dir.path(), &paths, &lock),
             token,
             HOUR_SECS,
             0,
-            None,
             |_token, _, _| async { Ok(Vec::new()) },
         )
         .await
@@ -892,6 +1044,93 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(cursor.done);
+    }
+
+    fn test_market(
+        id: &str,
+        active: bool,
+        closed: bool,
+        resolved: bool,
+        yes_token: &str,
+        no_token: &str,
+    ) -> GammaMarket {
+        GammaMarket {
+            id: id.into(),
+            event_id: Some(format!("e-{id}")),
+            conditionId: None,
+            questionID: None,
+            slug: None,
+            question: Some(format!("{id}?")),
+            description: None,
+            active: Some(active),
+            closed: Some(closed),
+            resolved: Some(resolved),
+            enableOrderBook: None,
+            negRisk: None,
+            liquidity: None,
+            volume: None,
+            volume24hr: None,
+            openInterest: None,
+            endDate: None,
+            resolutionTime: None,
+            resolutionSource: None,
+            outcomes: Some("[\"Yes\",\"No\"]".into()),
+            outcomePrices: None,
+            clobTokenIds: Some(format!("[\"{yes_token}\",\"{no_token}\"]")),
+            winningOutcome: None,
+            winningOutcomeIndex: None,
+        }
+    }
+
+    #[test]
+    fn hourly_tokens_active_filter() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = LakePaths::new(dir.path());
+        paths.scaffold_dirs().unwrap();
+        let active_market = test_market("m-active", true, false, false, "tok-active-yes", "tok-active-no");
+        let closed_market = test_market("m-closed", false, true, true, "tok-closed-yes", "tok-closed-no");
+        write_snapshot(
+            &paths,
+            Table::Markets,
+            "run-1",
+            &[
+                markets_batch(
+                    &[active_market.clone(), closed_market.clone()],
+                    "gamma",
+                    "http://test",
+                    "sha",
+                    "run-1",
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        write_snapshot(
+            &paths,
+            Table::Outcomes,
+            "run-1",
+            &[
+                outcomes_batch(
+                    &[active_market, closed_market],
+                    "gamma",
+                    "http://test",
+                    "sha",
+                    "run-1",
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        crate::manifest::ManifestStore::open(dir.path())
+            .unwrap()
+            .append_completed_run("test", "run-1", chrono::Utc::now(), 2)
+            .unwrap();
+
+        let all = hourly_tokens(dir.path(), Source::Polymarket, false).unwrap();
+        assert_eq!(all.len(), 4);
+        let active = hourly_tokens(dir.path(), Source::Polymarket, true).unwrap();
+        assert_eq!(active.len(), 2);
+        assert!(active.iter().all(|t| t.token_id.starts_with("tok-active")));
     }
 
     #[test]

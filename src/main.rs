@@ -124,6 +124,7 @@ async fn main() -> Result<()> {
                 concurrency,
                 lag_minutes,
                 once,
+                active,
             } => {
                 let root = lake_root_from_config(cli.config.as_deref(), out.clone())?;
                 oddsfox::collect::run(oddsfox::config::CollectHourlyOptions {
@@ -138,6 +139,7 @@ async fn main() -> Result<()> {
                         .unwrap_or(DEFAULT_BACKFILL_CONCURRENCY),
                     lag_minutes: *lag_minutes,
                     once: *once,
+                    active: *active,
                     max_retries: config.sync.max_retries,
                     user_agent: config.sync.user_agent.clone(),
                     gamma_base_url: config.polymarket.gamma_base_url.clone(),

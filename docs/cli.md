@@ -9,6 +9,7 @@ See `oddsfox --help` and `oddsfox <command> --help` for every flag. This page is
 | First demo with local UI | `oddsfox quickstart` |
 | Continuous hourly all-market collection | `oddsfox collect hourly --source all --since YYYY-MM-DD` |
 | One collector catch-up pass | `oddsfox collect hourly --source all --once` |
+| Active-market hourly collection (faster) | `oddsfox collect hourly --source all --since YYYY-MM-DD --active` |
 | Rolling active-market refresh | `oddsfox backfill --source all --active` |
 | Custom source/range price fetch | `oddsfox sync prices ...` |
 | User PnL | `oddsfox sync user ...`, then `oddsfox pnl` |
@@ -34,7 +35,9 @@ Collect hourly price history across every discovered Polymarket and Kalshi marke
 oddsfox collect hourly --source all --since 2024-01-01
 ```
 
-First run requires `--since` so historical collection starts from an explicit UTC date. Passing `--since` again overrides the stored seed and clears per-token cursors for that source. The collector refreshes market metadata, fetches one UTC hour per token at a time, writes deterministic hourly price files, and advances a per-token cursor only after the hour is handled.
+First run requires `--since` so historical collection starts from an explicit UTC date. Passing `--since` again overrides the stored seed and clears per-token cursors for that source. The collector refreshes market metadata, fetches price history in **7-day chunks** (one API call per chunk per token), splits points into UTC hourly parquet files locally, and advances a per-token cursor once per chunk.
+
+Use `--active` to collect only tokens from markets where `active = true` (open markets). Default is all discovered tokens. For open-market monitoring, `--active` is much faster than the full historical corpus.
 
 Restart behavior:
 
@@ -47,9 +50,12 @@ Useful bounded run for cron, CI, or manual catch-up:
 
 ```bash
 oddsfox collect hourly --source all --once
+oddsfox collect hourly --source all --since 2026-06-01 --active --once
 ```
 
 `--lag-minutes` defaults to `5`, so only hours that ended at least five minutes ago are collected.
+
+Performance: each token needs roughly one API call per 7-day chunk (not one call per hour). A June–today window is ~4 calls per token instead of ~700. With `--active`, token count drops to open markets only.
 
 ## Active Market Refresh
 

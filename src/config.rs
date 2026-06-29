@@ -360,6 +360,7 @@ pub struct CollectHourlyOptions {
     pub concurrency: usize,
     pub lag_minutes: u32,
     pub once: bool,
+    pub active: bool,
     pub max_retries: u32,
     pub user_agent: String,
     pub gamma_base_url: String,

@@ -44,6 +44,7 @@ Durable hourly collection (per-token resume cursors):
 ```bash
 oddsfox collect hourly --source all --since 2024-01-01
 oddsfox collect hourly --source all --once
+oddsfox collect hourly --source all --since 2026-06-01 --active --once
 ```
 
 Analyst backfill (needs network; long-running):

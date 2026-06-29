@@ -216,6 +216,8 @@ pub enum CollectCommands {
         lag_minutes: u32,
         #[arg(long, default_value_t = false)]
         once: bool,
+        #[arg(long, default_value_t = false)]
+        active: bool,
     },
 }
 
@@ -653,6 +655,7 @@ mod tests {
             "--once",
             "--lag-minutes",
             "5",
+            "--active",
         ])
         .unwrap();
     }
