@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install package and dev tools
+        run: uv sync --extra dev
+
+      - name: Lint
+        run: uv run make lint
+
+      - name: Tests
+        run: uv run make test
+
+      - name: Docs
+        run: uv run make docs-check
+
+      - name: dbt parse
+        run: uv run make dbt-parse
+
+      - name: dbt build
+        run: |
+          uv run python - <<'PY'
+          import oddsfox.storage.duckdb.connection as connection
+          connection._SCHEMA_INITIALIZED = False
+          connection._SCHEMA_LOGGED = False
+          connection.init_duck_db()
+          PY
+          uv run make dbt-build

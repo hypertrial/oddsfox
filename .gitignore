@@ -1,0 +1,231 @@
+# =============================================================================
+# Python
+# =============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[codz]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# =============================================================================
+# Testing & Coverage
+# =============================================================================
+
+htmlcov/
+.tox/
+.nox/
+.benchmarks/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py.cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# =============================================================================
+# Environments
+# =============================================================================
+
+.env
+.envrc
+.venv
+.venv-*/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# =============================================================================
+# Type Checkers & Linters
+# =============================================================================
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre
+.pyre/
+
+# pytype
+.pytype/
+
+# Ruff
+.ruff_cache/
+
+# Cython debug symbols
+cython_debug/
+
+# =============================================================================
+# IDEs & Editors
+# =============================================================================
+
+# PyCharm / JetBrains
+# .idea/
+
+# VS Code
+# .vscode/
+
+# Cursor (team-shared ignore rules; keep optional per-machine indexer config local)
+.cursorindexingignore
+
+# Spyder
+.spyderproject
+.spyproject
+
+# Rope
+.ropeproject
+
+# IPython / Jupyter
+.ipynb_checkpoints
+# Scratch notebook accidentally committed; keep local only
+/Untitled.ipynb
+profile_default/
+ipython_config.py
+
+# =============================================================================
+# Package Managers
+# =============================================================================
+
+# pdm
+.pdm-python
+.pdm-build/
+
+# pixi
+.pixi
+
+# PEP 582
+__pypackages__/
+
+# =============================================================================
+# Documentation
+# =============================================================================
+
+# Sphinx
+docs/_build/
+
+# mkdocs
+/site
+docs/_generated/
+
+# dbt
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+dbt/profiles/.user.yml
+
+# Dagster
+.dagster/
+.dagster_home/
+.tmp_dagster_home_*/
+dagster_history/
+
+# =============================================================================
+# OS & Misc
+# =============================================================================
+
+.DS_Store
+*.log
+*.mo
+*.pot
+.direnv/
+.env.*
+!.env.example
+
+data/
+
+# =============================================================================
+# Project-specific: Data Files
+# =============================================================================
+
+# DuckDB databases
+*.duckdb
+# DuckDB spill/temp storage next to the database file (e.g. oddsfox.duckdb.tmp/)
+*.duckdb.tmp/
+# Swap target from COPY FROM DATABASE compaction (suffix is not `.duckdb`)
+*.duckdb.pre_compact_backup
+*.duckdb-wal
+*.duckdb-shm
+*.duckdb.wal
+*.duckdb.shm
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+
+# Data exports
+*.parquet
+*.csv
+!dbt/seeds/*.csv
+!tests/fixtures/**/*.csv
+*.json
+*.feather
+*.pkl
+*.pickle
+*.xlsx
+*.xls
+
+# =============================================================================
+# Project-specific: Media & Documents
+# =============================================================================
+
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.ico
+*.webp
+*.svg
+*.pdf
+*.doc
+*.docx
+
+# Local project tooling
+downloaded_files/
+
+# Repo-root export and analysis outputs (Parquet/CSV/MD from scripts/* and
+# analysis/*; nothing here is versioned — override output dirs if you need a tracked path)
+artifacts/*
+!artifacts/README.example.md

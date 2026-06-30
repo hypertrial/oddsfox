@@ -1,0 +1,140 @@
+version: 2
+
+sources:
+  - name: polymarket_raw
+    description: Raw Polymarket source tables landed by Python ingestion (Gamma + CLOB-derived facts).
+    schema: polymarket_raw
+    tables:
+      - name: markets
+        description: Raw market metadata from the Gamma API.
+        loaded_at_field: scraped_at
+        freshness:
+          warn_after: {count: 18, period: hour}
+          error_after: {count: 72, period: hour}
+        columns:
+          - name: id
+            description: Polymarket market identifier.
+            tests: [not_null, unique]
+          - name: question
+            description: Market prompt.
+          - name: scraped_at
+            description: UTC timestamp when this market row was last written by ingestion (freshness clock).
+          - name: event_id
+            description: Parent Gamma event id when present on the market payload.
+      - name: market_tokens
+        description: >
+          One row per Polymarket market_id; clobTokenIds holds a JSON array of CLOB outcome token ids for that market
+          (staging expands this into one row per token). Hence market_id is unique at this raw grain.
+        loaded_at_field: updated_at
+        freshness:
+          warn_after: {count: 18, period: hour}
+          error_after: {count: 96, period: hour}
+        columns:
+          - name: market_id
+            description: Market identifier for the token mapping record.
+            tests:
+              - not_null
+              - unique
+              - relationships:
+                  arguments:
+                    to: source('polymarket_raw', 'markets')
+                    field: id
+          - name: updated_at
+            description: UTC timestamp when this mapping row was last written by ingestion.
+      - name: odds_history
+        description: Raw CLOB price history (minimum daily resolution from ingestion; may contain finer legacy points).
+        loaded_at_field: ingested_at
+        freshness:
+          warn_after: {count: 12, period: hour}
+          error_after: {count: 72, period: hour}
+        columns:
+          - name: clobTokenId
+            description: Outcome token identifier.
+            tests: [not_null]
+          - name: timestamp
+            description: Epoch timestamp for the recorded odds point.
+            tests: [not_null]
+          - name: ingested_at
+            description: UTC timestamp when this row was written by the pipeline (ingestion clock).
+      - name: token_odds_daily
+        description: Raw daily token odds aggregates derived from canonical odds_history points.
+        loaded_at_field: refreshed_at
+        freshness:
+          warn_after: {count: 12, period: hour}
+          error_after: {count: 72, period: hour}
+        columns:
+          - name: clobTokenId
+            description: Outcome token identifier.
+            tests: [not_null]
+          - name: odds_date_utc
+            description: UTC calendar day for the aggregated odds row.
+            tests: [not_null]
+          - name: refreshed_at
+            description: UTC timestamp when this aggregate row was last rebuilt by ingestion.
+
+  - name: polymarket_ops
+    description: Polymarket operational DuckDB tables (sync ledger, skips, run events) written by Python ingestion.
+    schema: polymarket_ops
+    tables:
+      - name: token_sync_ledger
+        description: Operational ledger for per-token sync progress; one row per CLOB token when present.
+        columns:
+          - name: clobTokenId
+            description: CLOB outcome token identifier (primary key).
+            tests: [not_null, unique]
+          - name: last_sync_timestamp
+            description: Raw epoch seconds of the last successful sync boundary for this token.
+          - name: fully_checked
+            description: Whether ingestion has marked this token's history as fully checked.
+          - name: last_checked_at
+            description: UTC timestamp when odds sync last evaluated this token.
+          - name: next_check_at
+            description: UTC timestamp when this token next becomes eligible for routine odds syncing.
+          - name: empty_run_streak
+            description: Count of consecutive routine syncs that completed with no rows and no errors.
+      - name: token_sync_skips
+        description: Operational skip reasons for tokens that were not synced.
+        columns:
+          - name: clobTokenId
+            description: CLOB outcome token identifier (primary key).
+            tests: [not_null, unique]
+          - name: reason
+            description: Skip reason message or code persisted by ingestion.
+            tests: [not_null]
+          - name: created_at
+            description: UTC timestamp when this skip row was first inserted.
+      - name: wc2026_market_registry
+        description: >-
+          Operational registry of Polymarket market_ids scoped to FIFA World Cup 2026 events
+          (refreshed from Gamma /events and seed allowlists).
+        columns:
+          - name: market_id
+            description: Polymarket market identifier (primary key).
+            tests: [not_null, unique]
+          - name: event_slug
+            description: Parent event slug when known.
+          - name: event_id
+            description: Parent Gamma event id when known.
+          - name: source
+            description: How the row was discovered (events_api or seed).
+          - name: refreshed_at
+            description: UTC timestamp when this registry row was last upserted.
+      - name: pipeline_run_events
+        description: Append-only operational audit log for ingestion and repair run metrics.
+        loaded_at_field: recorded_at
+        freshness:
+          warn_after: {count: 18, period: hour}
+          error_after: {count: 96, period: hour}
+        columns:
+          - name: run_id
+            description: UUID primary key for the recorded pipeline run event.
+            tests: [not_null, unique]
+          - name: task_name
+            description: Pipeline task that emitted the run metrics payload.
+            tests: [not_null]
+          - name: recorded_at
+            description: UTC timestamp when this run event was appended.
+            tests: [not_null]
+          - name: metrics_json
+            description: JSON payload of run metrics recorded by the Python sync layer.
+            tests: [not_null]

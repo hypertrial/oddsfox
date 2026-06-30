@@ -1,0 +1,309 @@
+version: 2
+models:
+- name: stg_polymarket_markets
+  description: Normalized market metadata from raw Gamma API landing with stable snake_case
+    field names.
+  columns:
+  - name: market_id
+    description: Polymarket market identifier (from raw `id`).
+    tests:
+    - not_null
+    - unique
+  - name: question
+    description: Market prompt or title text shown to users.
+  - name: category
+    description: Market category label when present in source metadata.
+  - name: description
+    description: Longer market description body when provided by the source.
+  - name: outcomes
+    description: Outcomes payload as stored in raw metadata (structure depends on
+      source).
+  - name: volume
+    description: Reported trading volume for the market when present in source.
+  - name: is_active
+    description: Whether the market is currently active in Polymarket metadata.
+  - name: is_closed
+    description: Whether the market is closed in Polymarket metadata.
+  - name: created_at
+    description: Market creation timestamp from source when present.
+  - name: scraped_at
+    description: Ingestion scrape timestamp when the pipeline recorded this market
+      row.
+  - name: end_date
+    description: Market resolution or end date from metadata when present.
+  - name: slug
+    description: URL-friendly market slug for the single market.
+  - name: event_slug
+    description: Event slug for grouping related markets under one event.
+  - name: event_id
+    description: Parent Gamma event id when present on the market payload.
+  - name: is_wc2026_target
+    description: True when this market is in the WC 2026 ops registry, allowlisted
+      event_slug, or matches a configured WC 2026 event_slug prefix.
+- name: stg_polymarket_market_tokens
+  description: One row per outcome token; expands raw `clobTokenIds` JSON array with
+    zero-based outcome index.
+  columns:
+  - name: market_id
+    description: Polymarket market identifier for this outcome token.
+    tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: ref('stg_polymarket_markets')
+          field: market_id
+  - name: outcome_index
+    description: Zero-based index of this outcome within the market's token list (order
+      matches raw JSON array).
+    tests:
+    - not_null
+  - name: clob_token_id
+    description: CLOB outcome token identifier used for odds and sync ledger joins.
+    tests:
+    - not_null
+    - unique
+  - name: updated_at
+    description: UTC timestamp when the raw market_tokens row was last written by
+      ingestion (used for source freshness).
+- name: stg_polymarket_odds
+  description: Point-in-time odds history for CLOB tokens; one row per recorded price
+    observation from raw odds history.
+  columns:
+  - name: clob_token_id
+    description: CLOB outcome token identifier for this price point.
+    tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: ref('stg_polymarket_market_tokens')
+          field: clob_token_id
+  - name: odds_timestamp
+    description: Wall-clock timestamp for the odds observation (derived from raw epoch
+      seconds).
+  - name: odds_timestamp_epoch
+    description: Unix epoch seconds for the odds observation as stored in raw history.
+    tests:
+    - not_null
+  - name: price
+    description: Recorded price for the outcome token at this observation time (CLOB
+      convention).
+  - name: ingested_at
+    description: UTC timestamp when this odds_history row was written by the pipeline
+      (ingestion clock, not market event time).
+- name: stg_polymarket_odds_daily
+  description: Daily OHLC aggregates per CLOB token at UTC calendar-day grain from
+    raw `token_odds_daily`.
+  columns:
+  - name: clob_token_id
+    description: CLOB outcome token identifier for the daily row.
+    tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: ref('stg_polymarket_market_tokens')
+          field: clob_token_id
+  - name: odds_date_utc
+    description: UTC calendar date for the aggregated daily odds row.
+    tests:
+    - not_null
+  - name: open_price
+    description: Opening price for the token on this UTC day when derived upstream.
+  - name: high_price
+    description: High price across observations collapsed into this UTC day.
+  - name: low_price
+    description: Low price across observations collapsed into this UTC day.
+  - name: close_price
+    description: Closing price for the token at the end of this UTC day window.
+  - name: avg_price
+    description: Average price across observations for this UTC day when present.
+  - name: observed_points
+    description: Count of canonical minutely (or finer) odds points rolled into this
+      daily aggregate.
+    tests:
+    - not_null
+  - name: first_timestamp
+    description: Raw epoch timestamp of the first observation contributing to this
+      daily row.
+  - name: first_observed_at
+    description: Timestamp of the first observation contributing to this daily row.
+  - name: last_timestamp
+    description: Raw epoch timestamp of the last observation contributing to this
+      daily row.
+  - name: last_observed_at
+    description: Timestamp of the last observation contributing to this daily row.
+  - name: refreshed_at
+    description: UTC timestamp when this token-day aggregate row was last rebuilt
+      by ingestion.
+- name: stg_polymarket_sync_ledger
+  description: Per-token operational sync progress from raw `token_sync_ledger`; one
+    row per CLOB token when present.
+  columns:
+  - name: clob_token_id
+    description: CLOB outcome token identifier for this ledger row.
+    tests:
+    - not_null
+    - unique
+    - relationships:
+        arguments:
+          to: ref('stg_polymarket_market_tokens')
+          field: clob_token_id
+  - name: last_sync_timestamp
+    description: Raw epoch seconds of the last successful sync boundary recorded for
+      this token.
+  - name: last_sync_at
+    description: Wall-clock timestamp of the last sync boundary (`last_sync_timestamp`
+      converted).
+  - name: last_checked_at
+    description: UTC timestamp when odds sync last evaluated this token, regardless
+      of whether new rows were found.
+  - name: next_check_at
+    description: UTC timestamp when this token next becomes eligible for routine odds
+      syncing.
+  - name: empty_run_streak
+    description: Count of consecutive routine syncs that completed with no rows and
+      no errors for this token.
+  - name: is_fully_checked
+    description: Whether ingestion has marked this token's history as fully checked
+      through the configured window.
+- name: stg_polymarket_token_sync_skips
+  description: 'Persisted odds-sync skip reasons from raw `token_sync_skips`; one
+    row per CLOB token that ingestion will not retry until the reason is cleared.
+    Join to `stg_polymarket_market_tokens` and `stg_polymarket_markets` on `clob_token_id`
+    / `market_id` for market-level analysis of persistent skips.
+
+    '
+  columns:
+  - name: clob_token_id
+    description: CLOB outcome token identifier for this skip row.
+    tests:
+    - not_null
+    - unique
+    - relationships:
+        arguments:
+          to: ref('stg_polymarket_market_tokens')
+          field: clob_token_id
+  - name: reason
+    description: Human-readable reason code or message recorded when the token was
+      skipped.
+    tests:
+    - not_null
+  - name: created_at
+    description: UTC timestamp when this skip row was first inserted (unchanged on
+      reason updates).
+- name: stg_polymarket_pipeline_run_events
+  description: Parsed operational run-event payloads emitted by ingestion into `polymarket_ops.pipeline_run_events`.
+  columns:
+  - name: run_id
+    description: UUID primary key for the pipeline run event.
+    tests:
+    - not_null
+    - unique
+  - name: task_name
+    description: Pipeline task that emitted this metrics payload.
+    tests:
+    - not_null
+  - name: recorded_at
+    description: UTC timestamp when the run event was recorded.
+    tests:
+    - not_null
+  - name: is_noop
+    description: Whether the underlying task determined that no work was required.
+  - name: duration_seconds
+    description: End-to-end task duration in seconds when recorded by ingestion.
+  - name: processed_tokens
+    description: Number of tokens processed by the odds sync execution phase when
+      present.
+  - name: windows_processed
+    description: Number of history windows processed across all tokens for this run.
+  - name: rows_fetched
+    description: Number of raw odds rows fetched across all processed tokens.
+  - name: empty_tokens
+    description: Number of processed tokens that completed without fetching rows.
+  - name: error_tokens
+    description: Number of processed tokens that encountered retryable or terminal
+      execution errors.
+  - name: permanent_error_tokens
+    description: Number of processed tokens that failed permanently for this run.
+  - name: invalid_tokens
+    description: Count of invalid token identifiers accumulated while planning the
+      run.
+  - name: saved_rows
+    description: Number of odds rows written to `odds_history` by the writer thread.
+  - name: saved_daily_rows
+    description: Number of daily aggregate rows written to `token_odds_daily`.
+  - name: sync_updates
+    description: Number of token ledger cursor updates written during the run.
+  - name: queue_high_watermark
+    description: Peak writer queue depth observed during the run.
+  - name: http_requests
+    description: Number of HTTP requests observed by the odds sync runtime.
+  - name: http_429
+    description: Number of HTTP 429 responses observed by the odds sync runtime.
+  - name: http_errors
+    description: Number of non-success HTTP responses observed by the odds sync runtime.
+  - name: final_rps
+    description: Final effective requests-per-second rate after any auto-tuning adjustments.
+  - name: token_rate
+    description: Processed-token throughput for the run in tokens per second.
+  - name: row_rate
+    description: Raw odds row throughput for the run in rows per second.
+  - name: planned_tokens
+    description: Number of token plans created before execution began.
+  - name: pre_clob_markets
+    description: Number of markets excluded because they were created before the configured
+      cutoff date.
+  - name: invalid_tokens_from_planning
+    description: Number of invalid token identifiers counted inside the planner state.
+  - name: closed_done_tokens
+    description: Number of closed tokens skipped because they were already marked
+      fully checked.
+  - name: persisted_skip_tokens
+    description: Number of tokens skipped because they already had persisted skip
+      reasons.
+  - name: recent_skip_tokens
+    description: Number of tokens skipped because their latest sync timestamp was
+      still recent.
+  - name: empty_cache_skip_tokens
+    description: Number of tokens deferred because of the empty-result retry budget.
+  - name: already_current_tokens
+    description: Number of tokens skipped because their computed start timestamp was
+      already current.
+  - name: duplicate_tokens
+    description: Number of duplicate token IDs ignored while building the run plan.
+  - name: market_tokens_distinct_tokens
+    description: Distinct token count extracted from raw `market_tokens` at run start.
+  - name: odds_history_distinct_tokens
+    description: Distinct token count already present in raw `odds_history` at run
+      start.
+  - name: token_odds_daily_distinct_tokens
+    description: Distinct token count already present in raw `token_odds_daily` at
+      run start.
+  - name: ledger_distinct_tokens
+    description: Distinct token count present in the raw sync ledger at run start.
+  - name: ledger_fully_checked_tokens
+    description: Number of ledger rows marked fully checked at run start.
+  - name: token_sync_skips_distinct_tokens
+    description: Distinct token count present in raw `token_sync_skips` at run start.
+  - name: market_tokens_without_history
+    description: Number of metadata tokens missing any raw `odds_history` rows at
+      run start.
+  - name: history_tokens_without_market_tokens
+    description: Number of raw history tokens that no longer appear in raw `market_tokens`
+      at run start.
+  - name: planned_vs_market_tokens_ratio
+    description: Ratio of planned tokens to distinct metadata tokens at run start.
+  - name: history_coverage_vs_market_tokens_ratio
+    description: Ratio of history-covered tokens to distinct metadata tokens at run
+      start.
+  - name: daily_coverage_vs_market_tokens_ratio
+    description: Ratio of daily-covered tokens to distinct metadata tokens at run
+      start.
+  - name: ledger_coverage_vs_market_tokens_ratio
+    description: Ratio of ledger-covered tokens to distinct metadata tokens at run
+      start.
+  - name: fully_checked_vs_market_tokens_ratio
+    description: Ratio of fully checked ledger tokens to distinct metadata tokens
+      at run start.
+  - name: metrics_json
+    description: Original JSON payload emitted by the Python ingestion layer for this
+      run event.

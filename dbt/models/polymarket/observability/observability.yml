@@ -1,0 +1,107 @@
+version: 2
+
+models:
+  - name: sync_run_observability
+    description: >
+      One row per relevant pipeline run event with typed observability metrics for odds sync planning, execution,
+      and pre-run token coverage context.
+      Rows still reflect whatever the ingestion task wrote into ``metrics_json``; planning-context counters such as
+      ``ledger_fully_checked_tokens`` and ratios like ``fully_checked_vs_market_tokens_ratio`` can read as zero when
+      the emitter omits those fields rather than implying the warehouse suppressed them.
+    columns:
+      - name: run_id
+        description: UUID primary key for the underlying pipeline run event.
+        tests: [not_null, unique]
+      - name: task_name
+        description: Pipeline task that emitted the observability metrics row.
+        tests: [not_null]
+      - name: recorded_at
+        description: UTC timestamp when the run event was recorded.
+        tests: [not_null]
+      - name: is_noop
+        description: Whether the task concluded that no work was required.
+      - name: duration_seconds
+        description: End-to-end duration of the task in seconds when recorded.
+      - name: planned_tokens
+        description: Number of token plans created before execution began.
+      - name: processed_tokens
+        description: Number of tokens actually processed by the execution phase.
+      - name: rows_fetched
+        description: Number of raw odds rows fetched during the run.
+      - name: windows_processed
+        description: Number of time windows processed across all tokens.
+      - name: empty_tokens
+        description: Number of processed tokens that completed with no fetched rows.
+      - name: error_tokens
+        description: Number of processed tokens that encountered errors during execution.
+      - name: permanent_error_tokens
+        description: Number of processed tokens that encountered permanent execution errors.
+      - name: invalid_tokens
+        description: Count of invalid token identifiers encountered while planning the run.
+      - name: saved_rows
+        description: Number of odds rows written into raw `odds_history`.
+      - name: saved_daily_rows
+        description: Number of daily aggregate rows written into raw `token_odds_daily`.
+      - name: sync_updates
+        description: Number of ledger cursor/state updates written during the run.
+      - name: queue_high_watermark
+        description: Peak writer queue depth observed during the run.
+      - name: http_requests
+        description: Number of HTTP requests observed by the runtime.
+      - name: http_429
+        description: Number of HTTP 429 responses observed by the runtime.
+      - name: http_errors
+        description: Number of HTTP responses counted as errors by the runtime.
+      - name: final_rps
+        description: Final requests-per-second rate after any auto-tuning adjustments.
+      - name: token_rate
+        description: Processed-token throughput in tokens per second.
+      - name: row_rate
+        description: Raw-row throughput in rows per second.
+      - name: market_tokens_distinct_tokens
+        description: Distinct token count extracted from raw `market_tokens` at run start.
+      - name: odds_history_distinct_tokens
+        description: Distinct token count already present in raw `odds_history` at run start.
+      - name: token_odds_daily_distinct_tokens
+        description: Distinct token count already present in raw `token_odds_daily` at run start.
+      - name: ledger_distinct_tokens
+        description: Distinct token count present in raw `token_sync_ledger` at run start.
+      - name: ledger_fully_checked_tokens
+        description: >
+          Count from planning_context emitted by ingestion (often zero rows if the snapshot field was not populated).
+      - name: token_sync_skips_distinct_tokens
+        description: Distinct token count present in raw `token_sync_skips` at run start.
+      - name: market_tokens_without_history
+        description: Number of metadata tokens missing any raw history at run start.
+      - name: history_tokens_without_market_tokens
+        description: Number of raw history tokens not present in current metadata at run start.
+      - name: pre_clob_markets
+        description: Count of markets excluded because they predate the configured CLOB cutoff.
+      - name: invalid_tokens_from_planning
+        description: Invalid token count reported by the planner state.
+      - name: closed_done_tokens
+        description: Count of closed tokens skipped because they were already fully checked.
+      - name: persisted_skip_tokens
+        description: Count of tokens skipped because of persisted skip reasons.
+      - name: recent_skip_tokens
+        description: Count of tokens skipped because their latest sync timestamp was still recent.
+      - name: empty_cache_skip_tokens
+        description: Count of tokens deferred because of empty-result retry budgeting.
+      - name: already_current_tokens
+        description: Count of tokens skipped because their computed sync window was already current.
+      - name: duplicate_tokens
+        description: Count of duplicate token IDs ignored during planning.
+      - name: planned_vs_market_tokens_ratio
+        description: Ratio of planned tokens to distinct metadata tokens at run start.
+      - name: history_coverage_vs_market_tokens_ratio
+        description: Ratio of history-covered tokens to distinct metadata tokens at run start.
+      - name: daily_coverage_vs_market_tokens_ratio
+        description: Ratio of daily-covered tokens to distinct metadata tokens at run start.
+      - name: ledger_coverage_vs_market_tokens_ratio
+        description: Ratio of ledger-covered tokens to distinct metadata tokens at run start.
+      - name: fully_checked_vs_market_tokens_ratio
+        description: >
+          Planning snapshot ratio emitted by ingestion; may be blank or zero depending on planner payload—not derived
+          from a live recount in dbt.
+      - name: rows_per_processed_token
+        description: Average fetched raw-row volume per processed token for the run.

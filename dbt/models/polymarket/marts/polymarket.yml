@@ -1,0 +1,204 @@
+version: 2
+
+models:
+  - name: market_coverage
+    description: >
+      Market-level coverage rolled up from token_coverage; one row per (market_id, question, event_slug)
+      with aggregates over all outcome tokens in the token health mart.
+    columns:
+      - name: market_id
+        description: Polymarket market identifier.
+        tests: [not_null, unique]
+      - name: question
+        description: Market prompt text (grouping key; same semantics as staging markets).
+      - name: event_slug
+        description: Event slug for grouping related markets (grouping key).
+      - name: token_count
+        description: Count of distinct CLOB outcome tokens for the market in the joined time series.
+        tests: [not_null]
+      - name: token_days_observed
+        description: Total count of observed token-days (sum of token-day rows with non-null daily odds) across all tokens for the market.
+      - name: first_odds_date
+        description: Earliest UTC day with observed odds for the market.
+      - name: last_odds_date
+        description: Latest UTC day with observed odds for the market.
+      - name: has_odds_data
+        description: 1 if any daily odds row exists for the market, else 0.
+
+  - name: token_coverage
+    description: >
+      Token-level health and coverage mart; one row per CLOB outcome token with market labels, daily coverage,
+      sync ledger state, persisted skip reason, gap diagnostics, and market-level fully checked rollups.
+    columns:
+      - name: clob_token_id
+        description: CLOB outcome token identifier (primary key for this mart).
+        tests: [not_null, unique]
+      - name: market_id
+        description: Polymarket market identifier for this outcome token.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_polymarket_markets')
+                field: market_id
+      - name: outcome_index
+        description: Zero-based index of the outcome within the market token list.
+        tests: [not_null]
+      - name: question
+        description: Market prompt text from staging markets.
+      - name: event_slug
+        description: Event slug for grouping related markets.
+      - name: is_active
+        description: Whether the market is active in the latest scrape.
+      - name: is_closed
+        description: Whether the market is closed in the latest scrape.
+      - name: first_odds_date
+        description: Earliest UTC calendar day with non-null daily odds for this token.
+      - name: last_odds_date
+        description: Latest UTC calendar day with non-null daily odds for this token.
+      - name: token_days_observed
+        description: Count of token-day rows with non-null daily odds for this token.
+        tests: [not_null]
+      - name: sum_observed_points
+        description: Sum of observed_points from daily rows for this token (0 when no daily history).
+        tests: [not_null]
+      - name: has_daily_odds
+        description: 1 if at least one daily odds row exists for this token, else 0.
+        tests: [not_null]
+      - name: is_fully_checked
+        description: Whether ingestion marked this token's odds history as fully checked (sync ledger).
+      - name: last_sync_timestamp
+        description: Raw epoch seconds of the last successful sync boundary for this token.
+      - name: last_sync_at
+        description: Timestamp derived from last_sync_timestamp for this token.
+      - name: last_checked_at
+        description: UTC timestamp when odds sync last evaluated this token.
+      - name: next_check_at
+        description: UTC timestamp when this token next becomes eligible for routine odds syncing.
+      - name: empty_run_streak
+        description: Count of consecutive routine syncs that completed with no rows and no errors.
+      - name: has_persisted_skip
+        description: True when the token has a persisted skip reason.
+        tests: [not_null]
+      - name: skip_reason
+        description: Persisted skip reason for tokens ingestion will not retry until cleared.
+      - name: skip_created_at
+        description: UTC timestamp when the persisted skip row was first inserted.
+      - name: max_gap_days
+        description: Largest gap in days between consecutive non-null daily observations.
+        tests: [not_null]
+      - name: avg_gap_days
+        description: Average gap in days between consecutive non-null daily observations.
+      - name: market_token_count
+        description: Number of outcome tokens for this token's market.
+        tests: [not_null]
+      - name: market_fully_checked_tokens
+        description: Count of outcome tokens in this market whose sync ledger row is fully checked.
+        tests: [not_null]
+      - name: market_fully_checked
+        description: True when the market has at least one token and every token is fully checked.
+        tests: [not_null]
+
+  - name: token_latest_odds
+    description: >
+      Latest daily OHLC/avg and latest point-in-time price per WC2026 CLOB outcome token for dashboard and snapshot use;
+      one row per token from int_polymarket_wc2026_token_universe with null latest fields when history is missing.
+    columns:
+      - name: clob_token_id
+        description: CLOB outcome token identifier (primary key for this mart).
+        tests: [not_null, unique]
+      - name: market_id
+        description: Polymarket market identifier for this outcome token.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_polymarket_markets')
+                field: market_id
+      - name: outcome_index
+        description: Zero-based index of the outcome within the market token list.
+        tests: [not_null]
+      - name: question
+        description: Market prompt text from staging markets.
+      - name: event_slug
+        description: Event slug for grouping related markets.
+      - name: is_active
+        description: Whether the market is active in the latest scrape.
+      - name: is_closed
+        description: Whether the market is closed in the latest scrape.
+      - name: latest_daily_odds_date_utc
+        description: UTC calendar day of the most recent non-null daily odds row for this token.
+      - name: latest_daily_open_price
+        description: Open price on the latest daily odds day.
+      - name: latest_daily_high_price
+        description: High price on the latest daily odds day.
+      - name: latest_daily_low_price
+        description: Low price on the latest daily odds day.
+      - name: latest_daily_close_price
+        description: Close price on the latest daily odds day.
+      - name: latest_daily_avg_price
+        description: Average price on the latest daily odds day.
+      - name: latest_point_price
+        description: Price at the latest point-in-time observation in int_polymarket_token_timeseries.
+      - name: latest_point_odds_timestamp
+        description: Timestamp of the latest point-in-time price observation.
+      - name: latest_point_odds_timestamp_epoch
+        description: Epoch seconds of the latest point-in-time price observation.
+
+  - name: wc2026_whale_minutely_odds
+    description: >
+      Minute-grain odds for high-liquidity WC2026 markets (volume >= polymarket_whale_min_volume_usd).
+      One row per (clob_token_id, odds_timestamp_epoch) with market labels and volume from the WC2026 token universe.
+    columns:
+      - name: clob_token_id
+        description: CLOB outcome token identifier.
+        tests: [not_null]
+      - name: market_id
+        description: Polymarket market identifier.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('wc2026_markets')
+                field: market_id
+      - name: market_volume_usd
+        description: Reported market volume at build time (>= whale threshold).
+      - name: odds_timestamp_epoch
+        description: Unix epoch seconds for the minutely observation.
+        tests: [not_null]
+      - name: price
+        description: Outcome price in [0, 1].
+        tests: [not_null]
+
+  - name: wc2026_markets
+    description: >
+      FIFA World Cup 2026 Polymarket market universe; one row per scoped market_id from
+      int_polymarket_wc2026_markets (registry, allowlisted event_slug, or slug prefix).
+    columns:
+      - name: market_id
+        description: Polymarket market identifier and primary key for this mart.
+        tests: [not_null, unique]
+      - name: question
+        description: Market prompt or title text shown to users.
+      - name: description
+        description: Longer market description body when provided by the source.
+      - name: category
+        description: Market category label when present in source metadata.
+      - name: outcomes
+        description: Outcomes payload as stored in source market metadata.
+      - name: volume
+        description: Reported trading volume for the market when present in source metadata.
+      - name: is_active
+        description: Whether the market is active in Polymarket metadata.
+      - name: is_closed
+        description: Whether the market is closed in Polymarket metadata.
+      - name: created_at
+        description: Market creation timestamp from source metadata when present.
+      - name: scraped_at
+        description: Ingestion scrape timestamp when the pipeline recorded this market row.
+      - name: end_date
+        description: Market resolution or end date from metadata when present.
+      - name: slug
+        description: URL-friendly market slug for the single market.
+      - name: event_slug
+        description: Event slug for grouping related markets under one event.

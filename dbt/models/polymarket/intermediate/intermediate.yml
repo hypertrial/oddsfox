@@ -1,0 +1,183 @@
+version: 2
+models:
+- name: int_polymarket_wc2026_markets
+  description: 'Polymarket markets scoped to FIFA World Cup 2026 (is_wc2026_target
+    from stg_polymarket_markets: registry membership, allowlisted event_slug, or configured
+    slug prefix).
+
+    '
+- name: int_polymarket_token_universe
+  description: 'Canonical token universe: one row per CLOB outcome token joined to
+    its market labels, state, and volume.
+
+    '
+  columns:
+  - name: clob_token_id
+    description: CLOB outcome token identifier.
+    tests:
+    - not_null
+    - unique
+    - relationships:
+        arguments:
+          to: ref('stg_polymarket_market_tokens')
+          field: clob_token_id
+  - name: market_id
+    description: Polymarket market identifier for this token.
+    tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: ref('stg_polymarket_markets')
+          field: market_id
+  - name: outcome_index
+    description: Zero-based outcome index from the market token mapping.
+    tests:
+    - not_null
+  - name: token_updated_at
+    description: UTC timestamp when the raw market_tokens row was last written.
+  - name: question
+    description: Market prompt text from staging markets.
+  - name: event_slug
+    description: Event slug for grouping related markets.
+  - name: is_active
+    description: Whether the market is currently active in staging metadata.
+  - name: is_closed
+    description: Whether the market is closed in staging metadata.
+  - name: market_volume_usd
+    description: Reported market volume from staging metadata.
+- name: int_polymarket_wc2026_token_universe
+  description: 'WC2026-scoped token universe: one row per CLOB outcome token whose
+    market belongs to int_polymarket_wc2026_markets.
+
+    '
+  columns:
+  - name: clob_token_id
+    description: CLOB outcome token identifier.
+    tests:
+    - not_null
+    - unique
+    - relationships:
+        arguments:
+          to: ref('int_polymarket_token_universe')
+          field: clob_token_id
+  - name: market_id
+    description: WC2026 Polymarket market identifier for this token.
+    tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: ref('int_polymarket_wc2026_markets')
+          field: market_id
+  - name: outcome_index
+    description: Zero-based outcome index from the market token mapping.
+    tests:
+    - not_null
+  - name: token_updated_at
+    description: UTC timestamp when the raw market_tokens row was last written.
+  - name: question
+    description: Market prompt text from staging markets.
+  - name: event_slug
+    description: Event slug for grouping related markets.
+  - name: is_active
+    description: Whether the market is currently active in staging metadata.
+  - name: is_closed
+    description: Whether the market is closed in staging metadata.
+  - name: market_volume_usd
+    description: Reported market volume from staging metadata.
+- name: int_polymarket_token_timeseries
+  description: 'Token-level point-in-time odds joined to int_polymarket_token_universe; grain is
+    one row per (clob_token_id, odds observation) when odds exist, with market fields
+    repeated. Tokens without odds still appear with null odds columns.
+
+    '
+  columns:
+  - name: market_id
+    description: Polymarket market identifier.
+    tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: ref('stg_polymarket_markets')
+          field: market_id
+  - name: outcome_index
+    description: Zero-based outcome index from the market token mapping.
+  - name: clob_token_id
+    description: CLOB outcome token identifier.
+    tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: ref('stg_polymarket_market_tokens')
+          field: clob_token_id
+  - name: question
+    description: Market prompt text from staging markets.
+  - name: event_slug
+    description: Event slug for grouping related markets.
+  - name: is_active
+    description: Whether the market is currently active in staging metadata.
+  - name: is_closed
+    description: Whether the market is closed in staging metadata.
+  - name: odds_timestamp
+    description: Odds observation timestamp when a history row exists for this token.
+  - name: odds_timestamp_epoch
+    description: Unix epoch seconds for the odds point when a history row exists.
+  - name: price
+    description: Recorded price for the outcome token at the odds timestamp.
+- name: int_polymarket_token_daily_timeseries
+  description: 'Token-level daily odds joined to int_polymarket_token_universe; grain is one row
+    per (clob_token_id, odds_date_utc) when daily odds exist. Market fields are repeated
+    per token-day; tokens without daily rows appear with null odds columns.
+
+    '
+  columns:
+  - name: market_id
+    description: Polymarket market identifier.
+    tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: ref('stg_polymarket_markets')
+          field: market_id
+  - name: outcome_index
+    description: Zero-based outcome index from the market token mapping.
+  - name: clob_token_id
+    description: CLOB outcome token identifier.
+    tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: ref('stg_polymarket_market_tokens')
+          field: clob_token_id
+  - name: question
+    description: Market prompt text from staging markets.
+  - name: event_slug
+    description: Event slug for grouping related markets.
+  - name: is_active
+    description: Whether the market is currently active in staging metadata.
+  - name: is_closed
+    description: Whether the market is closed in staging metadata.
+  - name: odds_date_utc
+    description: UTC calendar date for the aggregated token odds row (daily grain).
+  - name: open_price
+    description: Opening price for the token on this UTC day from staging daily odds.
+  - name: high_price
+    description: High price across the day from staging daily odds.
+  - name: low_price
+    description: Low price across the day from staging daily odds.
+  - name: close_price
+    description: Closing price for the token on this UTC day from staging daily odds.
+  - name: avg_price
+    description: Average price for the UTC day when present in staging daily odds.
+  - name: observed_points
+    description: Number of canonical odds points collapsed into this daily row (minutely
+      or finer upstream).
+  - name: first_timestamp
+    description: Raw epoch seconds of the first observation contributing to this daily
+      row.
+  - name: first_observed_at
+    description: Timestamp of the first observation contributing to this daily row.
+  - name: last_timestamp
+    description: Raw epoch seconds of the last observation contributing to this daily
+      row.
+  - name: last_observed_at
+    description: Timestamp of the last observation contributing to this daily row.

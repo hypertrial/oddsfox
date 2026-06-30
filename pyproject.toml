@@ -1,0 +1,105 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oddsfox"
+version = "0.1.0"
+description = "Dagster + dlt + dbt + DuckDB pipeline for WC2026 Polymarket markets and odds."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "dagster>=1.8.0",
+  "dagster-webserver>=1.8.0",
+  "dagster-dbt>=0.24.0",
+  "dagster-dlt>=0.24.0",
+  "dbt-core>=1.8.0",
+  "dbt-duckdb>=1.8.0",
+  "dlt[duckdb]>=1.0.0",
+  "duckdb>=1.5.2",
+  "polars>=1.0.0",
+  "pyarrow>=14.0.0",
+  "PyYAML>=6.0",
+  "python-dotenv>=1.0.0",
+  "requests>=2.28.0",
+  "tqdm>=4.65.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "dagster-dg-cli>=1.13.0",
+  "mkdocs>=1.6.0",
+  "pip-audit>=2.7.0",
+  "pytest>=8.0.0",
+  "pytest-cov>=5.0.0",
+  "pytest-xdist>=3.5.0",
+  "ruff>=0.9.0",
+  "sqlfluff>=3.0.0",
+  "sqlfluff-templater-dbt>=3.0.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["oddsfox*"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+filterwarnings = [
+  "ignore:.*AssetExecutionContext\\.op is deprecated.*:DeprecationWarning:dagster_dbt.asset_utils",
+]
+markers = [
+  "integration: hits external tools or shared resources",
+  "performance: long-running benchmarks",
+  "slow: expensive checks excluded from normal unit runs",
+  "orchestration: Dagster materialize or dbt asset tests",
+  "polymarket: Polymarket ingest and sync tests",
+  "repo_check: repository policy checks run via make lint only",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src/oddsfox"]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_empty = true
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+]
+
+[tool.ruff]
+target-version = "py310"
+src = ["src"]
+line-length = 88
+extend-exclude = [
+  "dbt/target",
+  "dbt/dbt_packages",
+  ".venv",
+  ".dagster_home",
+]
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/oddsfox/config/__init__.py" = ["F403"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.sqlfluff.core]
+dialect = "duckdb"
+templater = "dbt"
+max_line_length = 130
+
+[tool.sqlfluff.templater.dbt]
+project_dir = "dbt"
+profiles_dir = "dbt/profiles"
+profile = "oddsfox"
+target = "dev"

@@ -1,0 +1,21 @@
+# Canonical Polymarket WC 2026 event scope for routine ingestion.
+# Keep in sync with dbt/dbt_project.yml vars (wc2026_event_tags, wc2026_event_slugs,
+# wc2026_event_slug_prefixes). Parity enforced by tests/unit/ingestion/test_wc2026_config_parity.py.
+# Override via POLYMARKET_WC2026_EVENT_TAGS / POLYMARKET_WC2026_EVENT_SLUGS /
+# POLYMARKET_WC2026_EVENT_SLUG_PREFIXES.
+#
+# Primary scope is Gamma event tags (Polymarket does not slug all WC events with
+# 2026-fifa-world-cup-*). Slugs/prefixes remain as targeted-fetch and dbt fallbacks.
+
+event_tags:
+  - 2026-fifa-world-cup
+  - fifa-world-cup
+  - world-cup
+
+event_slugs:
+  - 2026-fifa-world-cup-winner
+
+event_slug_prefixes:
+  - 2026-fifa-world-cup
+
+market_ids: []

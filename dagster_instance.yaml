@@ -1,0 +1,8 @@
+telemetry:
+  enabled: false
+
+# Definitions import runs `DbtProject.prepare_if_dev()` (dbt/DuckDB work). Default gRPC
+# heartbeat TTL (30s) can kill the code server before that finishes—especially under
+# DuckDB lock contention or slow disks. See docs/reference/commands.md (dagster-dev).
+code_servers:
+  local_startup_timeout: 300

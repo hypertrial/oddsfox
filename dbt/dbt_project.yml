@@ -1,0 +1,47 @@
+name: oddsfox
+version: 0.1.0
+config-version: 2
+profile: oddsfox
+# Avoid running relationship tests whose parent models are not in the selected subgraph
+# (default `eager` can execute tests on e.g. stg_polymarket_odds_daily when only upstream
+# of another branch is selected, causing missing-relation errors).
+flags:
+  indirect_selection: buildable
+vars:
+  polymarket_whale_min_volume_usd: 100000
+  wc2026_event_tags:
+    - 2026-fifa-world-cup
+    - fifa-world-cup
+    - world-cup
+  wc2026_event_slugs:
+    - 2026-fifa-world-cup-winner
+  wc2026_event_slug_prefixes:
+    - 2026-fifa-world-cup
+model-paths: ["models"]
+test-paths: ["tests"]
+target-path: target
+clean-targets: ["target", "dbt_packages"]
+models:
+  oddsfox:
+    +materialized: view
+    +persist_docs:
+      relation: true
+      columns: true
+    polymarket:
+      +tags: ["polymarket"]
+      staging:
+        +schema: polymarket_staging
+        +tags: ["staging", "polymarket"]
+      intermediate:
+        +schema: polymarket_intermediate
+        +tags: ["intermediate", "polymarket"]
+        int_polymarket_token_daily_timeseries:
+          +materialized: table
+      marts:
+        +schema: polymarket_marts
+        +materialized: table
+        +tags: ["mart", "core", "polymarket"]
+      observability:
+        +schema: polymarket_observability
+        +materialized: table
+        +tags: ["mart", "observability", "polymarket"]
