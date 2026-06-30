@@ -33,6 +33,28 @@ def ensure_polymarket_indexes(conn: duckdb.DuckDBPyConnection) -> None:
         f"CREATE INDEX IF NOT EXISTS idx_token_odds_daily_date ON {tod}(odds_date_utc)",
         f"CREATE INDEX IF NOT EXISTS idx_token_skip_reason ON {sk}(clobTokenId)",
     ]
+    try:
+        has_dlt_markets = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_schema = 'polymarket_raw'
+              AND table_name = 'markets'
+              AND column_name = '_dlt_id'
+            """
+        ).fetchone()
+    except Exception as exc:
+        logger.warning(
+            "Skipping dlt markets unique-index check after metadata query failed: %s",
+            exc,
+        )
+        has_dlt_markets = None
+    if has_dlt_markets and has_dlt_markets[0]:
+        # dlt-owned markets tables declare primary_key=id in the resource but DuckDB
+        # does not always materialize a UNIQUE/PK constraint; snapshot upserts need it.
+        index_statements.insert(
+            0, f"CREATE UNIQUE INDEX IF NOT EXISTS idx_markets_id ON {m}(id)"
+        )
     for stmt in index_statements:
         try:
             conn.execute(stmt)

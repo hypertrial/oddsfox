@@ -121,6 +121,116 @@ def test_save_markets_batch_requires_dlt_markets_table(duck):
         )
 
 
+def test_save_markets_batch_upserts_dlt_owned_table(duck):
+    with duck.get_connection() as conn:
+        conn.execute(f"DROP TABLE IF EXISTS {T_M}")
+        conn.execute(
+            f"""
+            CREATE TABLE {T_M} (
+                id VARCHAR NOT NULL,
+                question VARCHAR,
+                category VARCHAR,
+                description VARCHAR,
+                outcomes VARCHAR,
+                volume DOUBLE,
+                active BOOLEAN,
+                closed BOOLEAN,
+                created_at TIMESTAMP,
+                scraped_at TIMESTAMP,
+                end_date TIMESTAMP,
+                slug VARCHAR,
+                event_slug VARCHAR,
+                event_id VARCHAR,
+                _dlt_load_id VARCHAR NOT NULL,
+                _dlt_id VARCHAR NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            f"""
+            INSERT INTO {T_M}
+            (id, question, category, description, outcomes, volume, active, closed,
+             created_at, scraped_at, end_date, slug, event_slug, event_id,
+             _dlt_load_id, _dlt_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "m-dlt",
+                "old-q",
+                "c",
+                "d",
+                "[]",
+                1.0,
+                True,
+                False,
+                "2020-01-01 00:00:00",
+                "2020-01-01 00:00:00",
+                None,
+                None,
+                None,
+                None,
+                "dlt-load",
+                "dlt-load.m-dlt",
+            ],
+        )
+
+    markets.save_markets_batch(
+        [
+            (
+                "m-dlt",
+                "new-q",
+                "c",
+                "d",
+                "[]",
+                2.0,
+                True,
+                False,
+                "2020-01-01 00:00:00",
+                "2021-01-01 00:00:00",
+                None,
+                None,
+                None,
+            ),
+            (
+                "m-new",
+                "insert-q",
+                "c",
+                "d",
+                "[]",
+                3.0,
+                True,
+                False,
+                "2020-01-01 00:00:00",
+                "2021-01-01 00:00:00",
+                None,
+                None,
+                None,
+            ),
+        ],
+        [("m-new", '["tok"]')],
+    )
+
+    with duck.get_connection() as conn:
+        updated = conn.execute(
+            f"SELECT question, volume FROM {T_M} WHERE id = 'm-dlt'"
+        ).fetchone()
+        inserted = conn.execute(
+            f"SELECT question, _dlt_load_id FROM {T_M} WHERE id = 'm-new'"
+        ).fetchone()
+        index = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM duckdb_indexes()
+            WHERE schema_name = 'polymarket_raw'
+              AND table_name = 'markets'
+              AND index_name = 'idx_markets_id'
+            """
+        ).fetchone()[0]
+    assert updated == ("new-q", 2.0)
+    assert inserted == ("insert-q", "oddsfox_snapshot")
+    assert index == 1
+
+
 def test_markets_count_and_ids(duck):
     assert markets.get_market_count() == 0
     markets.save_markets_batch(

@@ -50,6 +50,16 @@ Then rerun the quickstart.
 - Re-run the failed Dagster job; token sync state is ledgered.
 - Check `polymarket_ops.pipeline_run_events` and `polymarket_ops.sync_run_metrics` for the latest run payloads.
 
+## `polymarket_markets_snapshot` Upsert Failures
+
+If `polymarket_markets_snapshot` fails with:
+
+```text
+Binder Error: The specified columns as conflict target are not referenced by a UNIQUE/PRIMARY KEY CONSTRAINT or INDEX
+```
+
+the warehouse has a dlt-owned `polymarket_raw.markets` table without a unique constraint on `id`. Restart Dagster after pulling the latest code; schema init and snapshot upserts now ensure `idx_markets_id` exists and populate dlt metadata columns for new rows.
+
 ## Large Warehouse File
 
 DuckDB files do not always shrink after rebuilds. Stop writers, then run:
