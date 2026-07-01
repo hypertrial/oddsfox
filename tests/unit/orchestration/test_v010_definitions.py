@@ -46,7 +46,8 @@ def test_definitions_expose_v010_asset_keys():
         "polymarket_market_coverage",
         "polymarket_wc2026_markets",
         "polymarket_token_coverage",
-        "polymarket_token_latest_odds",
+        "polymarket_wc2026_token_minutely_odds",
+        "polymarket_wc2026_token_daily_odds",
         "polymarket_wc2026_whale_minutely_odds",
         "polymarket_sync_run_observability",
     }

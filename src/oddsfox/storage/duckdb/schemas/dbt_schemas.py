@@ -39,7 +39,8 @@ def resolve_source_slug(
     if name.startswith(("stg_polymarket_", "int_polymarket_")) or name in {
         "market_coverage",
         "token_coverage",
-        "token_latest_odds",
+        "wc2026_token_minutely_odds",
+        "wc2026_token_daily_odds",
         "wc2026_markets",
         "wc2026_whale_minutely_odds",
         "sync_run_observability",

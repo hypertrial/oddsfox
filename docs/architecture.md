@@ -16,7 +16,7 @@ flowchart LR
     raw --> ops["DuckDB ops ledgers"]
     raw --> dbt["dbt models"]
     ops --> dbt
-    dbt --> marts["Coverage, latest odds, WC2026 marts"]
+    dbt --> marts["Coverage, WC2026 odds time series, WC2026 marts"]
     dagster["Dagster jobs and schedules"] --> dlt
     dagster --> odds
     dagster --> dbt
@@ -24,7 +24,7 @@ flowchart LR
 
 Text fallback: prediction-market metadata and odds APIs feed DuckDB raw and ops
 schemas. Dagster runs the ingest and dbt steps. dbt publishes local analytics
-marts for coverage, health, latest odds, and the current WC2026 market scope.
+marts for coverage, health, WC2026 odds time series, and the current WC2026 market scope.
 
 ## Main Components
 
@@ -46,13 +46,14 @@ flowchart TD
     token_universe --> wc_tokens["int_polymarket_wc2026_token_universe"]
     token_universe --> coverage["token_coverage"]
     coverage --> market_coverage["market_coverage"]
-    wc_tokens --> latest["token_latest_odds"]
-    wc_tokens --> whale["wc2026_whale_minutely_odds"]
+    wc_tokens --> minutely["wc2026_token_minutely_odds"]
+    wc_tokens --> daily["wc2026_token_daily_odds"]
+    minutely --> whale["wc2026_whale_minutely_odds"]
 ```
 
 Text fallback: staging normalizes raw and ops tables, intermediates establish
-token universes, and marts publish token health, market coverage, latest odds,
-and high-volume minutely odds.
+token universes, and marts publish token health, market coverage, full WC2026
+daily and minutely odds time series, and high-volume minutely odds.
 
 ## Operating Model
 

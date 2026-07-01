@@ -44,7 +44,8 @@ Current Polymarket analytics outputs live in `polymarket_marts`:
 
 - `token_coverage`: token-level coverage and health.
 - `market_coverage`: market-level daily coverage rollup.
-- `token_latest_odds`: latest WC2026 daily and point-in-time odds.
+- `wc2026_token_minutely_odds`: full WC2026 minutely odds time series.
+- `wc2026_token_daily_odds`: full WC2026 daily OHLC odds time series.
 - `wc2026_markets`: scoped WC2026 market universe.
 - `wc2026_whale_minutely_odds`: high-volume WC2026 minutely odds.
 

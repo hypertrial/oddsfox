@@ -99,56 +99,59 @@ models:
         description: True when the market has at least one token and every token is fully checked.
         tests: [not_null]
 
-  - name: token_latest_odds
+  - name: wc2026_token_minutely_odds
     description: >
-      Latest daily OHLC/avg and latest point-in-time price per WC2026 CLOB outcome token for dashboard and snapshot use;
-      one row per token from int_polymarket_wc2026_token_universe with null latest fields when history is missing.
+      Full minutely odds time series for all WC2026 CLOB outcome tokens.
+      One row per (clob_token_id, odds_timestamp_epoch) with market labels and volume from the WC2026 token universe.
+      Materialized as a dbt view (not a table) to avoid duplicating raw odds_history on disk.
     columns:
       - name: clob_token_id
-        description: CLOB outcome token identifier (primary key for this mart).
-        tests: [not_null, unique]
+        description: CLOB outcome token identifier.
+        tests: [not_null]
       - name: market_id
-        description: Polymarket market identifier for this outcome token.
+        description: Polymarket market identifier.
         tests:
           - not_null
           - relationships:
               arguments:
-                to: ref('stg_polymarket_markets')
+                to: ref('wc2026_markets')
                 field: market_id
-      - name: outcome_index
-        description: Zero-based index of the outcome within the market token list.
+      - name: market_volume_usd
+        description: Reported market volume at build time.
+      - name: odds_timestamp_epoch
+        description: Unix epoch seconds for the minutely observation.
         tests: [not_null]
-      - name: question
-        description: Market prompt text from staging markets.
-      - name: event_slug
-        description: Event slug for grouping related markets.
-      - name: is_active
-        description: Whether the market is active in the latest scrape.
-      - name: is_closed
-        description: Whether the market is closed in the latest scrape.
-      - name: latest_daily_odds_date_utc
-        description: UTC calendar day of the most recent non-null daily odds row for this token.
-      - name: latest_daily_open_price
-        description: Open price on the latest daily odds day.
-      - name: latest_daily_high_price
-        description: High price on the latest daily odds day.
-      - name: latest_daily_low_price
-        description: Low price on the latest daily odds day.
-      - name: latest_daily_close_price
-        description: Close price on the latest daily odds day.
-      - name: latest_daily_avg_price
-        description: Average price on the latest daily odds day.
-      - name: latest_point_price
-        description: Price at the latest point-in-time observation in int_polymarket_token_timeseries.
-      - name: latest_point_odds_timestamp
-        description: Timestamp of the latest point-in-time price observation.
-      - name: latest_point_odds_timestamp_epoch
-        description: Epoch seconds of the latest point-in-time price observation.
+      - name: price
+        description: Outcome price in [0, 1].
+        tests: [not_null]
+
+  - name: wc2026_token_daily_odds
+    description: >
+      Full daily OHLC odds time series for all WC2026 CLOB outcome tokens.
+      One row per (clob_token_id, odds_date_utc) with market labels and volume from the WC2026 token universe.
+      Materialized as a dbt view (not a table) to avoid duplicating int daily history on disk.
+    columns:
+      - name: clob_token_id
+        description: CLOB outcome token identifier.
+        tests: [not_null]
+      - name: market_id
+        description: Polymarket market identifier.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('wc2026_markets')
+                field: market_id
+      - name: odds_date_utc
+        description: UTC calendar date for the aggregated token odds row.
+        tests: [not_null]
+      - name: close_price
+        description: Closing price for the token on this UTC day.
 
   - name: wc2026_whale_minutely_odds
     description: >
       Minute-grain odds for high-liquidity WC2026 markets (volume >= polymarket_whale_min_volume_usd).
-      One row per (clob_token_id, odds_timestamp_epoch) with market labels and volume from the WC2026 token universe.
+      Filtered view over wc2026_token_minutely_odds; one row per (clob_token_id, odds_timestamp_epoch).
       Materialized as a dbt view (not a table) to avoid duplicating raw odds_history on disk.
     columns:
       - name: clob_token_id

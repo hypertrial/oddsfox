@@ -53,10 +53,13 @@ Schema: `polymarket_marts`
 - `token_coverage`: token-level health and coverage, including daily coverage,
   sync ledger state, persisted skip reason, gap diagnostics, and market fully
   checked rollups.
-- `token_latest_odds`: latest daily and point-in-time odds per WC2026 token.
+- `wc2026_token_minutely_odds`: full minutely odds time series for all WC2026 tokens (dbt
+  view over `int_polymarket_token_timeseries`; not materialized to save disk).
+- `wc2026_token_daily_odds`: full daily OHLC odds time series for all WC2026 tokens (dbt
+  view over `int_polymarket_token_daily_timeseries`; not materialized to save disk).
 - `wc2026_markets`: scoped WC2026 market universe.
 - `wc2026_whale_minutely_odds`: minutely odds for high-volume WC2026 markets (dbt
-  view over `int_polymarket_token_timeseries`; not materialized to save disk).
+  view over `wc2026_token_minutely_odds`; not materialized to save disk).
 
 Schema: `polymarket_observability`
 

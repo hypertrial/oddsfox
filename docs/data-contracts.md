@@ -14,8 +14,9 @@ Schema: `polymarket_marts`
 | `wc2026_markets` | One row per WC2026 market | Canonical scoped WC2026 market universe. |
 | `token_coverage` | One row per `clob_token_id` | Token health, daily coverage, sync ledger state, skip state, gap health, and market fully checked rollups. |
 | `market_coverage` | One row per market | Market-level coverage rolled up from `token_coverage`. |
-| `token_latest_odds` | One row per WC2026 token | Latest daily OHLC and latest point-in-time odds. |
-| `wc2026_whale_minutely_odds` | One row per token timestamp | Minutely odds for WC2026 markets above the configured volume threshold. |
+| `wc2026_token_minutely_odds` | One row per `(clob_token_id, odds_timestamp_epoch)` | Full minutely odds time series for all WC2026 tokens (dbt view). |
+| `wc2026_token_daily_odds` | One row per `(clob_token_id, odds_date_utc)` | Full daily OHLC odds time series for all WC2026 tokens (dbt view). |
+| `wc2026_whale_minutely_odds` | One row per token timestamp | Minutely odds for WC2026 markets above the configured volume threshold (filtered view over `wc2026_token_minutely_odds`). |
 
 ## Health And Observability
 
@@ -28,12 +29,12 @@ Schema: `polymarket_marts`
 ## Current Scope Rules
 
 - `token_coverage` covers all staged tokens.
-- `token_latest_odds` is intentionally WC2026-scoped.
+- `wc2026_token_minutely_odds` and `wc2026_token_daily_odds` are WC2026-scoped full time series.
 - `wc2026_whale_minutely_odds` is WC2026-scoped and filtered by
   `polymarket_whale_min_volume_usd`.
 - After `make prune-odds-history`, `polymarket_raw.odds_history` (and therefore
-  `wc2026_whale_minutely_odds`) only guarantees the trailing ~365 days of minutely
-  points unless you change the retention window.
+  `wc2026_token_minutely_odds` and `wc2026_whale_minutely_odds`) only guarantees
+  the trailing ~365 days of minutely points unless you change the retention window.
 - `int_polymarket_wc2026_markets` is the canonical market-level WC2026 scope.
 
 ## dbt Checks
@@ -43,5 +44,13 @@ Schema: `polymarket_marts`
 - Source and staging grain.
 - Price sanity and OHLC bounds.
 - Token and market coverage consistency.
-- Latest odds parity with intermediate time series.
+- WC2026 odds time series parity with intermediate models.
 - WC2026 scope and whale volume threshold filtering.
+
+## Migration From token_latest_odds
+
+`token_latest_odds` was removed in favor of full time-series marts. To get the
+latest daily or minutely price for a token, query `wc2026_token_daily_odds` or
+`wc2026_token_minutely_odds` with `max(odds_date_utc)` or
+`max(odds_timestamp_epoch)` per `clob_token_id`, or query the intermediate
+models directly.
