@@ -34,7 +34,7 @@ OddsFox keeps the data stack local and inspectable:
   Gamma and CLOB ingestion.
 - Dagster coordinates market discovery, registry refresh, odds sync, and dbt.
 - dbt models staging, intermediate, mart, and observability schemas.
-- Operator scripts inspect, compact, and repair local warehouse state.
+- Operator scripts inspect, compact, prune, and repair local warehouse state.
 
 See [Architecture](docs/architecture.md) and [Warehouse](docs/warehouse.md).
 

@@ -31,6 +31,9 @@ Schema: `polymarket_marts`
 - `token_latest_odds` is intentionally WC2026-scoped.
 - `wc2026_whale_minutely_odds` is WC2026-scoped and filtered by
   `polymarket_whale_min_volume_usd`.
+- After `make prune-odds-history`, `polymarket_raw.odds_history` (and therefore
+  `wc2026_whale_minutely_odds`) only guarantees the trailing ~365 days of minutely
+  points unless you change the retention window.
 - `int_polymarket_wc2026_markets` is the canonical market-level WC2026 scope.
 
 ## dbt Checks

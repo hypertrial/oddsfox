@@ -12,7 +12,8 @@ Schema: `polymarket_raw`
 
 - `markets`: dlt-owned Gamma market landing table.
 - `market_tokens`: one row per market with CLOB token JSON.
-- `odds_history`: point-in-time CLOB token prices.
+- `odds_history`: point-in-time CLOB token prices. Operators may prune rows older
+  than 365 days with `make prune-odds-history` (manual; not automatic).
 - `token_odds_daily`: daily token aggregates.
 
 ## Ops Tables
@@ -52,7 +53,8 @@ Schema: `polymarket_marts`
   checked rollups.
 - `token_latest_odds`: latest daily and point-in-time odds per WC2026 token.
 - `wc2026_markets`: scoped WC2026 market universe.
-- `wc2026_whale_minutely_odds`: minutely odds for high-volume WC2026 markets.
+- `wc2026_whale_minutely_odds`: minutely odds for high-volume WC2026 markets (dbt
+  view over `int_polymarket_token_timeseries`; not materialized to save disk).
 
 Schema: `polymarket_observability`
 

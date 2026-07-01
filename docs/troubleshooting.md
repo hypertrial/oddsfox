@@ -86,8 +86,18 @@ Then rerun the quickstart.
 
 ## Large Warehouse File
 
-DuckDB files do not always shrink after rebuilds. Stop writers, then run:
+DuckDB files do not always shrink after rebuilds or deletes. Stop writers, then:
+
+1. Prune old raw odds points (default: keep the trailing 365 days):
 
 ```bash
-uv run python scripts/compact_warehouse.py
+uv run make prune-odds-history
+# or preview first:
+uv run python scripts/prune_odds_history.py --dry-run
+```
+
+2. Reclaim dead space left in the file:
+
+```bash
+uv run make compact-warehouse
 ```

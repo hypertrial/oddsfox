@@ -53,4 +53,6 @@ Enable `POLYMARKET_MINUTELY_ODDS_LIVE_SCHEDULE_ENABLED` only during intentional 
 - Re-run `polymarket_ingest_incremental` for routine gaps.
 - Run `polymarket_odds_repair` if the token sync ledger is inconsistent.
 - Run `dbt_full_refresh` after raw or ops table repairs.
+- Prune old `polymarket_raw.odds_history` rows with `make prune-odds-history` (default 365-day retention; use `--dry-run` on the script to preview).
+- Reclaim DuckDB file dead space with `make compact-warehouse` after pruning or full refreshes.
 - Use `scripts/profile_warehouse.py` to inspect relation counts and freshness without opening the database read-write.

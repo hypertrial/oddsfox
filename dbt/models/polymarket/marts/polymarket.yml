@@ -149,6 +149,7 @@ models:
     description: >
       Minute-grain odds for high-liquidity WC2026 markets (volume >= polymarket_whale_min_volume_usd).
       One row per (clob_token_id, odds_timestamp_epoch) with market labels and volume from the WC2026 token universe.
+      Materialized as a dbt view (not a table) to avoid duplicating raw odds_history on disk.
     columns:
       - name: clob_token_id
         description: CLOB outcome token identifier.

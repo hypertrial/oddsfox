@@ -1,4 +1,4 @@
-.PHONY: dagster-dev duckdb-ui dbt-build dbt-parse dbt-test docs-serve docs-build docs-check clean-local-artifacts format lint test unit-core unit-ingest unit-orchestration integration-dbt integration-dagster check-secrets
+.PHONY: dagster-dev duckdb-ui dbt-build dbt-parse dbt-test docs-serve docs-build docs-check clean-local-artifacts format lint test unit-core unit-ingest unit-orchestration integration-dbt integration-dagster check-secrets compact-warehouse prune-odds-history
 
 REPO_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 override PYTHON := $(shell if test -x "$(REPO_ROOT)/.venv/bin/python"; then printf '%s' "$(REPO_ROOT)/.venv/bin/python"; else printf 'python3'; fi)
@@ -75,3 +75,9 @@ clean-local-artifacts:
 	$(RUN_IN_REPO) find . -type d -name __pycache__ -prune -exec rm -rf {} +
 	$(RUN_IN_REPO) rm -rf .pytest_cache .ruff_cache .dagster_home .cache site dbt/logs dbt/target src/oddsfox.egg-info
 	$(RUN_IN_REPO) find . -maxdepth 2 \( -name '*.duckdb' -o -name '*.duckdb.tmp' -o -name '*.duckdb-wal' -o -name '*.duckdb-shm' -o -name '*.duckdb.wal' \) -exec rm -rf {} +
+
+compact-warehouse:
+	$(RUN_IN_REPO) "$(PYTHON)" scripts/compact_warehouse.py
+
+prune-odds-history:
+	$(RUN_IN_REPO) "$(PYTHON)" scripts/prune_odds_history.py

@@ -12,7 +12,7 @@ with [Quickstart](quickstart.md).
 | `src/oddsfox` | Python package for config, ingestion, storage, resources, and orchestration. |
 | `dbt` | DuckDB dbt project, profiles, macros, models, and singular tests. |
 | `docs` | MkDocs site content and OddsFox dark CSS. |
-| `scripts` | Operator utilities for warehouse inspection, compaction, repair, and scope audits. |
+| `scripts` | Operator utilities for warehouse inspection, compaction, pruning, repair, and scope audits. |
 | `tests` | Unit, integration, dbt, Dagster, and repo policy tests. |
 
 ## Local Setup
