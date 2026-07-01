@@ -1,5 +1,9 @@
 # Troubleshooting
 
+Use this page when a local run fails. Most fixes assume schedules are disabled
+and only one process is writing to the DuckDB warehouse. The current runbooks
+target the Polymarket/WC2026 implementation.
+
 ## DuckDB Lock Errors
 
 Only one read-write connection can hold the DuckDB file.

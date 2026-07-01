@@ -1,6 +1,10 @@
 # Configuration
 
 Use `.env.example` as the source of local overrides.
+For first-run steps, see [Quickstart](quickstart.md).
+
+Most settings are adapter-specific. In v0.1.0, that means Polymarket and WC2026
+scope controls.
 
 ## Warehouse and dbt
 
@@ -19,7 +23,7 @@ Most operators should leave `DBT_PROFILES_DIR` unset and use the packaged `dbt/p
 
 Lower request rates when Polymarket APIs return transient failures or timeouts.
 
-## WC2026 Scope
+## Current WC2026 Scope
 
 - `POLYMARKET_WC2026_DEFAULT_EVENT_SLUG`
 - `POLYMARKET_WC2026_EVENT_SLUGS`

@@ -1,8 +1,9 @@
 # tests
 
-This subtree validates the v0.1.0 WC2026 Polymarket pipeline.
+This subtree validates the OddsFox prediction-market pipeline. Version `0.1.0`
+starts with WC2026 Polymarket ingestion, marts, and orchestration.
 
-See [Operator docs](../docs/index.md) for setup and runbook commands.
+See [OddsFox docs](../docs/index.md) for setup and runbook commands.
 
 - `unit/`: mocked config, ingestion, storage, and orchestration tests.
 - `integration/`: DuckDB/dbt/Dagster smoke tests using temp databases.

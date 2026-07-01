@@ -31,10 +31,11 @@ dbt-parse:
 	$(RUN_IN_REPO) $(DBT_LINT_ENV) "$(PYTHON)" -m dbt.cli.main parse --project-dir dbt --profiles-dir dbt/profiles
 
 docs-serve:
-	$(RUN_IN_REPO) "$(PYTHON)" -m mkdocs serve -a 127.0.0.1:8000
+	$(RUN_IN_REPO) NO_MKDOCS_2_WARNING=true "$(PYTHON)" -m mkdocs serve -a 127.0.0.1:8000
 
 docs-build docs-check:
-	$(RUN_IN_REPO) "$(PYTHON)" -m mkdocs build --strict
+	$(RUN_IN_REPO) NO_MKDOCS_2_WARNING=true "$(PYTHON)" -m mkdocs build --strict
+	$(RUN_IN_REPO) "$(PYTHON)" -m pytest tests/test_docs_structure.py::test_built_docs_use_material_homepage -q -n 0
 
 format:
 	$(RUN_IN_REPO) ruff format src tests

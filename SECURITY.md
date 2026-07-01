@@ -26,4 +26,7 @@ We will acknowledge receipt and work with you on a timeline for investigation an
 
 ## Scope notes
 
-OddsFox is a **local-first** research pipeline. It reads public Polymarket/Gamma APIs and stores data in a local DuckDB warehouse. Optional CLOB credentials in `.env` are user-supplied and must never be committed to the repository.
+OddsFox is a **local-first** prediction-market data pipeline. The current
+implementation reads public Polymarket/Gamma and CLOB APIs and stores data in a
+local DuckDB warehouse. Optional CLOB credentials in `.env` are user-supplied
+and must never be committed to the repository.

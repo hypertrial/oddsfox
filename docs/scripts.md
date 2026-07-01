@@ -1,6 +1,7 @@
 # Scripts
 
 Operator scripts live under `scripts/`.
+Run them through `uv run python` so they use the repo environment.
 
 ## Warehouse
 
@@ -9,7 +10,7 @@ Operator scripts live under `scripts/`.
 - `repair_polymarket_token_sync_ledger.py`: rebuild a corrupted token sync ledger.
 - `audit_legacy_warehouse_layout.py`: detect old schema layouts in a warehouse file.
 
-## Polymarket Scope
+## Current Polymarket Scope
 
 - `audit_polymarket_wc2026_scope.py`: compare registry, allowlist, and strict WC2026 scope.
 - `audit_wc2026_tag_coverage.py`: crawl Gamma tag/search discovery and report registry gaps.

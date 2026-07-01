@@ -1,0 +1,33 @@
+name: Documentation issue
+description: Report stale, missing, or unclear docs.
+title: "docs: "
+labels: ["documentation"]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page or section
+      placeholder: docs/quickstart.md
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is stale, missing, confusing, or hard to follow?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Suggested fix
+      description: What should the docs say or link to instead?
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Affected audience
+      options:
+        - New user
+        - Local operator
+        - Contributor
+        - Maintainer

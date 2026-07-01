@@ -1,6 +1,10 @@
 # AGENTS.md
 
-OddsFox v0.1.0 is a local Python data pipeline for FIFA World Cup 2026 Polymarket markets and odds. Stack: **Dagster** (orchestration), **dlt** (Gamma landing), **dbt** + **DuckDB** (warehouse/analytics), **uv** (deps), **Ruff** + **sqlfluff** (lint), **pytest** (tests).
+OddsFox is an open-source, local-first prediction-market data pipeline.
+Version `0.1.0` starts with FIFA World Cup 2026 Polymarket markets and odds.
+Stack: **Dagster** (orchestration), **dlt** (market landing), **dbt** +
+**DuckDB** (warehouse/analytics), **uv** (deps), **Ruff** + **sqlfluff**
+(lint), **pytest** (tests).
 
 ## Setup
 
@@ -75,7 +79,7 @@ tests/
   unit/            # Mocked config, ingestion, storage, orchestration
   integration/     # DuckDB/dbt/Dagster smoke (temp databases)
   dbt/             # dbt project structure checks
-docs/              # Operator manual (MkDocs)
+docs/              # Project docs (MkDocs)
 scripts/           # Warehouse audits, repairs, profiling (not CI gate)
 ```
 
@@ -126,18 +130,18 @@ DuckDB is local-only runtime state. For read-only inspection prefer `scripts/pro
 - Commit `.env`, secrets, `*.duckdb` / WAL/SHM files, parquet/CSV exports, or other local artifacts (see [`.gitignore`](.gitignore)).
 - Set `CLOB_API_KEY`, `CLOB_API_SECRET`, or `CLOB_API_PASSPHRASE` for docs, dbt, or mocked tests.
 - Invent commands outside the Makefile; if a check is missing, add a Makefile target rather than documenting one-off scripts as the gate.
-- Expand repo scope (soccer context, simulations, allocation, web integration) — v0.1.0 is WC2026 Polymarket ingest + warehouse only.
+- Add runtime scope such as soccer context, simulations, allocation, or web integration without explicit product direction; v0.1.0 still ships the WC2026 Polymarket ingest and warehouse implementation.
 
 ## Pull requests
 
 1. Branch from `main`.
 2. Keep changes focused; one concern per PR when possible.
 3. Ensure the quality gate passes locally.
-4. Update operator docs in `docs/` only when behavior or configuration changes.
+4. Update docs in `docs/` when behavior, configuration, or project positioning changes.
 
 ## Further reading
 
-- [Operator manual](docs/index.md) — runbooks, warehouse, troubleshooting
+- [OddsFox docs](docs/index.md) — overview, runbooks, warehouse, troubleshooting
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contributor workflow and CI parity
 - [docs/operations.md](docs/operations.md) — assets, jobs, schedules, recovery
 - [docs/configuration.md](docs/configuration.md) — `.env` reference

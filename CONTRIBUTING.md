@@ -1,6 +1,9 @@
 # Contributing to OddsFox
 
-Thank you for your interest in contributing. OddsFox v0.1.0 is a local Python data pipeline for FIFA World Cup 2026 Polymarket markets and odds (Dagster, dlt, dbt, DuckDB).
+Thank you for your interest in contributing. OddsFox is an open-source,
+local-first prediction-market data pipeline built with Dagster, dlt, dbt, and
+DuckDB. Version `0.1.0` starts with FIFA World Cup 2026 Polymarket markets and
+odds.
 
 ## Development setup
 

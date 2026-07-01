@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "oddsfox"
 version = "0.1.0"
-description = "Dagster + dlt + dbt + DuckDB pipeline for WC2026 Polymarket markets and odds."
+description = "Dagster-orchestrated dlt + dbt + DuckDB pipeline for prediction-market data."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -29,6 +29,7 @@ dependencies = [
 dev = [
   "dagster-dg-cli>=1.13.0",
   "mkdocs>=1.6.0",
+  "mkdocs-material>=9.5.0",
   "pip-audit>=2.7.0",
   "pytest>=8.0.0",
   "pytest-cov>=5.0.0",

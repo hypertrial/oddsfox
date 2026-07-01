@@ -1,5 +1,12 @@
 # Operations
 
+Use this page when running Dagster assets, jobs, schedules, or recovery paths.
+For data outputs, see [Warehouse](warehouse.md) and
+[Data Contracts](data-contracts.md).
+
+The project is broader than WC2026, but the v0.1.0 orchestration surface below
+is the shipped Polymarket/WC2026 implementation.
+
 ## Dagster Assets
 
 The main asset order is:
@@ -18,7 +25,7 @@ The main asset order is:
 
 - `polymarket_ingest_full_refresh_events`: full WC2026 event/market discovery, registry refresh, metadata backfill, and odds sync.
 - `polymarket_ingest_incremental`: metadata backfill and routine token odds sync.
-- `polymarket_minutely_odds_ingest`: minutely odds refresh for whale markets.
+- `polymarket_minutely_odds_ingest`: minutely odds refresh for high-volume markets in the current scope.
 - `dbt_full_refresh`: dbt analytics build.
 - `wc2026_polymarket_full_pipeline`: full ingest plus dbt build.
 

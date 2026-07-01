@@ -1,0 +1,40 @@
+name: Feature request
+description: Propose a focused OddsFox enhancement.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or operator problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should OddsFox do differently?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Ingestion
+        - Orchestration
+        - dbt / warehouse
+        - Operator scripts
+        - Documentation
+        - CI / development
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any simpler workaround or existing workflow?
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility notes
+      description: Any expected changes to public marts, jobs, schedules, or local workflows?

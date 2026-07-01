@@ -9,13 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Local Python pipeline for FIFA World Cup 2026 Polymarket markets and odds.
+- Local Python pipeline foundation for prediction-market data, initially
+  focused on FIFA World Cup 2026 Polymarket markets and odds.
 - Dagster orchestration with WC2026 ingest, minutely odds, and dbt refresh jobs.
 - dlt landing for Polymarket Gamma markets into DuckDB raw schemas.
 - Python odds sync engine with ledgers, retries, and token-level planning.
 - dbt staging, intermediate, mart, and observability models for WC2026 scope.
 - DuckDB warehouse bootstrap, ops schemas, and profiling utilities.
-- MkDocs operator manual with CI `docs-check` validation.
+- MkDocs documentation site with CI `docs-check` validation.
 - GitHub Actions CI: lint, tests, docs build, dbt parse, and dbt build.
 - Schedules disabled by default; opt-in via `.env` for live ingestion.
 

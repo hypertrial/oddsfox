@@ -1,5 +1,9 @@
 # Quickstart
 
+Use this page for the first local run. It keeps schedules off until the
+warehouse, dbt project, and manual Dagster jobs are healthy. The v0.1.0
+quickstart runs the current Polymarket/WC2026 pipeline.
+
 ## 1. Install
 
 ```bash
@@ -60,3 +64,6 @@ For a safer staged run:
 3. `dbt_full_refresh`
 
 Leave schedules off until these jobs complete successfully.
+
+Next: read [Operations](operations.md) before enabling schedules, and use
+[Troubleshooting](troubleshooting.md) if Dagster, DuckDB, or dbt fails.
