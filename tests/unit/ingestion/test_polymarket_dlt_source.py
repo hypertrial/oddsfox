@@ -5,6 +5,30 @@ from oddsfox.ingestion.polymarket.dlt_source import (
 from oddsfox.storage.duckdb.dlt_batch import DLT_STRICT_SCHEMA_CONTRACT
 
 
+def test_polymarket_markets_source_yields_prefetched_rows():
+    rows = [
+        {
+            "id": "m1",
+            "question": "Who will win?",
+            "category": "Sports",
+            "description": "Winner market",
+            "outcomes": '["Yes", "No"]',
+            "volume": 100.0,
+            "active": True,
+            "closed": False,
+            "created_at": "2025-01-01 00:00:00",
+            "scraped_at": "2025-01-02 00:00:00",
+            "end_date": "2026-07-19 00:00:00",
+            "slug": "2026-fifa-world-cup-winner",
+            "event_slug": "2026-fifa-world-cup-winner",
+            "event_id": "99",
+        }
+    ]
+    resource = polymarket_markets_source(rows=rows).resources["markets"]
+
+    assert list(resource) == rows
+
+
 def test_markets_resource_has_frozen_columns_and_types_contract():
     resource = polymarket_markets_source().resources["markets"]
 

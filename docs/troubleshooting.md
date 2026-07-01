@@ -51,6 +51,21 @@ DROP INDEX IF EXISTS polymarket_raw.idx_markets_id;
 
 The dlt asset also clears pending failed load packages before re-extracting.
 
+## dlt ContainerInjectableContextMangled
+
+If `dlt_polymarket_markets` fails during extract with:
+
+```text
+ContainerInjectableContextMangled: When restoring context `DestinationCapabilitiesContext` ...
+```
+
+an older build nested a second dlt pipeline (registry staging) inside the markets pipeline extract. Pull the latest code: the asset now fetches and normalizes markets before calling `dlt.run()`, so only one dlt pipeline runs at a time.
+
+Fix:
+
+1. Pull the latest code.
+2. Stop Dagster, then rerun `dlt_polymarket_markets`.
+
 ## dlt Market Schema Conflict
 
 If dlt cannot load `polymarket_raw.markets` because of a bootstrap schema mismatch, drop the existing table and rerun `dlt_polymarket_markets`:

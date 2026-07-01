@@ -22,7 +22,7 @@ from oddsfox.ingestion.polymarket.wc2026_scope import (
 from oddsfox.storage.duckdb.dlt_batch import DLT_STRICT_SCHEMA_CONTRACT
 
 
-def _collect_raw_markets(
+def collect_raw_markets(
     *,
     discovery_mode: DiscoveryMode = DISCOVERY_MODE_FULL_KEYSET,
     max_event_pages: int | None = None,
@@ -84,15 +84,7 @@ def normalize_market_payloads_for_dlt(
 
 
 @dlt.source(name="polymarket")
-def polymarket_markets_source(
-    *,
-    discovery_mode: DiscoveryMode = DISCOVERY_MODE_FULL_KEYSET,
-    max_event_pages: int | None = None,
-    max_pages_without_progress: int | None = None,
-    keyset_closed: bool | None = False,
-    keyset_tag_slugs: list[str] | None = None,
-    keyset_volume_min: float | None = POLYMARKET_WC2026_KEYSET_VOLUME_MIN,
-):
+def polymarket_markets_source(rows: Iterable[dict[str, Any]] = ()):
     @dlt.resource(
         name="markets",
         primary_key="id",
@@ -116,20 +108,13 @@ def polymarket_markets_source(
         },
     )
     def markets():
-        rows = normalize_market_payloads_for_dlt(
-            _collect_raw_markets(
-                discovery_mode=discovery_mode,
-                max_event_pages=max_event_pages,
-                max_pages_without_progress=max_pages_without_progress,
-                keyset_closed=keyset_closed,
-                keyset_tag_slugs=keyset_tag_slugs,
-                keyset_volume_min=keyset_volume_min,
-            )
-        )
-        for row in rows:
-            yield row
+        yield from rows
 
     return markets
 
 
-__all__ = ["normalize_market_payloads_for_dlt", "polymarket_markets_source"]
+__all__ = [
+    "collect_raw_markets",
+    "normalize_market_payloads_for_dlt",
+    "polymarket_markets_source",
+]

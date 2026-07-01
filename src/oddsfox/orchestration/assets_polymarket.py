@@ -5,7 +5,11 @@ from dagster import AssetExecutionContext, MaterializeResult, MetadataValue, ass
 from dagster_dbt import DbtCliResource, dbt_assets
 from dagster_dlt import DagsterDltResource, dlt_assets
 
-from oddsfox.ingestion.polymarket.dlt_source import polymarket_markets_source
+from oddsfox.ingestion.polymarket.dlt_source import (
+    collect_raw_markets,
+    normalize_market_payloads_for_dlt,
+    polymarket_markets_source,
+)
 from oddsfox.orchestration import polymarket_ops as ops
 from oddsfox.orchestration.config import (
     DbtBuildConfig,
@@ -150,7 +154,9 @@ def polymarket_markets_raw_dlt(
             "Clearing pending dlt packages for polymarket_wc2026_raw before extract"
         )
         pipeline.drop_pending_packages()
-    yield from dlt.run(context=context, dlt_pipeline=pipeline)
+    rows = normalize_market_payloads_for_dlt(collect_raw_markets())
+    dlt_source = polymarket_markets_source(rows=rows)
+    yield from dlt.run(context=context, dlt_pipeline=pipeline, dlt_source=dlt_source)
 
 
 @asset(
