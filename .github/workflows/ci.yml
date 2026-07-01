@@ -56,6 +56,11 @@ jobs:
       - name: dbt build
         run: uv run make dbt-build-ci
 
+      - name: Set up Python for Costguard
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Costguard
         uses: hypertrial/costguard/.github/actions/costguard@v2.5.0
         with:
