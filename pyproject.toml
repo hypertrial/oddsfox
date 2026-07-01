@@ -53,6 +53,7 @@ filterwarnings = [
   "ignore:.*AssetExecutionContext\\.op is deprecated.*:DeprecationWarning:dagster_dbt.asset_utils",
 ]
 markers = [
+  "facade: facade-level orchestration tests",
   "integration: hits external tools or shared resources",
   "performance: long-running benchmarks",
   "slow: expensive checks excluded from normal unit runs",

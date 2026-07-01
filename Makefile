@@ -1,4 +1,4 @@
-.PHONY: dagster-dev duckdb-ui dbt-build dbt-parse dbt-test docs-serve docs-build docs-check clean-local-artifacts format lint test unit-core unit-ingest unit-orchestration integration-dbt integration-dagster check-secrets compact-warehouse prune-odds-history
+.PHONY: dagster-dev duckdb-ui dbt-build dbt-build-ci dbt-parse dbt-test docs-serve docs-build docs-check clean-local-artifacts format lint test unit-core unit-ingest unit-orchestration integration-dbt integration-dagster check-secrets compact-warehouse prune-odds-history
 
 REPO_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 override PYTHON := $(shell if test -x "$(REPO_ROOT)/.venv/bin/python"; then printf '%s' "$(REPO_ROOT)/.venv/bin/python"; else printf 'python3'; fi)
@@ -6,6 +6,8 @@ RUN_IN_REPO := cd "$(REPO_ROOT)" &&
 DUCKDB_NAME ?= oddsfox.duckdb
 DBT_LINT_DUCKDB_PATH := $(REPO_ROOT)/.cache/dbt_lint.duckdb
 DBT_LINT_ENV := DUCKDB_PATH="$(DBT_LINT_DUCKDB_PATH)"
+DBT_BUILD_DUCKDB_PATH := $(REPO_ROOT)/.cache/dbt_build.duckdb
+DBT_BUILD_ENV := DUCKDB_NAME="$(DBT_BUILD_DUCKDB_PATH)" DUCKDB_PATH="$(DBT_BUILD_DUCKDB_PATH)"
 PYTEST_FAST_MARKERS := not integration and not performance and not slow and not repo_check
 
 duckdb-ui:
@@ -25,6 +27,11 @@ dagster-dev:
 
 dbt-build dbt-test:
 	$(RUN_IN_REPO) "$(PYTHON)" -m dbt.cli.main build --project-dir dbt --profiles-dir dbt/profiles
+
+dbt-build-ci:
+	$(RUN_IN_REPO) mkdir -p "$(REPO_ROOT)/.cache"
+	$(RUN_IN_REPO) $(DBT_BUILD_ENV) "$(PYTHON)" -c "import oddsfox.storage.duckdb.connection as connection; connection._SCHEMA_INITIALIZED = False; connection._SCHEMA_LOGGED = False; connection.init_duck_db()"
+	$(RUN_IN_REPO) $(DBT_BUILD_ENV) $(MAKE) dbt-build
 
 dbt-parse:
 	$(RUN_IN_REPO) mkdir -p "$(REPO_ROOT)/.cache"

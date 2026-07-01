@@ -56,13 +56,14 @@ See [Data Contracts](docs/data-contracts.md).
 ```bash
 uv run make lint
 uv run make test
+uv run make integration-dbt
 uv run make docs-check
 uv run make dbt-parse
+uv run make dbt-build-ci
 ```
 
-For full dbt build parity with CI, initialize DuckDB bootstrap tables before
-`uv run make dbt-build`. See [Development](docs/development.md) and
-[CONTRIBUTING.md](CONTRIBUTING.md).
+`dbt-build-ci` uses a disposable DuckDB database under `.cache/` for CI parity.
+See [Development](docs/development.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Community
 

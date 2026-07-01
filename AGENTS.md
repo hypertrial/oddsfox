@@ -33,21 +33,14 @@ Mirrors [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Use `uv run make
 ```bash
 uv run make lint
 uv run make test
+uv run make integration-dbt
 uv run make docs-check
 uv run make dbt-parse
+uv run make dbt-build-ci
 ```
 
-For full dbt build parity with CI, bootstrap DuckDB schemas first:
-
-```bash
-uv run python - <<'PY'
-import oddsfox.storage.duckdb.connection as connection
-connection._SCHEMA_INITIALIZED = False
-connection._SCHEMA_LOGGED = False
-connection.init_duck_db()
-PY
-uv run make dbt-build
-```
+`dbt-build-ci` bootstraps a disposable DuckDB database under `.cache/` before
+running dbt build.
 
 ### Targeted commands
 
@@ -59,6 +52,7 @@ uv run make dbt-build
 | `make unit-orchestration` | Orchestration/Dagster unit tests |
 | `make integration-dbt` | DuckDB + dbt integration smoke |
 | `make integration-dagster` | Dagster integration smoke |
+| `make dbt-build-ci` | Bootstrap disposable DuckDB + dbt build |
 | `make dagster-dev` | Local Dagster UI |
 | `make docs-serve` | MkDocs dev server |
 

@@ -6,19 +6,27 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  POLYMARKET_MINUTELY_ODDS_SCHEDULE_ENABLED: "false"
+  POLYMARKET_MINUTELY_ODDS_LIVE_SCHEDULE_ENABLED: "false"
+
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.10"
 
       - uses: astral-sh/setup-uv@v5
         with:
@@ -33,6 +41,9 @@ jobs:
       - name: Tests
         run: uv run make test
 
+      - name: dbt integration smoke
+        run: uv run make integration-dbt
+
       - name: Docs
         run: uv run make docs-check
 
@@ -40,11 +51,4 @@ jobs:
         run: uv run make dbt-parse
 
       - name: dbt build
-        run: |
-          uv run python - <<'PY'
-          import oddsfox.storage.duckdb.connection as connection
-          connection._SCHEMA_INITIALIZED = False
-          connection._SCHEMA_LOGGED = False
-          connection.init_duck_db()
-          PY
-          uv run make dbt-build
+        run: uv run make dbt-build-ci

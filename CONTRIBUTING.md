@@ -32,21 +32,14 @@ Run these before opening a pull request (they mirror [`.github/workflows/ci.yml`
 ```bash
 uv run make lint
 uv run make test
+uv run make integration-dbt
 uv run make docs-check
 uv run make dbt-parse
+uv run make dbt-build-ci
 ```
 
-For full CI parity with dbt build, initialize the DuckDB bootstrap tables first, then build:
-
-```bash
-uv run python - <<'PY'
-import oddsfox.storage.duckdb.connection as connection
-connection._SCHEMA_INITIALIZED = False
-connection._SCHEMA_LOGGED = False
-connection.init_duck_db()
-PY
-uv run make dbt-build
-```
+`dbt-build-ci` bootstraps a disposable DuckDB database under `.cache/` before
+running dbt build.
 
 Additional targets are available in the [Makefile](Makefile) (`unit-core`, `unit-ingest`, `integration-dbt`, etc.).
 

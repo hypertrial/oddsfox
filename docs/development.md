@@ -37,21 +37,14 @@ Run the same checks CI runs:
 ```bash
 uv run make lint
 uv run make test
+uv run make integration-dbt
 uv run make docs-check
 uv run make dbt-parse
+uv run make dbt-build-ci
 ```
 
-For full dbt build parity:
-
-```bash
-uv run python - <<'PY'
-import oddsfox.storage.duckdb.connection as connection
-connection._SCHEMA_INITIALIZED = False
-connection._SCHEMA_LOGGED = False
-connection.init_duck_db()
-PY
-uv run make dbt-build
-```
+`dbt-build-ci` bootstraps a disposable DuckDB database under `.cache/` before
+running dbt build.
 
 ## Targeted Test Commands
 
@@ -62,6 +55,7 @@ uv run make dbt-build
 | `uv run make unit-orchestration` | Dagster asset, job, and schedule tests. |
 | `uv run make integration-dbt` | DuckDB and dbt smoke tests. |
 | `uv run make integration-dagster` | Dagster integration smoke tests. |
+| `uv run make dbt-build-ci` | Bootstrap disposable DuckDB and run dbt build. |
 
 ## Pull Request Expectations
 
