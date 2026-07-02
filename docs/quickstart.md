@@ -1,7 +1,7 @@
 # Quickstart
 
 Use this page for the first local run. It keeps schedules off until the
-warehouse, dbt project, and manual Dagster jobs are healthy. The v0.1.0
+warehouse, dbt project, and manual Dagster jobs are healthy. The v0.1.x
 quickstart runs the current Polymarket/WC2026 pipeline.
 
 ## 1. Install

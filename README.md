@@ -8,7 +8,7 @@ OddsFox is an open-source, local-first data pipeline for prediction-market
 data.
 
 It uses Dagster to orchestrate dlt ingestion, DuckDB storage, Python sync
-ledgers, and dbt analytics models. Version `0.1.0` starts with FIFA World Cup
+ledgers, and dbt analytics models. Version `0.1.x` starts with FIFA World Cup
 2026 Polymarket markets and odds, but the project direction is broader:
 inspectable prediction-market pipelines that run locally first.
 

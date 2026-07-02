@@ -1,6 +1,6 @@
 # tests
 
-This subtree validates the OddsFox prediction-market pipeline. Version `0.1.0`
+This subtree validates the OddsFox prediction-market pipeline. Version `0.1.x`
 starts with WC2026 Polymarket ingestion, marts, and orchestration.
 
 See [OddsFox docs](../docs/index.md) for setup and runbook commands.

@@ -71,6 +71,20 @@ materialization work. Before changing dbt materializations or adding
 incremental models, capture the failing advisory, dbt build runtime, and
 warehouse/profile size evidence that justifies the change.
 
+## dbt Materialization Debt
+
+Treat Costguard medium/low advisories as measurement prompts. Current measured
+debt includes:
+
+- `SQLCOST039`: `int_polymarket_token_universe` is a heavily reused view.
+- `SQLCOST040`: `token_coverage` and `wc2026_markets` rebuild as full tables.
+- Low advisories: repeated CTEs in mart comparison tests and an `ORDER BY`
+  without `LIMIT` in `token_coverage`.
+
+Do not change materializations on advisory text alone. Capture dbt build
+runtime, relevant relation sizes from `scripts/profile_warehouse.py`, and the
+Costguard finding before switching a model to table or incremental.
+
 ## Targeted Test Commands
 
 | Target | Use |

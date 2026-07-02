@@ -1,7 +1,7 @@
 # AGENTS.md
 
 OddsFox is an open-source, local-first prediction-market data pipeline.
-Version `0.1.0` starts with FIFA World Cup 2026 Polymarket markets and odds.
+Version `0.1.x` starts with FIFA World Cup 2026 Polymarket markets and odds.
 Stack: **Dagster** (orchestration), **dlt** (market landing), **dbt** +
 **DuckDB** (warehouse/analytics), **uv** (deps), **Ruff** + **sqlfluff**
 (lint), **pytest** (tests).
