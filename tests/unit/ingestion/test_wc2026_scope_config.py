@@ -21,9 +21,9 @@ from oddsfox.ingestion.polymarket.wc2026_scope import (
 )
 
 
-def test_validate_market_scope_rejects_legacy():
-    with pytest.raises(ValueError, match="wc2026_legacy"):
-        validate_market_scope("wc2026_legacy")
+def test_validate_market_scope_rejects_unknown_scope():
+    with pytest.raises(ValueError, match="bad-scope"):
+        validate_market_scope("bad-scope")
 
 
 def test_load_wc2026_config_includes_default_slug(monkeypatch):

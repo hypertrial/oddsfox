@@ -12,10 +12,9 @@ Schema: `polymarket_raw`
 
 - `markets`: dlt-owned Gamma market landing table with frozen column/type contract.
 - `market_tokens`: one row per market with CLOB token JSON; current batches land through dlt staging and finalize into this canonical table with `INSERT OR REPLACE`.
-- `odds_history`: point-in-time CLOB token prices. Indexed only by the composite
-  primary key `(clobTokenId, timestamp)` for idempotent upserts; legacy standalone
-  `clobTokenId`/`timestamp` indexes are dropped on startup to save disk. Operators
-  may prune rows older than 365 days with `make prune-odds-history` (manual; not automatic).
+- `odds_history`: point-in-time CLOB token prices. Indexed by the composite
+  primary key `(clobTokenId, timestamp)` for idempotent upserts. Operators may
+  prune rows older than 365 days with `make prune-odds-history` (manual; not automatic).
   Current batches land through dlt staging, then finalize with duplicate `(clobTokenId, timestamp)` last-write-wins semantics.
 - `token_odds_daily`: daily token aggregates rebuilt by custom SQL finalizers from
   canonical `odds_history`.
@@ -31,7 +30,7 @@ Schema: `polymarket_ops`
 - `token_sync_skips`: persisted skip reasons kept in custom SQL to preserve `created_at`.
 - `pipeline_run_events`: append-only run metrics landed through dlt staging.
 - `sync_run_metrics`: latest sync metrics and short history.
-- `scrape_metadata`: small key/value metadata used by legacy-compatible helpers.
+- `scrape_metadata`: small key/value metadata used by backfill progress helpers.
 - `market_metadata_unresolved`: retry ledger for unresolved metadata fields.
 
 ## dbt Schemas
@@ -76,9 +75,9 @@ landing for `markets`, `market_tokens`, `odds_history`,
 `wc2026_market_registry`, and `pipeline_run_events`; stage tables and `_dlt*`
 metadata tables are internal implementation details.
 
-`polymarket_raw.markets` is created by `dlt_polymarket_markets`.
-
-Local dbt smoke builds may create an empty bootstrap table before dlt runs. The dlt asset drops that legacy bootstrap table when it lacks dlt metadata columns, then recreates the table through dlt.
+`polymarket_raw.markets` is created by `dlt_polymarket_markets`. The
+`dbt-build-ci` target creates an empty source fixture only in its disposable
+DuckDB database.
 
 Manual reset:
 

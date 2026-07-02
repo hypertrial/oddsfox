@@ -382,9 +382,9 @@ def test_sync_odds_rejects_fidelity_below_one():
         odds_sync.sync_odds(max_workers=1, fidelity=0, persist_run_metrics=False)
 
 
-def test_sync_odds_rejects_legacy_odds_binding_keyword():
-    with pytest.raises(TypeError, match="use runtime="):
-        odds_sync.sync_odds(max_workers=1, odds_binding=object())
+def test_sync_odds_rejects_unknown_keyword():
+    with pytest.raises(TypeError, match="unexpected keyword"):
+        odds_sync.sync_odds(max_workers=1, unknown_option=object())
 
 
 def test_sync_odds_runtime_instances_do_not_mutate_shared_modules():

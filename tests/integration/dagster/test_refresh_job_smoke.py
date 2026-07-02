@@ -23,6 +23,7 @@ from oddsfox.orchestration.assets import (
     polymarket_token_odds_history,
     polymarket_wc2026_registry,
 )
+from oddsfox.storage.duckdb.schemas.polymarket import create_test_markets_table
 from oddsfox.storage.duckdb.wc2026_registry import (
     RegistryRow,
     upsert_registry_rows,
@@ -67,6 +68,7 @@ def _seed_dlt_owned_markets(market_page: list[dict]) -> None:
         return
     connection.ensure_duck_db()
     with connection.get_connection() as conn:
+        create_test_markets_table(conn)
         conn.executemany(
             """
             INSERT OR REPLACE INTO "polymarket_raw"."markets"

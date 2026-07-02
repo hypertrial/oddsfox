@@ -264,7 +264,7 @@ def make_plan(
     *,
     closed: bool = False,
 ) -> odds_sync.TokenPlan:
-    """Short-window token plan helper (legacy gap-closure tests)."""
+    """Short-window token plan helper."""
     return make_token_plan(token_id, closed=closed, short_window=True)
 
 

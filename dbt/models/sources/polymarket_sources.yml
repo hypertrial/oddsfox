@@ -48,7 +48,7 @@ sources:
           - name: updated_at
             description: UTC timestamp when this mapping row was last written by ingestion.
       - name: odds_history
-        description: Raw CLOB price history (minimum daily resolution from ingestion; may contain finer legacy points).
+        description: Raw CLOB price history (minimum daily resolution from ingestion; may contain finer minutely points).
         meta:
           dagster:
             asset_key: [polymarket_token_odds_history_minutely]

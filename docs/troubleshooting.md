@@ -28,29 +28,6 @@ If running dbt directly:
 uv run python -m dbt.cli.main parse --project-dir dbt --profiles-dir dbt/profiles
 ```
 
-## dlt Market Merge Duplicate Key
-
-If `dlt_polymarket_markets` fails with:
-
-```text
-Constraint Error: Duplicate key "id: …" violates unique constraint.
-```
-
-the warehouse likely has a legacy app-owned unique index (`idx_markets_id`) on dlt-owned `polymarket_raw.markets`. dlt merge loads manage id uniqueness via `primary_key=id`; an external unique index rejects re-discovery of existing markets.
-
-Fix:
-
-1. Pull the latest code (schema init and the dlt asset drop the legacy index automatically).
-2. Stop Dagster, then rerun `dlt_polymarket_markets`.
-
-Manual recovery if needed:
-
-```sql
-DROP INDEX IF EXISTS polymarket_raw.idx_markets_id;
-```
-
-The dlt asset also clears pending failed load packages before re-extracting.
-
 ## dlt ContainerInjectableContextMangled
 
 If `dlt_polymarket_markets` fails during extract with:
@@ -68,13 +45,13 @@ Fix:
 
 ## dlt Market Schema Conflict
 
-If dlt cannot load `polymarket_raw.markets` because of a bootstrap schema mismatch, drop the existing table and rerun `dlt_polymarket_markets`:
+If dlt cannot load `polymarket_raw.markets` because the local table schema does
+not match the current source contract, drop the table and rerun
+`dlt_polymarket_markets`:
 
 ```sql
 DROP TABLE IF EXISTS polymarket_raw.markets;
 ```
-
-The dlt asset normally handles legacy bootstrap tables automatically.
 
 ## Markets vs Snapshot Responsibilities
 
@@ -116,7 +93,3 @@ uv run python scripts/prune_odds_history.py --dry-run
 ```bash
 uv run make compact-warehouse
 ```
-
-After upgrading to a version that drops redundant `odds_history` indexes, the next
-read-write process start removes ~1.45 GiB of legacy index data automatically; run
-`make compact-warehouse` once to shrink the file on disk.

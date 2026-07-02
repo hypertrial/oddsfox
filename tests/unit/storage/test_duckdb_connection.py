@@ -528,4 +528,3 @@ def test_connect_explicit_path_skips_global_active(monkeypatch, tmp_path, isolat
         assert c.execute("select 1").fetchone()[0] == 1
     finally:
         c.close()
-

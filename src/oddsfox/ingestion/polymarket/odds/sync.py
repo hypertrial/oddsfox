@@ -199,10 +199,6 @@ def sync_odds(*args, **kwargs):
     fidelity = kwargs.get("fidelity")
     if fidelity is not None and int(fidelity) < 1:
         raise ValueError("fidelity must be at least 1 minute")
-    if "odds_binding" in kwargs:
-        raise TypeError(
-            "sync_odds() got unexpected keyword 'odds_binding'; use runtime="
-        )
     explicit_runtime = kwargs.pop("runtime", None)
     runtime = explicit_runtime or default_odds_sync_runtime()
     if "plan_iterator_factory" not in kwargs:
