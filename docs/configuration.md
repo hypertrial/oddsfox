@@ -3,7 +3,7 @@
 Use `.env.example` as the source of local overrides.
 For first-run steps, see [Quickstart](quickstart.md).
 
-Most settings are adapter-specific. In v0.1.0, that means Polymarket and WC2026
+Most settings are adapter-specific. In v0.1.x, that means Polymarket and WC2026
 scope controls.
 
 ## Warehouse and dbt

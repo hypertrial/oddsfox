@@ -1,7 +1,7 @@
 # Warehouse
 
 The local warehouse is DuckDB. By default it is `oddsfox.duckdb` in the repo
-root. OddsFox is designed for prediction-market data; the v0.1.0 warehouse
+root. OddsFox is designed for prediction-market data; the v0.1.x warehouse
 schemas and relation names are Polymarket-specific because that is the first
 shipped adapter. For public mart guarantees, see
 [Data Contracts](data-contracts.md).

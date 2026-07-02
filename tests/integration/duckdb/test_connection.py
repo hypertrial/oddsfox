@@ -8,8 +8,7 @@ def test_init_duck_db_creates_polymarket_schemas_only(tmp_path, monkeypatch):
     db_path = tmp_path / "oddsfox.duckdb"
     monkeypatch.setenv("DUCKDB_PATH", str(db_path))
     monkeypatch.setenv("DUCKDB_NAME", str(db_path))
-    connection._SCHEMA_INITIALIZED = False
-    connection._SCHEMA_LOGGED = False
+    connection.reset_duckdb_connection_state()
 
     init_duck_db()
 

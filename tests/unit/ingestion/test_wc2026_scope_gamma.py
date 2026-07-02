@@ -24,8 +24,7 @@ def test_iter_wc2026_gamma_events_skips_non_allowlisted(monkeypatch, tmp_path):
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "event_first.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
 
     client = MagicMock()
@@ -74,8 +73,7 @@ def test_gamma_events_keyset_shared_pagination_params(monkeypatch, tmp_path):
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "shared_pagination.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 

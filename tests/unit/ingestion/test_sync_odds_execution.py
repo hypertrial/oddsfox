@@ -125,8 +125,7 @@ def test_writer_loop_smoke(monkeypatch, tmp_path):
     import oddsfox.storage.duckdb.connection as connection
 
     reload_all_settings_modules()
-    connection._SCHEMA_INITIALIZED = False
-    connection._SCHEMA_LOGGED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -153,8 +152,7 @@ def test_flush_writer_buffers_rollback(monkeypatch, tmp_path):
     import oddsfox.storage.duckdb.connection as connection
 
     reload_all_settings_modules()
-    connection._SCHEMA_INITIALIZED = False
-    connection._SCHEMA_LOGGED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -192,8 +190,7 @@ def test_flush_writer_buffers_atomic_rollback_odds_and_state(monkeypatch, tmp_pa
     import oddsfox.storage.duckdb.connection as connection
 
     reload_all_settings_modules()
-    connection._SCHEMA_INITIALIZED = False
-    connection._SCHEMA_LOGGED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 

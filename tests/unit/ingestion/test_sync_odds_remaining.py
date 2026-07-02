@@ -364,8 +364,7 @@ def test_sync_odds_no_plans_stopiteration(monkeypatch, tmp_path):
     reload_all_settings_modules()
     import oddsfox.storage.duckdb.connection as conn
 
-    conn._SCHEMA_LOGGED = False
-    conn._SCHEMA_INITIALIZED = False
+    conn.reset_duckdb_connection_state()
     importlib.reload(conn)
     conn.ensure_duck_db()
 
@@ -439,8 +438,7 @@ def test_writer_loop_fatal_flush_and_final(monkeypatch, tmp_path):
     reload_all_settings_modules()
     import oddsfox.storage.duckdb.connection as conn
 
-    conn._SCHEMA_LOGGED = False
-    conn._SCHEMA_INITIALIZED = False
+    conn.reset_duckdb_connection_state()
     importlib.reload(conn)
     conn.ensure_duck_db()
 
@@ -483,8 +481,7 @@ def test_save_odds_bulk_appender_with_appender(monkeypatch, tmp_path):
     reload_all_settings_modules()
     import oddsfox.storage.duckdb.connection as conn
 
-    conn._SCHEMA_LOGGED = False
-    conn._SCHEMA_INITIALIZED = False
+    conn.reset_duckdb_connection_state()
     importlib.reload(conn)
     conn.ensure_duck_db()
     with odds_mod.get_connection() as c:
@@ -501,8 +498,7 @@ def test_save_odds_bulk_upsert_appender_staging(monkeypatch, tmp_path):
     reload_all_settings_modules()
     import oddsfox.storage.duckdb.connection as conn
 
-    conn._SCHEMA_LOGGED = False
-    conn._SCHEMA_INITIALIZED = False
+    conn.reset_duckdb_connection_state()
     importlib.reload(conn)
     conn.ensure_duck_db()
     with odds_mod.get_connection() as c:

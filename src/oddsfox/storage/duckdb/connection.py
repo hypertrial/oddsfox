@@ -42,6 +42,15 @@ def _reset_path_scoped_caches() -> None:
     reset_dlt_batch_pipelines()
 
 
+def reset_duckdb_connection_state() -> None:
+    """Reset process-local DuckDB connection caches after tests or env swaps."""
+    global _SCHEMA_LOGGED, _SCHEMA_INITIALIZED, _ACTIVE_DUCKDB_PATH
+    _SCHEMA_LOGGED = False
+    _SCHEMA_INITIALIZED = False
+    _ACTIVE_DUCKDB_PATH = None
+    _reset_path_scoped_caches()
+
+
 def _sync_active_duckdb_path() -> Path:
     global _SCHEMA_INITIALIZED, _ACTIVE_DUCKDB_PATH
     path = _resolved_duckdb_path()
@@ -52,6 +61,11 @@ def _sync_active_duckdb_path() -> Path:
             _SCHEMA_INITIALIZED = False
             _reset_path_scoped_caches()
     return path
+
+
+def active_duckdb_path() -> Path:
+    """Return the active DuckDB path, initializing path-scoped state if needed."""
+    return _ACTIVE_DUCKDB_PATH or _sync_active_duckdb_path()
 
 
 def _connect_duckdb(
@@ -152,8 +166,7 @@ def ensure_duck_db() -> None:
 @contextmanager
 def get_connection():
     ensure_duck_db()
-    path = _ACTIVE_DUCKDB_PATH or _resolved_duckdb_path()
-    conn = open_writable_duckdb_connection(path)
+    conn = open_writable_duckdb_connection(active_duckdb_path())
     try:
         yield conn
     finally:
@@ -162,8 +175,7 @@ def get_connection():
 
 def get_persistent_connection() -> duckdb.DuckDBPyConnection:
     ensure_duck_db()
-    path = _ACTIVE_DUCKDB_PATH or _resolved_duckdb_path()
-    return open_writable_duckdb_connection(path)
+    return open_writable_duckdb_connection(active_duckdb_path())
 
 
 @contextmanager
@@ -179,6 +191,7 @@ __all__ = [
     "POLYMARKET_OPS_SCHEMA",
     "POLYMARKET_RAW_SCHEMA",
     "_use_conn",
+    "active_duckdb_path",
     "ensure_duck_db",
     "get_connection",
     "get_persistent_connection",
@@ -189,4 +202,5 @@ __all__ = [
     "polymarket_ops_tbl",
     "polymarket_q",
     "polymarket_raw_tbl",
+    "reset_duckdb_connection_state",
 ]

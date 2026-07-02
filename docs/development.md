@@ -1,7 +1,7 @@
 # Development
 
 Use this page when changing code, dbt models, docs, or orchestration behavior.
-OddsFox is a prediction-market pipeline; v0.1.0 development mostly touches the
+OddsFox is a prediction-market pipeline; v0.1.x development mostly touches the
 Polymarket/WC2026 adapter, marts, and orchestration. For operator setup, start
 with [Quickstart](quickstart.md).
 
@@ -63,6 +63,13 @@ uv run make coverage
 `integration-dagster` executes every registered public Dagster job with
 deterministic temp resources. `coverage` enforces 100% branch coverage for
 product-core package code; warehouse profiling helpers are smoke-tested instead.
+These gates are intentionally local for now so GitHub Actions stays aligned
+with the current CI budget.
+
+Costguard medium/low findings are measured dbt debt, not automatic
+materialization work. Before changing dbt materializations or adding
+incremental models, capture the failing advisory, dbt build runtime, and
+warehouse/profile size evidence that justifies the change.
 
 ## Targeted Test Commands
 

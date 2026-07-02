@@ -41,6 +41,14 @@ from ._gamma import (
 logger = logging.getLogger(__name__)
 
 
+def _error_metadata(failed_batches: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "errors": len(failed_batches),
+        "failed_batches": list(failed_batches),
+        "has_errors": bool(failed_batches),
+    }
+
+
 def backfill_market_metadata(
     batch_size: int = 50,
     max_markets: int = None,
@@ -63,12 +71,14 @@ def backfill_market_metadata(
     """Backfill requested market metadata with a single Gamma pass per market."""
     t0 = time.monotonic()
     if not any([include_tokens, include_slugs, include_event_slugs, include_end_dates]):
+        failed_batches: list[dict[str, Any]] = []
         return {
             "task": "backfill_market_metadata",
             "skipped": True,
             "reason": "no_fields_enabled",
             "duration_seconds": _duration_since(t0),
             "api_requests": 0,
+            **_error_metadata(failed_batches),
         }
 
     ledger_keys = []
@@ -81,12 +91,14 @@ def backfill_market_metadata(
     if include_end_dates:
         ledger_keys.append("end_dates")
     if not force and all(get_backfill_fully_checked(k) for k in ledger_keys):
+        failed_batches = []
         return {
             "task": "backfill_market_metadata",
             "skipped": True,
             "reason": "fully_checked",
             "duration_seconds": _duration_since(t0),
             "api_requests": 0,
+            **_error_metadata(failed_batches),
         }
 
     ensure_duck_db()
@@ -99,6 +111,7 @@ def backfill_market_metadata(
         market_scope=market_scope,
     )
     total_markets = len(market_ids)
+    failed_batches: list[dict[str, Any]] = []
     if total_markets == 0:
         for key in ledger_keys:
             if max_markets is None:
@@ -117,6 +130,7 @@ def backfill_market_metadata(
             "fully_checked_set": max_markets is None,
             "duration_seconds": _duration_since(t0),
             "api_requests": 0,
+            **_error_metadata(failed_batches),
         }
 
     if progress_callback:
@@ -127,6 +141,7 @@ def backfill_market_metadata(
                 "eligible": total_markets,
                 "batch_size": batch_size,
                 "market_scope": market_scope,
+                **_error_metadata(failed_batches),
             },
         )
 
@@ -198,9 +213,25 @@ def backfill_market_metadata(
                     saved["end_dates"] += len(end_date_rows)
             except (GammaRequestError, OSError) as exc:
                 logger.error("Error during combined metadata backfill batch: %s", exc)
+                failed_batches.append(
+                    {
+                        "batch_index": batch_idx,
+                        "market_ids": list(chunk),
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    }
+                )
                 pbar.update(len(chunk))
             except Exception as exc:
                 logger.error("Error during combined metadata backfill batch: %s", exc)
+                failed_batches.append(
+                    {
+                        "batch_index": batch_idx,
+                        "market_ids": list(chunk),
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    }
+                )
                 pbar.update(len(chunk))
 
             if progress_callback and (
@@ -215,6 +246,7 @@ def backfill_market_metadata(
                         "saved": dict(saved),
                         "api_requests": api_requests,
                         "elapsed_seconds": round(time.monotonic() - loop_started, 3),
+                        **_error_metadata(failed_batches),
                     },
                 )
 
@@ -227,6 +259,7 @@ def backfill_market_metadata(
                     "remaining_before_fallback": len(remaining_event_slug_ids),
                     "max_pages": event_slug_fallback_max_pages,
                     "max_pages_without_progress": event_slug_fallback_max_pages_without_progress,
+                    **_error_metadata(failed_batches),
                 },
             )
         extra_saved, events_fb_meta = _fill_from_events_endpoint(
@@ -251,7 +284,7 @@ def backfill_market_metadata(
             retry_after_hours=event_slug_unresolved_retry_hours,
         )
 
-    completed_all = processed >= total_markets
+    completed_all = processed >= total_markets and not failed_batches
     if max_markets is None:
         for key in ledger_keys:
             set_backfill_fully_checked(key, completed_all)
@@ -271,6 +304,7 @@ def backfill_market_metadata(
                 "api_requests": api_requests,
                 "duration_seconds": _duration_since(t0),
                 **events_fb_meta,
+                **_error_metadata(failed_batches),
             },
         )
 
@@ -285,4 +319,5 @@ def backfill_market_metadata(
         "fully_checked_set": max_markets is None and completed_all,
         "duration_seconds": _duration_since(t0),
         "api_requests": api_requests,
+        **_error_metadata(failed_batches),
     }

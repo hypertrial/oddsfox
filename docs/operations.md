@@ -4,7 +4,7 @@ Use this page when running Dagster assets, jobs, schedules, or recovery paths.
 For data outputs, see [Warehouse](warehouse.md) and
 [Data Contracts](data-contracts.md).
 
-The project is broader than WC2026, but the v0.1.0 orchestration surface below
+The project is broader than WC2026, but the v0.1.x orchestration surface below
 is the shipped Polymarket/WC2026 implementation.
 
 ## Dagster Assets

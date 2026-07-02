@@ -134,6 +134,37 @@ def test_scan_tag_closure_expands_crawl_tags(monkeypatch):
     assert calls.count("world-cup-qualifiers") == 1
 
 
+def test_scan_skips_duplicate_crawl_keys(monkeypatch):
+    cfg = Wc2026ScopeConfig(
+        event_slugs=(),
+        event_slug_prefixes=(),
+        market_ids=(),
+        registry_max_event_pages=5,
+        event_tags=("fifa-world-cup", "world-cup"),
+    )
+    monkeypatch.setattr(
+        scope_mod,
+        "resolve_keyset_crawl_tags",
+        lambda *args, **kwargs: (
+            ["fifa-world-cup", "world-cup"],
+            {"fifa-world-cup": {"seed"}, "world-cup": {"seed"}},
+        ),
+    )
+    monkeypatch.setattr(scope_scan_mod, "_tag_crawl_key", lambda _tag: "same-key")
+
+    client = MagicMock()
+    client.get.return_value = {"events": [], "next_cursor": None}
+    scan = scope_mod._scan_wc2026_gamma_events(
+        client,
+        cfg,
+        max_pages=10,
+        tag_discovery=False,
+    )
+
+    assert client.get.call_count == 1
+    assert scan.crawl_tag_slugs == ("same-key",)
+
+
 def test_queue_harvested_crawl_tags_filters_duplicates_and_scope():
     next_queue: list[str | None] = ["already-queued"]
     tag_sources: dict[str, set[str]] = {}
@@ -156,6 +187,34 @@ def test_queue_harvested_crawl_tags_filters_duplicates_and_scope():
 
     assert next_queue == ["already-queued", "world-cup-qualifiers"]
     assert tag_sources == {"world-cup-qualifiers": {"event_closure"}}
+
+
+def test_scan_crawl_state_helpers():
+    crawled_set: set[str] = set()
+    crawled_keys: list[str] = []
+
+    assert (
+        scope_scan_mod._mark_crawled(
+            "fifa-world-cup",
+            crawled_set=crawled_set,
+            crawled_keys=crawled_keys,
+        )
+        is True
+    )
+    assert (
+        scope_scan_mod._mark_crawled(
+            "fifa-world-cup",
+            crawled_set=crawled_set,
+            crawled_keys=crawled_keys,
+        )
+        is False
+    )
+    assert crawled_keys == ["fifa-world-cup"]
+    assert scope_scan_mod._crawl_cap_reached(1, 1) is True
+    assert scope_scan_mod._crawl_cap_reached(1, 2) is False
+    assert scope_scan_mod._crawl_cap_reached(100, None) is False
+    assert scope_scan_mod._remaining_page_budget(None, 3) is None
+    assert scope_scan_mod._remaining_page_budget(5, 3) == 2
 
 
 def test_scan_collection_parity_with_closure_gate_on_vs_off(monkeypatch):

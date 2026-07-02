@@ -22,7 +22,7 @@ from oddsfox.orchestration.config import (
 )
 from oddsfox.orchestration.dbt_project import DBT_PROJECT
 from oddsfox.orchestration.translators import PolymarketDagsterDbtTranslator
-from oddsfox.storage.duckdb.connection import _resolved_duckdb_path, get_connection
+from oddsfox.storage.duckdb.connection import active_duckdb_path, get_connection
 from oddsfox.storage.duckdb.metadata import get_sync_run_metrics
 from oddsfox.storage.duckdb.observability import (
     delta_dbt_models,
@@ -80,16 +80,12 @@ def _run_with_raw_snapshot(
     )
 
 
-def _materialize_odds_sync(
-    context: AssetExecutionContext,
+def _build_odds_sync_kwargs(
     config: OddsSyncConfig,
+    progress_callback: Callable[[str, dict[str, Any]], None],
     *,
     plan_iterator_factory: Callable[..., Any] | None = None,
-) -> MaterializeResult:
-    def _odds_progress(phase: str, payload: dict[str, Any]) -> None:
-        context.log.info("[%s] %s", phase, payload)
-
-    resolved_plan_iterator = plan_iterator_factory
+) -> dict[str, Any]:
     sync_kwargs: dict[str, Any] = {
         "max_workers": config.workers,
         "batch_size": config.batch_size,
@@ -118,19 +114,23 @@ def _materialize_odds_sync(
         "transient_retries": config.transient_retries,
         "transient_backoff_seconds": config.transient_backoff_seconds,
         "market_page_size": config.market_page_size,
-        "progress_callback": _odds_progress,
+        "progress_callback": progress_callback,
         "progress_log_interval_tokens": config.progress_log_interval_tokens,
         "progress_log_interval_seconds": config.progress_log_interval_seconds,
         "no_progress_soft_timeout_seconds": config.no_progress_soft_timeout_seconds,
         "no_progress_hard_timeout_seconds": config.no_progress_hard_timeout_seconds,
         "progress_poll_seconds": config.progress_poll_seconds,
     }
-    if resolved_plan_iterator is not None:
-        sync_kwargs["plan_iterator_factory"] = resolved_plan_iterator
-    run_summary, _, _, _, raw_metadata = _run_with_raw_snapshot(
-        config.raw_snapshot_level,
-        lambda _pre: ops.sync_odds(**sync_kwargs),
-    )
+    if plan_iterator_factory is not None:
+        sync_kwargs["plan_iterator_factory"] = plan_iterator_factory
+    return sync_kwargs
+
+
+def _odds_sync_metadata(
+    config: OddsSyncConfig,
+    run_summary: dict[str, Any],
+    raw_metadata: dict[str, MetadataValue],
+) -> dict[str, MetadataValue]:
     metadata = {
         "workers": MetadataValue.int(config.workers),
         "force": MetadataValue.bool(config.force),
@@ -145,6 +145,65 @@ def _materialize_odds_sync(
         metadata["min_volume"] = MetadataValue.float(config.min_volume)
     if config.max_volume is not None:
         metadata["max_volume"] = MetadataValue.float(config.max_volume)
+    return metadata
+
+
+def _run_with_guardrail_thread(
+    guardrail: Any,
+    phase_name: str,
+    run_fn: Callable[[], dict[str, Any]],
+    *,
+    poll_seconds: float,
+) -> dict[str, Any]:
+    result: dict[str, Any] | None = None
+    error: Exception | None = None
+
+    def _target() -> None:
+        nonlocal result, error
+        try:
+            result = run_fn()
+        except Exception as exc:
+            error = exc
+
+    worker = ops.Thread(target=_target, daemon=True)
+    worker.start()
+    while worker.is_alive():
+        worker.join(timeout=max(1, poll_seconds))
+        if worker.is_alive():
+            guardrail.check(
+                phase=phase_name,
+                diagnostics={"worker_alive": True},
+            )
+    if error is not None:
+        raise error
+    guardrail.record_progress(
+        work_increment=0,
+        phase=f"{phase_name}_complete",
+        diagnostics={"worker_alive": False},
+        force_log=True,
+    )
+    return result or {}
+
+
+def _materialize_odds_sync(
+    context: AssetExecutionContext,
+    config: OddsSyncConfig,
+    *,
+    plan_iterator_factory: Callable[..., Any] | None = None,
+) -> MaterializeResult:
+    def _odds_progress(phase: str, payload: dict[str, Any]) -> None:
+        context.log.info("[%s] %s", phase, payload)
+
+    sync_kwargs = _build_odds_sync_kwargs(
+        config,
+        _odds_progress,
+        plan_iterator_factory=plan_iterator_factory,
+    )
+    run_summary, _, _, _, raw_metadata = _run_with_raw_snapshot(
+        config.raw_snapshot_level,
+        lambda _pre: ops.sync_odds(**sync_kwargs),
+    )
+    metadata = _odds_sync_metadata(config, run_summary, raw_metadata)
     return MaterializeResult(metadata=metadata)
 
 
@@ -152,7 +211,7 @@ _DLT_PIPELINE_BY_PATH: dict[str, dlt.Pipeline] = {}
 
 
 def get_polymarket_dlt_pipeline() -> dlt.Pipeline:
-    db_path = str(_resolved_duckdb_path())
+    db_path = str(active_duckdb_path())
     cached = _DLT_PIPELINE_BY_PATH.get(db_path)
     if cached is not None:
         return cached
@@ -353,39 +412,10 @@ def polymarket_market_metadata_backfill(
         context.log.info("[%s] %s", phase, payload)
         guardrail.record_progress(work_increment=1, phase=phase, diagnostics=payload)
 
-    def _run_phase_with_guardrail(phase_name: str, run_fn) -> dict[str, Any]:
-        result: dict[str, Any] | None = None
-        error: Exception | None = None
-
-        def _target() -> None:
-            nonlocal result, error
-            try:
-                result = run_fn()
-            except Exception as exc:  # pragma: no cover
-                error = exc
-
-        worker = ops.Thread(target=_target, daemon=True)
-        worker.start()
-        while worker.is_alive():
-            worker.join(timeout=max(1, config.progress_poll_seconds))
-            if worker.is_alive():
-                guardrail.check(
-                    phase=phase_name,
-                    diagnostics={"worker_alive": True},
-                )
-        if error is not None:
-            raise error
-        guardrail.record_progress(
-            work_increment=0,
-            phase=f"{phase_name}_complete",
-            diagnostics={"worker_alive": False},
-            force_log=True,
-        )
-        return result or {}
-
     pre = snapshot_raw_layer(level=config.raw_snapshot_level)
     backfill_summaries = [
-        _run_phase_with_guardrail(
+        _run_with_guardrail_thread(
+            guardrail,
             "backfill_market_metadata",
             lambda: ops.backfill_market_metadata(
                 batch_size=config.batch_size,
@@ -403,6 +433,7 @@ def polymarket_market_metadata_backfill(
                 event_slug_fallback_max_pages_without_progress=config.event_slug_fallback_max_pages_without_progress,
                 event_slug_fallback_progress_every_pages=config.event_slug_fallback_progress_pages,
             ),
+            poll_seconds=config.progress_poll_seconds,
         )
     ]
     orphan_market_tokens_removed = ops.delete_orphan_market_tokens()

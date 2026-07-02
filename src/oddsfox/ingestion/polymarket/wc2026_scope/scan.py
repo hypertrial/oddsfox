@@ -371,6 +371,29 @@ def _queue_harvested_crawl_tags(
         tag_sources_map.setdefault(harvested_slug, set()).add("event_closure")
 
 
+def _mark_crawled(
+    crawl_key: str,
+    *,
+    crawled_set: set[str],
+    crawled_keys: list[str],
+) -> bool:
+    if crawl_key in crawled_set:
+        return False
+    crawled_set.add(crawl_key)
+    crawled_keys.append(crawl_key)
+    return True
+
+
+def _crawl_cap_reached(crawled_count: int, max_crawl_tags: int | None) -> bool:
+    return max_crawl_tags is not None and crawled_count >= max_crawl_tags
+
+
+def _remaining_page_budget(max_pages: int | None, total_pages: int) -> int | None:
+    if max_pages is None:
+        return None
+    return max_pages - total_pages
+
+
 def _scan_wc2026_gamma_events(
     client: Any,
     cfg: Wc2026ScopeConfig,
@@ -423,24 +446,15 @@ def _scan_wc2026_gamma_events(
     total_pages = 0
     truncated = False
 
-    def _mark_crawled(crawl_key: str) -> bool:
-        if crawl_key in crawled_set:  # pragma: no cover
-            return False
-        crawled_set.add(crawl_key)
-        crawled_keys.append(crawl_key)
-        return True
-
     for closure_round in range(max_closure_rounds + 1):
         if not queue:
             break
         next_queue: list[str | None] = []
         for tag_slug in queue:
             crawl_key = _tag_crawl_key(tag_slug)
-            if crawl_key in crawled_set:  # pragma: no cover
+            if crawl_key in crawled_set:
                 continue
-            if (  # pragma: no cover
-                max_crawl_tags is not None and len(crawled_set) >= max_crawl_tags
-            ):
+            if _crawl_cap_reached(len(crawled_set), max_crawl_tags):
                 truncated = True
                 logger.info(
                     "WC2026 tag crawl cap reached (%s tags); stopping expansion",
@@ -448,16 +462,16 @@ def _scan_wc2026_gamma_events(
                 )
                 break
 
-            remaining_pages: int | None
-            if max_pages is not None:
-                remaining_pages = max_pages - total_pages
-                if remaining_pages <= 0:
-                    truncated = True
-                    break
-            else:
-                remaining_pages = None
+            remaining_pages = _remaining_page_budget(max_pages, total_pages)
+            if remaining_pages is not None and remaining_pages <= 0:
+                truncated = True
+                break
 
-            _mark_crawled(crawl_key)
+            _mark_crawled(
+                crawl_key,
+                crawled_set=crawled_set,
+                crawled_keys=crawled_keys,
+            )
             pass_scan = _scan_wc2026_gamma_events_keyset_pass(
                 client,
                 cfg,

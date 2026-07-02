@@ -30,7 +30,7 @@ Read the full [Getting Started guide](docs/quickstart.md).
 
 OddsFox keeps the data stack local and inspectable:
 
-- Prediction-market APIs feed raw DuckDB tables; v0.1.0 ships Polymarket
+- Prediction-market APIs feed raw DuckDB tables; v0.1.x ships Polymarket
   Gamma and CLOB ingestion.
 - Dagster coordinates market discovery, registry refresh, odds sync, and dbt.
 - dbt models staging, intermediate, mart, and observability schemas.
@@ -82,6 +82,6 @@ See [Development](docs/development.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [License](LICENSE)
 
-The v0.1.0 repo intentionally excludes optional soccer context sources,
+The v0.1.x repo intentionally excludes optional soccer context sources,
 simulations, allocation tooling, website integration, and generated historical
 docs.

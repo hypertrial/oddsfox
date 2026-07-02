@@ -21,8 +21,7 @@ def test_snapshot_raw_layer_counts_polymarket_tables(
 
     db_path = tmp_path / "obs.duckdb"
     monkeypatch.setenv("DUCKDB_NAME", str(db_path))
-    conn_mod._SCHEMA_INITIALIZED = False
-    conn_mod._SCHEMA_LOGGED = False
+    conn_mod.reset_duckdb_connection_state()
     init_duck_db()
 
     with duckdb.connect(str(db_path)) as conn:

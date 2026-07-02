@@ -3,6 +3,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from unittest.mock import MagicMock
 
+import pytest
+
 from oddsfox.orchestration import assets_polymarket as assets_mod
 from oddsfox.orchestration import config as orch_config
 from oddsfox.orchestration.assets import (
@@ -28,9 +30,7 @@ def test_get_polymarket_dlt_pipeline_uses_path_cache(monkeypatch):
             created.append(kwargs)
             return object()
 
-    monkeypatch.setattr(
-        assets_mod, "_resolved_duckdb_path", lambda: "/tmp/cache.duckdb"
-    )
+    monkeypatch.setattr(assets_mod, "active_duckdb_path", lambda: "/tmp/cache.duckdb")
     monkeypatch.setattr(assets_mod, "dlt", FakeDlt)
     assets_mod._DLT_PIPELINE_BY_PATH.clear()
 
@@ -170,6 +170,121 @@ def test_materialize_odds_sync_metadata_and_plan_iterator(monkeypatch):
     assert captured["plan_iterator_factory"] is plan_iterator
     assert result.metadata["min_volume"].value == 10.0
     assert result.metadata["max_volume"].value == 20.0
+
+
+def test_odds_sync_helper_builds_kwargs_and_metadata():
+    progress = MagicMock()
+    plan_iterator = object()
+    config = orch_config.OddsSyncConfig(
+        workers=3,
+        min_volume=10.0,
+        max_volume=20.0,
+        market_scope="wc2026",
+    )
+
+    kwargs = assets_mod._build_odds_sync_kwargs(
+        config,
+        progress,
+        plan_iterator_factory=plan_iterator,
+    )
+    metadata = assets_mod._odds_sync_metadata(
+        config,
+        {
+            "planning": {"plans": 1},
+            "planning_context": {"markets": 2},
+            "totals": {"rows": 3},
+        },
+        {},
+    )
+
+    assert kwargs["max_workers"] == 3
+    assert kwargs["progress_callback"] is progress
+    assert kwargs["plan_iterator_factory"] is plan_iterator
+    assert kwargs["market_scope"] == "wc2026"
+    assert metadata["workers"].value == 3
+    assert metadata["min_volume"].value == 10.0
+    assert metadata["max_volume"].value == 20.0
+    assert metadata["totals"].value == {"rows": 3}
+
+
+def test_run_with_guardrail_thread_success_and_error(monkeypatch):
+    class ImmediateThread:
+        def __init__(self, target, daemon):
+            self.target = target
+            self.daemon = daemon
+            self.started = False
+
+        def start(self):
+            self.started = True
+            self.target()
+
+        def is_alive(self):
+            return False
+
+        def join(self, timeout=None):
+            del timeout
+
+    guardrail = MagicMock()
+    monkeypatch.setattr(assets_mod.ops, "Thread", ImmediateThread)
+
+    assert assets_mod._run_with_guardrail_thread(
+        guardrail,
+        "phase",
+        lambda: {"ok": True},
+        poll_seconds=0,
+    ) == {"ok": True}
+    guardrail.record_progress.assert_called_with(
+        work_increment=0,
+        phase="phase_complete",
+        diagnostics={"worker_alive": False},
+        force_log=True,
+    )
+
+    def raise_boom():
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        assets_mod._run_with_guardrail_thread(
+            guardrail,
+            "phase",
+            raise_boom,
+            poll_seconds=0,
+        )
+
+
+def test_run_with_guardrail_thread_checks_while_worker_alive(monkeypatch):
+    class PollingThread:
+        def __init__(self, target, daemon):
+            self.target = target
+            self.daemon = daemon
+            self.alive_checks = 0
+
+        def start(self):
+            self.target()
+
+        def is_alive(self):
+            self.alive_checks += 1
+            return self.alive_checks <= 2
+
+        def join(self, timeout=None):
+            del timeout
+
+    guardrail = MagicMock()
+    monkeypatch.setattr(assets_mod.ops, "Thread", PollingThread)
+
+    assert (
+        assets_mod._run_with_guardrail_thread(
+            guardrail,
+            "slow_phase",
+            lambda: {},
+            poll_seconds=0,
+        )
+        == {}
+    )
+    guardrail.check.assert_called_once_with(
+        phase="slow_phase",
+        diagnostics={"worker_alive": True},
+    )
 
 
 def test_odds_assets_delegate_to_materializer(monkeypatch):

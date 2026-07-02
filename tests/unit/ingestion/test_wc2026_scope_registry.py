@@ -29,8 +29,7 @@ def test_refresh_registry_from_events(monkeypatch, tmp_path):
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "registry.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -68,8 +67,7 @@ def test_refresh_registry_and_collect_single_events_pass(monkeypatch, tmp_path):
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "combined.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -107,8 +105,7 @@ def test_refresh_registry_with_seed_market_ids(monkeypatch, tmp_path):
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "seed_registry.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -240,8 +237,7 @@ def test_markets_sync_targeted_discovery(monkeypatch, tmp_path):
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "targeted.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -317,8 +313,7 @@ def test_markets_sync_full_keyset_mode(monkeypatch, tmp_path):
     monkeypatch.setenv("POLYMARKET_WC2026_TAG_DISCOVERY", "false")
     monkeypatch.delenv("POLYMARKET_WC2026_EVENT_TAGS", raising=False)
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -382,8 +377,7 @@ def test_refresh_registry_from_events_keyset_closed_filter(monkeypatch, tmp_path
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "keyset_closed.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -419,8 +413,7 @@ def test_refresh_registry_from_events_keyset_tag_and_volume_filters(
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "keyset_filters.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -459,8 +452,7 @@ def test_refresh_registry_targeted_slug_and_markets(monkeypatch, tmp_path):
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "targeted_registry.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -514,8 +506,7 @@ def test_full_keyset_stops_after_pages_without_progress(monkeypatch, tmp_path):
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "no_progress.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
 
     cfg = slug_only_cfg(
@@ -561,8 +552,7 @@ def test_wc2026_discovery_ledger_and_scope_hash(monkeypatch, tmp_path):
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "ledger.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -592,8 +582,7 @@ def test_targeted_skips_missing_slug_and_markets_callback_errors(monkeypatch, tm
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "targeted_skip.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -645,8 +634,7 @@ def test_targeted_progress_callbacks_ignore_failures(monkeypatch, tmp_path):
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "cb_fail.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -687,8 +675,7 @@ def test_full_keyset_marks_discovery_complete(monkeypatch, tmp_path):
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "complete.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -725,8 +712,7 @@ def test_discovery_ledger_invalidates_on_scope_change(monkeypatch, tmp_path):
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "hash_change.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -769,8 +755,7 @@ def test_truncated_full_keyset_clears_fully_checked(monkeypatch, tmp_path):
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "truncated.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -812,8 +797,7 @@ def test_get_registry_event_slugs(monkeypatch, tmp_path):
 
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "slugs.duckdb"))
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 

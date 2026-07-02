@@ -283,8 +283,7 @@ def test_writer_buffers_apply_and_flush(monkeypatch, tmp_path):
     import oddsfox.storage.duckdb.connection as connection
 
     reload_all_settings_modules()
-    connection._SCHEMA_INITIALIZED = False
-    connection._SCHEMA_LOGGED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 
@@ -322,8 +321,7 @@ def test_flush_writer_preserves_fully_checked_on_cursor_update(monkeypatch, tmp_
     import oddsfox.storage.duckdb.connection as connection
 
     reload_all_settings_modules()
-    connection._SCHEMA_INITIALIZED = False
-    connection._SCHEMA_LOGGED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
 

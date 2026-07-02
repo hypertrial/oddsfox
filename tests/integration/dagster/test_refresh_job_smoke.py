@@ -32,11 +32,9 @@ from oddsfox.storage.duckdb.wc2026_registry import (
 
 @pytest.fixture
 def reset_connection_globals():
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     yield
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
 
 
 @pytest.fixture
@@ -117,9 +115,7 @@ oddsfox:
     monkeypatch.setenv("DUCKDB_NAME", str(db_path))
     monkeypatch.setenv("DUCKDB_PATH", str(db_path))
     monkeypatch.setenv("DBT_PROFILES_DIR", str(profiles_dir))
-    connection._SCHEMA_INITIALIZED = False
-    connection._SCHEMA_LOGGED = False
-    connection._ACTIVE_DUCKDB_PATH = Path(db_path)
+    connection.reset_duckdb_connection_state()
 
     market_page = [
         {

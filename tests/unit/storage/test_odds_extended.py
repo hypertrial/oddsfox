@@ -28,13 +28,11 @@ def duck(monkeypatch, tmp_path):
     import oddsfox.storage.duckdb.connection as connection
 
     reload_all_settings_modules()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
     yield connection
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
 
 
 def test_get_latest_timestamps_ledger_beats_history(duck):

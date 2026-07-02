@@ -70,10 +70,7 @@ def reset_dlt_batch_pipelines() -> None:
 
 def _pipeline(schema: str) -> dlt.Pipeline:
     duckdb_connection.ensure_duck_db()
-    db_path = str(
-        duckdb_connection._ACTIVE_DUCKDB_PATH
-        or duckdb_connection._resolved_duckdb_path()
-    )
+    db_path = str(duckdb_connection.active_duckdb_path())
     key = (schema, db_path)
     if key not in _PIPELINES:
         path_hash = blake2b(db_path.encode("utf-8"), digest_size=4).hexdigest()

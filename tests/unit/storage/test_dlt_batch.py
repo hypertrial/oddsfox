@@ -9,7 +9,6 @@ from oddsfox.storage.duckdb import dlt_batch as dlt_batch_mod
 from oddsfox.storage.duckdb.dlt_batch import (
     load_market_tokens_stage,
     load_stage_rows,
-    reset_dlt_batch_pipelines,
 )
 from oddsfox.storage.duckdb.schemas.constants import polymarket_raw_tbl
 
@@ -20,15 +19,11 @@ def duck(monkeypatch, tmp_path):
     import oddsfox.storage.duckdb.connection as connection
 
     reload_all_settings_modules()
-    reset_dlt_batch_pipelines()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     importlib.reload(connection)
     connection.ensure_duck_db()
     yield connection
-    reset_dlt_batch_pipelines()
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
 
 
 def test_dlt_batch_loads_stage_and_finalizes_market_tokens(duck):
@@ -103,3 +98,32 @@ def test_load_stage_rows_drops_pending_packages(monkeypatch):
     assert pipe.dropped is True
     assert pipe.runs
     assert stage == '"polymarket_raw"."stage_probe"'
+
+
+def test_dlt_pipeline_uses_public_active_duckdb_path(monkeypatch):
+    created = {}
+
+    class FakeDlt:
+        class destinations:
+            @staticmethod
+            def duckdb(*, credentials):
+                return {"credentials": credentials}
+
+        @staticmethod
+        def pipeline(**kwargs):
+            created.update(kwargs)
+            return object()
+
+    dlt_batch_mod._PIPELINES.clear()
+    monkeypatch.setattr(dlt_batch_mod, "dlt", FakeDlt)
+    monkeypatch.setattr(dlt_batch_mod.duckdb_connection, "ensure_duck_db", lambda: None)
+    monkeypatch.setattr(
+        dlt_batch_mod.duckdb_connection,
+        "active_duckdb_path",
+        lambda: "/tmp/public.duckdb",
+    )
+
+    dlt_batch_mod._pipeline("polymarket_raw")
+
+    assert created["destination"] == {"credentials": "/tmp/public.duckdb"}
+    dlt_batch_mod._PIPELINES.clear()

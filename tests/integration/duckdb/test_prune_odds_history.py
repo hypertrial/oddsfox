@@ -38,8 +38,7 @@ def test_prune_odds_history_deletes_old_rows(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "oddsfox.duckdb"
     monkeypatch.setenv("DUCKDB_PATH", str(db_path))
     monkeypatch.setenv("DUCKDB_NAME", str(db_path))
-    connection._SCHEMA_INITIALIZED = False
-    connection._SCHEMA_LOGGED = False
+    connection.reset_duckdb_connection_state()
     init_duck_db()
 
     now = datetime.now(timezone.utc)
@@ -66,8 +65,7 @@ def test_prune_odds_history_dry_run_leaves_rows_intact(tmp_path, monkeypatch) ->
     db_path = tmp_path / "oddsfox.duckdb"
     monkeypatch.setenv("DUCKDB_PATH", str(db_path))
     monkeypatch.setenv("DUCKDB_NAME", str(db_path))
-    connection._SCHEMA_INITIALIZED = False
-    connection._SCHEMA_LOGGED = False
+    connection.reset_duckdb_connection_state()
     init_duck_db()
 
     now = datetime.now(timezone.utc)

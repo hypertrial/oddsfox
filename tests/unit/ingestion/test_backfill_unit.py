@@ -130,6 +130,9 @@ def test_backfill_market_metadata_no_fields_enabled():
     )
     assert out["skipped"] is True
     assert out["reason"] == "no_fields_enabled"
+    assert out["errors"] == 0
+    assert out["failed_batches"] == []
+    assert out["has_errors"] is False
 
 
 def test_backfill_market_metadata_fully_checked_skip(monkeypatch):
@@ -137,6 +140,9 @@ def test_backfill_market_metadata_fully_checked_skip(monkeypatch):
     out = bf.backfill_market_metadata(force=False)
     assert out["skipped"] is True
     assert out["reason"] == "fully_checked"
+    assert out["errors"] == 0
+    assert out["failed_batches"] == []
+    assert out["has_errors"] is False
 
 
 def test_backfill_market_metadata_empty_eligible_sets_ledger(
@@ -154,6 +160,9 @@ def test_backfill_market_metadata_empty_eligible_sets_ledger(
     )
     out = bf.backfill_market_metadata(max_markets=None)
     assert out["eligible"] == 0
+    assert out["errors"] == 0
+    assert out["failed_batches"] == []
+    assert out["has_errors"] is False
     assert ("tokens", True) in checked
 
     checked.clear()
@@ -209,6 +218,9 @@ def test_backfill_market_metadata_fetches_once_and_saves_all_fields(
 
     assert fetch_calls == [(client, ("1",), True)]
     assert out["api_requests"] == 1
+    assert out["errors"] == 0
+    assert out["failed_batches"] == []
+    assert out["has_errors"] is False
     assert out["saved"] == {
         "tokens": 1,
         "slugs": 1,
@@ -412,9 +424,26 @@ def test_backfill_market_metadata_batch_errors(monkeypatch, duck_ready, no_tqdm)
         raise requests.RequestException("gamma down")
 
     monkeypatch.setattr(bf_metadata, "_fetch_markets_batch", boom)
-    monkeypatch.setattr(bf_metadata, "set_backfill_fully_checked", lambda *a: None)
+    checked = []
+    monkeypatch.setattr(
+        bf_metadata,
+        "set_backfill_fully_checked",
+        lambda *a: checked.append(a),
+    )
     out = bf.backfill_market_metadata(batch_size=50, include_tokens=True)
     assert out["processed"] == 0
+    assert out["errors"] == 1
+    assert out["has_errors"] is True
+    assert out["failed_batches"] == [
+        {
+            "batch_index": 1,
+            "market_ids": ["1"],
+            "error_type": "RequestException",
+            "error": "gamma down",
+        }
+    ]
+    assert out["fully_checked_set"] is False
+    assert ("tokens", False) in checked
 
     def boom_generic(*args, **kwargs):
         raise RuntimeError("unexpected")
@@ -422,6 +451,8 @@ def test_backfill_market_metadata_batch_errors(monkeypatch, duck_ready, no_tqdm)
     monkeypatch.setattr(bf_metadata, "_fetch_markets_batch", boom_generic)
     out2 = bf.backfill_market_metadata(batch_size=50, include_tokens=True)
     assert out2["processed"] == 0
+    assert out2["errors"] == 1
+    assert out2["failed_batches"][0]["error_type"] == "RuntimeError"
 
 
 def test_backfill_market_metadata_progress_callbacks(monkeypatch, duck_ready, no_tqdm):
@@ -459,6 +490,11 @@ def test_backfill_market_metadata_progress_callbacks(monkeypatch, duck_ready, no
     assert (
         sum(1 for phase, _ in progress_events if phase == "backfill_market_metadata")
         >= 2
+    )
+    assert all(
+        {"errors", "failed_batches", "has_errors"} <= payload.keys()
+        for phase, payload in progress_events
+        if phase == "backfill_market_metadata"
     )
     assert any(
         payload.get("stage") == "events_fallback_start"

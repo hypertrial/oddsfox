@@ -11,14 +11,12 @@ from oddsfox.storage.duckdb.schemas import polymarket as polymarket_schema
 
 @pytest.fixture(autouse=True)
 def reset_schema_globals():
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     yield
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
 
 
-def test_resolved_duckdb_path_absolute_env(monkeypatch, tmp_path, isolated_env):
+def test_active_duckdb_path_absolute_env(monkeypatch, tmp_path, isolated_env):
     db = tmp_path / "abs.duckdb"
     monkeypatch.setenv("DUCKDB_NAME", str(db))
 
@@ -26,23 +24,23 @@ def test_resolved_duckdb_path_absolute_env(monkeypatch, tmp_path, isolated_env):
     import oddsfox.storage.duckdb.connection as conn
 
     conn = importlib.reload(conn)
-    assert conn._resolved_duckdb_path() == db
+    assert conn.active_duckdb_path() == db
 
 
-def test_resolved_duckdb_path_relative_env(monkeypatch, tmp_path, isolated_env):
+def test_active_duckdb_path_relative_env(monkeypatch, tmp_path, isolated_env):
     monkeypatch.setenv("DUCKDB_NAME", "rel.duckdb")
 
     reload_all_settings_modules()
     import oddsfox.storage.duckdb.connection as conn
 
     conn = importlib.reload(conn)
-    p = conn._resolved_duckdb_path()
+    p = conn.active_duckdb_path()
     assert p.name == "rel.duckdb"
     assert p.is_absolute()
 
 
-def test_resolved_duckdb_path_uses_duckdb_path_when_name_unset(monkeypatch, tmp_path):
-    """Covers the ``return DUCKDB_PATH`` branch in ``_resolved_duckdb_path`` (no DUCKDB_NAME)."""
+def test_active_duckdb_path_uses_duckdb_path_when_name_unset(monkeypatch, tmp_path):
+    """Covers the ``return DUCKDB_PATH`` branch when ``DUCKDB_NAME`` is unset."""
     import os
 
     settings = reload_all_settings_modules()
@@ -57,7 +55,7 @@ def test_resolved_duckdb_path_uses_duckdb_path_when_name_unset(monkeypatch, tmp_
 
     conn = importlib.reload(conn)
     monkeypatch.setattr(conn.os, "getenv", _getenv)
-    p = conn._resolved_duckdb_path()
+    p = conn.active_duckdb_path()
     assert p.resolve() == settings.DUCKDB_PATH.resolve()
 
 
@@ -292,7 +290,6 @@ def test_init_duck_db_idempotent(monkeypatch, tmp_path, isolated_env):
     conn = importlib.reload(conn)
     conn.init_duck_db()
     conn.init_duck_db()
-    assert conn._SCHEMA_INITIALIZED is True
     with conn.get_connection() as c:
         names = frozenset(
             r[0]
@@ -315,7 +312,7 @@ def test_ensure_duck_db_sets_active_path(monkeypatch, tmp_path, isolated_env):
 
     conn = importlib.reload(conn)
     conn.ensure_duck_db()
-    assert conn._ACTIVE_DUCKDB_PATH.name == "e.duckdb"
+    assert conn.active_duckdb_path().name == "e.duckdb"
 
 
 def test_ensure_duck_db_switches_active_path_without_manual_reset(
@@ -330,14 +327,12 @@ def test_ensure_duck_db_switches_active_path_without_manual_reset(
 
     conn = importlib.reload(conn)
     conn.ensure_duck_db()
-    assert conn._ACTIVE_DUCKDB_PATH == first
-    assert conn._SCHEMA_INITIALIZED is True
+    assert conn.active_duckdb_path() == first
 
     monkeypatch.setenv("DUCKDB_NAME", str(second))
     conn.ensure_duck_db()
 
-    assert conn._ACTIVE_DUCKDB_PATH == second
-    assert conn._SCHEMA_INITIALIZED is True
+    assert conn.active_duckdb_path() == second
     with duckdb.connect(str(second)) as c:
         table_count = c.execute(
             """
@@ -347,6 +342,26 @@ def test_ensure_duck_db_switches_active_path_without_manual_reset(
             """
         ).fetchone()[0]
     assert table_count > 0
+
+
+def test_reset_duckdb_connection_state_clears_active_path(
+    monkeypatch, tmp_path, isolated_env
+):
+    first = tmp_path / "first.duckdb"
+    second = tmp_path / "second.duckdb"
+    monkeypatch.setenv("DUCKDB_NAME", str(first))
+
+    reload_all_settings_modules()
+    import oddsfox.storage.duckdb.connection as conn
+
+    conn = importlib.reload(conn)
+    conn.ensure_duck_db()
+    assert conn.active_duckdb_path() == first
+
+    monkeypatch.setenv("DUCKDB_NAME", str(second))
+    conn.reset_duckdb_connection_state()
+
+    assert conn.active_duckdb_path() == second
 
 
 def test_get_connection_retries_transient_lock(monkeypatch, tmp_path, isolated_env):
@@ -429,10 +444,11 @@ def test_init_duck_db_debug_log_when_schema_logged_already(
     import oddsfox.storage.duckdb.connection as conn
 
     conn = importlib.reload(conn)
+    conn.reset_duckdb_connection_state()
     conn._SCHEMA_LOGGED = True
-    conn._SCHEMA_INITIALIZED = False
     conn.init_duck_db()
-    assert conn._SCHEMA_INITIALIZED is True
+    with conn.get_connection() as c:
+        assert c.execute("select 1").fetchone()[0] == 1
 
 
 def test_create_indexes_swallows_errors(monkeypatch, tmp_path, isolated_env):
@@ -525,7 +541,8 @@ def test_init_duck_db_swallows_alter_table_error(monkeypatch, tmp_path, isolated
         conn, "_connect_duckdb", lambda path=None: Wrapper(real_connect(path))
     )
     conn.init_duck_db()
-    assert conn._SCHEMA_INITIALIZED is True
+    with conn.get_connection() as c:
+        assert c.execute("select 1").fetchone()[0] == 1
 
 
 def test_connect_explicit_path_skips_global_active(monkeypatch, tmp_path, isolated_env):

@@ -3,14 +3,14 @@
 OddsFox is intentionally local-first: every routine workflow writes to a local
 DuckDB warehouse and is coordinated by Dagster jobs that can be inspected before
 schedules are enabled. The project is a prediction-market pipeline; the current
-v0.1.0 adapter and marts focus on WC2026 Polymarket data.
+v0.1.x adapter and marts focus on WC2026 Polymarket data.
 
 ## System Flow
 
 ```mermaid
 flowchart LR
-    gamma["Prediction-market metadata API<br/>Polymarket Gamma in v0.1.0"] --> dlt["dlt market landing"]
-    clob["Prediction-market odds API<br/>Polymarket CLOB in v0.1.0"] --> odds["Python odds sync"]
+    gamma["Prediction-market metadata API<br/>Polymarket Gamma in v0.1.x"] --> dlt["dlt market landing"]
+    clob["Prediction-market odds API<br/>Polymarket CLOB in v0.1.x"] --> odds["Python odds sync"]
     dlt --> raw["DuckDB raw schema"]
     odds --> raw
     raw --> ops["DuckDB ops ledgers"]

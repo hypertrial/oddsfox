@@ -152,7 +152,7 @@ DuckDB is local-only runtime state. For read-only inspection prefer `scripts/pro
 - Commit `.env`, secrets, `*.duckdb` / WAL/SHM files, parquet/CSV exports, or other local artifacts (see [`.gitignore`](.gitignore)).
 - Set `CLOB_API_KEY`, `CLOB_API_SECRET`, or `CLOB_API_PASSPHRASE` for docs, dbt, or mocked tests.
 - Invent commands outside the Makefile; if a check is missing, add a Makefile target rather than documenting one-off scripts as the gate.
-- Add runtime scope such as soccer context, simulations, allocation, or web integration without explicit product direction; v0.1.0 still ships the WC2026 Polymarket ingest and warehouse implementation.
+- Add runtime scope such as soccer context, simulations, allocation, or web integration without explicit product direction; v0.1.x still ships the WC2026 Polymarket ingest and warehouse implementation.
 - Add legacy, compat, deprecated, or migration shims unless the task explicitly requests backward compatibility.
 
 ## Pull requests

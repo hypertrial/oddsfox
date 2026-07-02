@@ -92,11 +92,9 @@ def reset_connection_globals():
     """Reset DuckDB connection module globals between tests that mutate them."""
     import oddsfox.storage.duckdb.connection as connection
 
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     yield
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
 
 
 @pytest.fixture

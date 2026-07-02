@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -65,9 +64,8 @@ def orchestration_test_guards(request, monkeypatch, tmp_path, reset_connection_g
 
     import oddsfox.storage.duckdb.connection as connection
 
-    connection._ACTIVE_DUCKDB_PATH = Path(db_path)
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
+    connection.ensure_duck_db()
 
     clock = _FakeClock()
     for module in (
@@ -100,19 +98,16 @@ def orchestration_test_guards(request, monkeypatch, tmp_path, reset_connection_g
     with patch("time.sleep", lambda *_a, **_k: None):
         yield
 
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
 
 
 @pytest.fixture
 def reset_connection_globals():
     import oddsfox.storage.duckdb.connection as connection
 
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
     yield
-    connection._SCHEMA_LOGGED = False
-    connection._SCHEMA_INITIALIZED = False
+    connection.reset_duckdb_connection_state()
 
 
 def pytest_collection_modifyitems(items):
