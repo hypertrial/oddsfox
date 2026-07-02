@@ -1,4 +1,4 @@
-"""Compatibility facade for DuckDB market storage helpers."""
+"""DuckDB market storage helpers."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from oddsfox.storage.duckdb._market_mutations import (
     save_end_dates_batch,
     save_event_slugs_batch,
     save_market_tokens_batch,
-    save_markets_batch,
     save_slugs_batch,
     save_tokens_batch,
 )
@@ -53,7 +52,6 @@ __all__ = [
     "save_end_dates_batch",
     "save_event_slugs_batch",
     "save_market_tokens_batch",
-    "save_markets_batch",
     "save_slugs_batch",
     "save_tokens_batch",
 ]

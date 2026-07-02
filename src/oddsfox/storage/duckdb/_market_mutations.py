@@ -45,22 +45,6 @@ def save_market_tokens_batch(token_data: Iterable[Tuple]) -> None:
         _persist_market_tokens(conn, token_data)
 
 
-def save_markets_batch(market_data: Iterable[Tuple], token_data: Iterable[Tuple]):
-    """Persist CLOB token mappings from a markets sync batch.
-
-    ``polymarket_raw.markets`` rows are owned by the dlt landing asset; this
-    helper writes ``market_tokens`` only. ``market_data`` is retained for caller
-    compatibility and metrics but is not written to DuckDB.
-    """
-    _ = market_data
-    token_data = list(token_data)
-    if not token_data:
-        return
-    ensure_duck_db()
-    with get_connection() as conn:
-        _persist_market_tokens(conn, token_data)
-
-
 def delete_orphan_market_tokens() -> int:
     """Remove raw ``market_tokens`` rows with no parent row in ``markets`` (referential repair)."""
     ensure_duck_db()
@@ -206,7 +190,6 @@ __all__ = [
     "save_end_dates_batch",
     "save_event_slugs_batch",
     "save_market_tokens_batch",
-    "save_markets_batch",
     "save_slugs_batch",
     "save_tokens_batch",
 ]

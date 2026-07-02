@@ -27,7 +27,7 @@ from oddsfox.ingestion.polymarket.wc2026_scope import (
 )
 from oddsfox.resources.progress_guardrails import ProgressGuardrail
 from oddsfox.storage.duckdb.connection import ensure_duck_db
-from oddsfox.storage.duckdb.markets import save_markets_batch
+from oddsfox.storage.duckdb.markets import save_market_tokens_batch
 from oddsfox.storage.duckdb.metadata import save_sync_run_metrics
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ def _sync_markets_wc2026(
         df = process_markets_dataframe(raw_markets)
         market_data, token_data = prepare_batch_for_db(df)
         if market_data:
-            save_markets_batch(market_data, token_data)
+            save_market_tokens_batch(token_data)
             total_fetched = len(market_data)
 
     if progress_callback:

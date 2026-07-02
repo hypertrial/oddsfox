@@ -1,6 +1,4 @@
 import importlib
-import sys
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import duckdb
@@ -9,7 +7,6 @@ import pytest
 import oddsfox.storage.duckdb.connection as connection
 from oddsfox.config._reload_settings import reload_all_settings_modules
 from oddsfox.storage.duckdb.schemas import polymarket as polymarket_schema
-from oddsfox.storage.duckdb.schemas.constants import polymarket_raw_tbl
 
 
 @pytest.fixture(autouse=True)
@@ -298,7 +295,7 @@ def test_init_duck_db_idempotent(monkeypatch, tmp_path, isolated_env):
             ).fetchall()
         )
     assert "market_tokens" in names
-    assert "markets" in names
+    assert "markets" not in names
 
 
 def test_ensure_duck_db_sets_active_path(monkeypatch, tmp_path, isolated_env):
@@ -436,7 +433,15 @@ def test_create_indexes_swallows_errors(monkeypatch, tmp_path, isolated_env):
 
     conn.init_duck_db()
     bad = MagicMock()
-    bad.execute.side_effect = RuntimeError("no index")
+
+    def _execute_side_effect(sql, *args, **kwargs):
+        if "information_schema.tables" in str(sql):
+            result = MagicMock()
+            result.fetchone.return_value = (0,)
+            return result
+        raise RuntimeError("no index")
+
+    bad.execute.side_effect = _execute_side_effect
     polymarket_schema.ensure_polymarket_indexes(bad)
     assert bad.execute.called
 
@@ -466,7 +471,7 @@ def _odds_history_primary_key_columns(c: duckdb.DuckDBPyConnection) -> list[str]
     return None
 
 
-def test_init_duck_db_does_not_create_legacy_odds_history_indexes(
+def test_init_duck_db_uses_odds_history_primary_key_only(
     monkeypatch, tmp_path, isolated_env
 ):
     monkeypatch.setenv("DUCKDB_NAME", str(tmp_path / "fresh.duckdb"))
@@ -475,30 +480,6 @@ def test_init_duck_db_does_not_create_legacy_odds_history_indexes(
     conn.init_duck_db()
 
     with duckdb.connect(str(tmp_path / "fresh.duckdb")) as c:
-        names = _odds_history_index_names(c)
-        assert "idx_odds_token" not in names
-        assert "idx_odds_timestamp" not in names
-        assert _odds_history_primary_key_columns(c) == ["clobTokenId", "timestamp"]
-
-
-def test_ensure_polymarket_indexes_drops_legacy_odds_history_indexes(
-    monkeypatch, tmp_path, isolated_env
-):
-    db_path = tmp_path / "legacy_idx.duckdb"
-    monkeypatch.setenv("DUCKDB_NAME", str(db_path))
-    reload_all_settings_modules()
-    conn_mod = importlib.reload(connection)
-    conn_mod.init_duck_db()
-
-    oh = polymarket_raw_tbl("odds_history")
-    with duckdb.connect(str(db_path)) as c:
-        c.execute(f"CREATE INDEX idx_odds_token ON {oh}(clobTokenId)")
-        c.execute(f'CREATE INDEX idx_odds_timestamp ON {oh}("timestamp")')
-        assert "idx_odds_token" in _odds_history_index_names(c)
-        assert "idx_odds_timestamp" in _odds_history_index_names(c)
-
-        polymarket_schema.ensure_polymarket_indexes(c)
-
         names = _odds_history_index_names(c)
         assert "idx_odds_token" not in names
         assert "idx_odds_timestamp" not in names
@@ -548,143 +529,3 @@ def test_connect_explicit_path_skips_global_active(monkeypatch, tmp_path, isolat
     finally:
         c.close()
 
-
-def test_init_duck_db_does_not_migrate_main_polymarket_tables(
-    monkeypatch, tmp_path, isolated_env
-):
-    """Legacy ``main.markets`` is left intact; use cleanup_legacy_warehouse.py instead."""
-    db = tmp_path / "no_auto_migration.duckdb"
-    monkeypatch.setenv("DUCKDB_NAME", str(db))
-
-    bootstrap = duckdb.connect(str(db))
-    bootstrap.execute(
-        """
-        CREATE TABLE main.markets (
-            id VARCHAR PRIMARY KEY,
-            question VARCHAR
-        )
-        """
-    )
-    bootstrap.execute("INSERT INTO main.markets VALUES ('m1', 'Q')")
-    bootstrap.close()
-
-    reload_all_settings_modules()
-    conn = importlib.reload(connection)
-    conn.init_duck_db()
-
-    with conn.get_connection() as c:
-        main_rows = c.execute("SELECT COUNT(*) FROM main.markets").fetchone()[0]
-        raw_exists = c.execute(
-            """
-            SELECT COUNT(*) FROM information_schema.tables
-            WHERE table_schema = 'polymarket_raw' AND table_name = 'markets'
-            """
-        ).fetchone()[0]
-    assert main_rows == 1
-    assert raw_exists == 1
-
-
-def test_drop_legacy_bootstrap_markets_table_if_needed(tmp_path, monkeypatch):
-    db = tmp_path / "legacy_markets.duckdb"
-    monkeypatch.setenv("DUCKDB_NAME", str(db))
-    reload_all_settings_modules()
-
-    from oddsfox.storage.duckdb.schemas.polymarket import (
-        create_test_markets_table,
-        drop_legacy_bootstrap_markets_table_if_needed,
-    )
-
-    with duckdb.connect(str(db)) as conn:
-        conn.execute('CREATE SCHEMA IF NOT EXISTS "polymarket_raw"')
-        create_test_markets_table(conn)
-        assert drop_legacy_bootstrap_markets_table_if_needed(conn) is True
-        remaining = conn.execute(
-            """
-            SELECT COUNT(*) FROM information_schema.tables
-            WHERE table_schema = 'polymarket_raw' AND table_name = 'markets'
-            """
-        ).fetchone()[0]
-        assert remaining == 0
-        assert drop_legacy_bootstrap_markets_table_if_needed(conn) is False
-
-
-def test_drop_legacy_markets_unique_index(tmp_path, monkeypatch):
-    db = tmp_path / "legacy_index.duckdb"
-    monkeypatch.setenv("DUCKDB_NAME", str(db))
-    reload_all_settings_modules()
-
-    from oddsfox.storage.duckdb.schemas.polymarket import (
-        create_test_markets_table,
-        drop_legacy_markets_unique_index,
-    )
-
-    with duckdb.connect(str(db)) as conn:
-        conn.execute('CREATE SCHEMA IF NOT EXISTS "polymarket_raw"')
-        create_test_markets_table(conn)
-        conn.execute("CREATE UNIQUE INDEX idx_markets_id ON polymarket_raw.markets(id)")
-        assert drop_legacy_markets_unique_index(conn) is True
-        remaining = conn.execute(
-            """
-            SELECT COUNT(*)
-            FROM duckdb_indexes()
-            WHERE schema_name = 'polymarket_raw'
-              AND table_name = 'markets'
-              AND index_name = 'idx_markets_id'
-            """
-        ).fetchone()[0]
-        assert remaining == 0
-        assert drop_legacy_markets_unique_index(conn) is False
-
-
-def test_init_duck_db_drops_legacy_markets_unique_index(tmp_path, monkeypatch):
-    db = tmp_path / "init_drop_index.duckdb"
-    monkeypatch.setenv("DUCKDB_NAME", str(db))
-    reload_all_settings_modules()
-    conn = importlib.reload(connection)
-
-    with duckdb.connect(str(db)) as bootstrap:
-        bootstrap.execute('CREATE SCHEMA IF NOT EXISTS "polymarket_raw"')
-        polymarket_schema.create_test_markets_table(bootstrap)
-        bootstrap.execute(
-            "CREATE UNIQUE INDEX idx_markets_id ON polymarket_raw.markets(id)"
-        )
-
-    conn._SCHEMA_LOGGED = False
-    conn._SCHEMA_INITIALIZED = False
-    conn.init_duck_db()
-
-    with conn.get_connection() as c:
-        remaining = c.execute(
-            """
-            SELECT COUNT(*)
-            FROM duckdb_indexes()
-            WHERE schema_name = 'polymarket_raw'
-              AND table_name = 'markets'
-              AND index_name = 'idx_markets_id'
-            """
-        ).fetchone()[0]
-    assert remaining == 0
-
-
-def test_audit_legacy_warehouse_layout_detects_main(monkeypatch, tmp_path):
-    db = tmp_path / "legacy_layout.duckdb"
-    with duckdb.connect(str(db)) as bootstrap:
-        bootstrap.execute("CREATE TABLE main.markets (id VARCHAR PRIMARY KEY)")
-
-    root = Path(__file__).resolve().parents[3]
-    scripts = root / "scripts"
-    if str(scripts) not in sys.path:
-        sys.path.insert(0, str(scripts))
-    spec = importlib.util.spec_from_file_location(
-        "audit_legacy_warehouse_layout",
-        scripts / "audit_legacy_warehouse_layout.py",
-    )
-    mod = importlib.util.module_from_spec(spec)
-    assert spec.loader
-    spec.loader.exec_module(mod)
-
-    import duckdb as _duckdb
-
-    conn = _duckdb.connect(str(db), read_only=True)
-    assert mod.audit(conn)
-    conn.close()

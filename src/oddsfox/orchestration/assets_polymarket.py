@@ -32,10 +32,7 @@ from oddsfox.storage.duckdb.observability import (
     snapshot_dbt_models,
     snapshot_raw_layer,
 )
-from oddsfox.storage.duckdb.schemas.polymarket import (
-    drop_legacy_bootstrap_markets_table_if_needed,
-    drop_legacy_markets_unique_index,
-)
+from oddsfox.storage.duckdb.schemas.polymarket import ensure_polymarket_indexes
 
 
 def _raw_snapshot_metadata(
@@ -182,15 +179,6 @@ def polymarket_markets_raw_dlt(
     dlt: DagsterDltResource,
 ):
     pipeline = get_polymarket_dlt_pipeline()
-    with get_connection() as conn:
-        if drop_legacy_bootstrap_markets_table_if_needed(conn):
-            context.log.info(
-                "Dropped legacy bootstrap polymarket_raw.markets; dlt will recreate it"
-            )
-        if drop_legacy_markets_unique_index(conn):
-            context.log.info(
-                "Dropped legacy idx_markets_id unique index; dlt owns id uniqueness"
-            )
     if pipeline.has_pending_data:
         context.log.info(
             "Clearing pending dlt packages for polymarket_wc2026_raw before extract"
@@ -199,6 +187,8 @@ def polymarket_markets_raw_dlt(
     rows = normalize_market_payloads_for_dlt(collect_raw_markets())
     dlt_source = polymarket_markets_source(rows=rows)
     yield from dlt.run(context=context, dlt_pipeline=pipeline, dlt_source=dlt_source)
+    with get_connection() as conn:
+        ensure_polymarket_indexes(conn)
 
 
 @asset(

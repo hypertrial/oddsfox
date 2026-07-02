@@ -19,34 +19,24 @@ from oddsfox.storage.duckdb.connection import get_connection
 from oddsfox.storage.duckdb.wc2026_registry import RegistryRow, upsert_registry_rows
 
 
-def test_save_markets_batch_persists_tokens_only(duck):
+def test_save_market_tokens_batch_persists_tokens(duck):
     with duck.get_connection() as conn:
         _insert_minimal_market(conn, "m-tok")
 
-    markets.save_markets_batch([], [("m-tok", '["old"]')])
-    markets.save_markets_batch([], [("m-tok", '["tok-a", "tok-b"]')])
+    markets.save_market_tokens_batch([("m-tok", '["old"]')])
+    markets.save_market_tokens_batch([("m-tok", '["tok-a", "tok-b"]')])
 
     with duck.get_connection() as conn:
         row = conn.execute(
             f"SELECT clobTokenIds FROM {T_MT} WHERE market_id = 'm-tok'"
         ).fetchone()
-        index = conn.execute(
-            """
-            SELECT COUNT(*)
-            FROM duckdb_indexes()
-            WHERE schema_name = 'polymarket_raw'
-              AND table_name = 'markets'
-              AND index_name = 'idx_markets_id'
-            """
-        ).fetchone()[0]
     assert row == ('["tok-a", "tok-b"]',)
-    assert index == 0
 
 
-def test_save_markets_batch_noop_without_tokens(duck):
+def test_save_market_tokens_batch_noop_without_tokens(duck):
     with duck.get_connection() as conn:
         before = conn.execute(f"SELECT COUNT(*) FROM {T_MT}").fetchone()[0]
-    markets.save_markets_batch([("ignored",)], [])
+    markets.save_market_tokens_batch([])
     with duck.get_connection() as conn:
         after = conn.execute(f"SELECT COUNT(*) FROM {T_MT}").fetchone()[0]
     assert before == after == 0
@@ -942,4 +932,4 @@ def test_fetch_market_ids_no_limit(duck):
 def test_storage_duckdb_package_import():
 
     assert pkg.ensure_duck_db
-    assert pkg.save_markets_batch
+    assert pkg.save_market_tokens_batch

@@ -211,14 +211,6 @@ oddsfox:
         "oddsfox.orchestration.polymarket_ops.sync_wc2026_registry",
         _fake_sync_wc2026_registry,
     )
-    monkeypatch.setattr(
-        "oddsfox.storage.duckdb.schemas.polymarket.drop_legacy_bootstrap_markets_table_if_needed",
-        lambda _conn: False,
-    )
-    monkeypatch.setattr(
-        "oddsfox.storage.duckdb.schemas.polymarket.drop_legacy_markets_unique_index",
-        lambda _conn: False,
-    )
 
     _seed_dlt_owned_markets(market_page)
 

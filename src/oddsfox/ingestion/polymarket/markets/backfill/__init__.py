@@ -8,7 +8,6 @@ import time
 from tqdm import tqdm
 
 from oddsfox.ingestion.polymarket.gamma_events import (
-    EVENTS_FETCH_LIMIT,
     EVENTS_KEYSET_REQUEST_LIMIT,
     GAMMA_EVENTS_KEYSET_EFFECTIVE_PAGE_SIZE,
 )
@@ -60,7 +59,6 @@ __all__ = [
     "APIClient",
     "DEFAULT_EVENT_SLUG_FALLBACK_MAX_NO_PROGRESS_PAGES",
     "DEFAULT_EVENT_SLUG_FALLBACK_MAX_PAGES",
-    "EVENTS_FETCH_LIMIT",
     "EVENTS_KEYSET_REQUEST_LIMIT",
     "GAMMA_EVENTS_KEYSET_EFFECTIVE_PAGE_SIZE",
     "ProgressCallback",

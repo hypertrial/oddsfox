@@ -116,8 +116,8 @@ def _event_market(market_id: str = "m1") -> dict:
     }
 
 
-def test_sync_markets_targeted_saves_raw_markets(monkeypatch):
-    saved = {}
+def test_sync_markets_targeted_saves_tokens(monkeypatch):
+    saved: list = []
     progress = []
 
     monkeypatch.setattr(markets_sync, "ensure_duck_db", lambda: None)
@@ -139,10 +139,8 @@ def test_sync_markets_targeted_saves_raw_markets(monkeypatch):
     )
     monkeypatch.setattr(
         markets_sync,
-        "save_markets_batch",
-        lambda market_data, token_data: saved.update(
-            {"markets": market_data, "tokens": token_data}
-        ),
+        "save_market_tokens_batch",
+        lambda token_data: saved.extend(token_data),
     )
 
     out = markets_sync.sync_markets(
@@ -155,8 +153,7 @@ def test_sync_markets_targeted_saves_raw_markets(monkeypatch):
     assert out["discovery_mode"] == "targeted"
     assert out["total_fetched"] == 1
     assert out["registry_refreshed"] is True
-    assert saved["markets"]
-    assert saved["tokens"]
+    assert saved
     assert any(phase == "discovery_complete" for phase, _ in progress)
 
 
@@ -177,8 +174,8 @@ def test_sync_markets_targeted_empty_events(monkeypatch):
     )
     monkeypatch.setattr(
         markets_sync,
-        "save_markets_batch",
-        lambda *args, **kwargs: saved.append((args, kwargs)),
+        "save_market_tokens_batch",
+        lambda token_data: saved.append(token_data),
     )
 
     out = markets_sync.sync_markets(
@@ -242,7 +239,7 @@ def test_sync_markets_ignores_progress_callback_failures(monkeypatch):
             {"events_pages": 0, "markets_collected": 1, "registry_refreshed": True},
         ),
     )
-    monkeypatch.setattr(markets_sync, "save_markets_batch", lambda *a, **k: None)
+    monkeypatch.setattr(markets_sync, "save_market_tokens_batch", lambda *a, **k: None)
 
     out = markets_sync.sync_markets(
         client_factory=lambda: object(),
@@ -271,7 +268,7 @@ def test_sync_markets_guardrail_check_during_discovery_progress(monkeypatch):
     monkeypatch.setattr(markets_sync, "ensure_duck_db", lambda: None)
     monkeypatch.setattr(markets_sync, "load_wc2026_config", lambda: _SLUG_ONLY_CFG)
     monkeypatch.setattr(markets_sync, "save_sync_run_metrics", lambda *a, **k: None)
-    monkeypatch.setattr(markets_sync, "save_markets_batch", lambda *a, **k: None)
+    monkeypatch.setattr(markets_sync, "save_market_tokens_batch", lambda *a, **k: None)
 
     def fake_refresh(client, config, progress_callback=None):
         del client, config

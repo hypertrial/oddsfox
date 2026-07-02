@@ -23,8 +23,6 @@ logger = logging.getLogger(__name__)
 EVENTS_KEYSET_REQUEST_LIMIT = 500
 # Observed Gamma cap per keyset response (for docs and runtime estimates only).
 GAMMA_EVENTS_KEYSET_EFFECTIVE_PAGE_SIZE = 100
-# Backward-compatible alias used by backfill exports and tests.
-EVENTS_FETCH_LIMIT = EVENTS_KEYSET_REQUEST_LIMIT
 
 
 @dataclass(frozen=True)

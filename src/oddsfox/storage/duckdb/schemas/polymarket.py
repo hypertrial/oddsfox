@@ -15,27 +15,34 @@ logger = logging.getLogger(__name__)
 
 
 def ensure_polymarket_indexes(conn: duckdb.DuckDBPyConnection) -> None:
-    """Create indexes; drop legacy redundant odds_history indexes."""
+    """Create indexes for existing Polymarket tables."""
     m = polymarket_raw_tbl("markets")
     tod = polymarket_raw_tbl("token_odds_daily")
     sk = polymarket_ops_tbl("token_sync_skips")
     wc_reg = polymarket_ops_tbl("wc2026_market_registry")
-    # ponytail: PK (clobTokenId, timestamp) covers token lookups; no timestamp-only hot path.
-    drop_statements = [
-        "DROP INDEX IF EXISTS polymarket_raw.idx_odds_token",
-        "DROP INDEX IF EXISTS polymarket_raw.idx_odds_timestamp",
-    ]
     index_statements = [
-        f"CREATE INDEX IF NOT EXISTS idx_category ON {m}(category)",
-        f"CREATE INDEX IF NOT EXISTS idx_volume ON {m}(volume)",
-        f"CREATE INDEX IF NOT EXISTS idx_slug ON {m}(slug)",
-        f"CREATE INDEX IF NOT EXISTS idx_event_slug ON {m}(event_slug)",
         f"CREATE INDEX IF NOT EXISTS idx_wc2026_registry_event_slug ON {wc_reg}(event_slug)",
         f"CREATE INDEX IF NOT EXISTS idx_token_odds_daily_token ON {tod}(clobTokenId)",
         f"CREATE INDEX IF NOT EXISTS idx_token_odds_daily_date ON {tod}(odds_date_utc)",
         f"CREATE INDEX IF NOT EXISTS idx_token_skip_reason ON {sk}(clobTokenId)",
     ]
-    for stmt in drop_statements + index_statements:
+    markets_exists = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM information_schema.tables
+        WHERE table_schema = 'polymarket_raw' AND table_name = 'markets'
+        """
+    ).fetchone()
+    if markets_exists and markets_exists[0]:
+        index_statements.extend(
+            [
+                f"CREATE INDEX IF NOT EXISTS idx_category ON {m}(category)",
+                f"CREATE INDEX IF NOT EXISTS idx_volume ON {m}(volume)",
+                f"CREATE INDEX IF NOT EXISTS idx_slug ON {m}(slug)",
+                f"CREATE INDEX IF NOT EXISTS idx_event_slug ON {m}(event_slug)",
+            ]
+        )
+    for stmt in index_statements:
         try:
             conn.execute(stmt)
         except Exception as exc:
@@ -180,91 +187,8 @@ def bootstrap_polymarket_tables(conn: duckdb.DuckDBPyConnection) -> None:
     )
 
 
-def drop_legacy_markets_unique_index(conn: duckdb.DuckDBPyConnection) -> bool:
-    """Drop the legacy app-owned unique index on dlt markets ``id``.
-
-    dlt merge loads manage id uniqueness via ``primary_key``; an external unique
-    index causes duplicate-key failures on re-discovery of existing markets.
-
-    Returns True when the index was dropped.
-    """
-    m = polymarket_raw_tbl("markets")
-    try:
-        row = conn.execute(
-            """
-            SELECT COUNT(*)
-            FROM duckdb_indexes()
-            WHERE schema_name = 'polymarket_raw'
-              AND table_name = 'markets'
-              AND index_name = 'idx_markets_id'
-            """
-        ).fetchone()
-    except Exception as exc:
-        logger.warning(
-            "Skipping legacy markets unique-index drop after metadata query failed: %s",
-            exc,
-        )
-        return False
-    if not row or not row[0]:
-        return False
-    try:
-        conn.execute("DROP INDEX IF EXISTS polymarket_raw.idx_markets_id")
-    except Exception as exc:
-        logger.warning(
-            "Legacy markets unique-index drop skipped (%s): %s",
-            m,
-            exc,
-        )
-        return False
-    logger.info(
-        "Dropped legacy unique index idx_markets_id on %s; dlt owns id uniqueness",
-        m,
-    )
-    return True
-
-
-def drop_legacy_bootstrap_markets_table_if_needed(
-    conn: duckdb.DuckDBPyConnection,
-) -> bool:
-    """Drop bootstrap-owned ``markets`` so dlt can create its schema.
-
-    Returns True when a legacy table was dropped.
-    """
-    m = polymarket_raw_tbl("markets")
-    exists = conn.execute(
-        """
-        SELECT COUNT(*)
-        FROM information_schema.tables
-        WHERE table_schema = 'polymarket_raw' AND table_name = 'markets'
-        """
-    ).fetchone()
-    if not exists or not exists[0]:
-        return False
-    has_dlt_id = conn.execute(
-        """
-        SELECT COUNT(*)
-        FROM information_schema.columns
-        WHERE table_schema = 'polymarket_raw'
-          AND table_name = 'markets'
-          AND column_name = '_dlt_id'
-        """
-    ).fetchone()
-    if has_dlt_id and has_dlt_id[0]:
-        return False
-    logger.info(
-        "Dropping legacy bootstrap %s so dlt can own polymarket_raw.markets",
-        m,
-    )
-    conn.execute(f"DROP TABLE {m}")
-    return True
-
-
 def create_test_markets_table(conn: duckdb.DuckDBPyConnection) -> None:
-    """Empty app-schema markets table for dbt source tests and local CI.
-
-    Production loads use dlt-owned ``polymarket_raw.markets``; the dlt asset drops
-    this stub before landing when present.
-    """
+    """Empty markets source fixture for dbt source tests and local CI."""
     m = polymarket_raw_tbl("markets")
     conn.execute(
         f"""
@@ -291,7 +215,5 @@ def create_test_markets_table(conn: duckdb.DuckDBPyConnection) -> None:
 __all__ = [
     "bootstrap_polymarket_tables",
     "create_test_markets_table",
-    "drop_legacy_bootstrap_markets_table_if_needed",
-    "drop_legacy_markets_unique_index",
     "ensure_polymarket_indexes",
 ]

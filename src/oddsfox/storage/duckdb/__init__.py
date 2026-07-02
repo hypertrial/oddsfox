@@ -23,7 +23,6 @@ from oddsfox.storage.duckdb.markets import (
     save_end_dates_batch,
     save_event_slugs_batch,
     save_market_tokens_batch,
-    save_markets_batch,
     save_slugs_batch,
     save_tokens_batch,
 )
@@ -93,7 +92,6 @@ __all__ = [
     "get_markets_without_slugs",
     "get_markets_without_event_slugs",
     "get_markets_without_end_date",
-    "save_markets_batch",
     "save_market_tokens_batch",
     "delete_orphan_market_tokens",
     "save_tokens_batch",

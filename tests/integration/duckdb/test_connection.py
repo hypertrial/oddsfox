@@ -37,7 +37,6 @@ def test_init_duck_db_creates_polymarket_schemas_only(tmp_path, monkeypatch):
 
     assert schemas == {"polymarket_raw", "polymarket_ops"}
     assert {
-        ("polymarket_raw", "markets"),
         ("polymarket_raw", "market_tokens"),
         ("polymarket_raw", "odds_history"),
         ("polymarket_raw", "token_odds_daily"),
@@ -47,3 +46,4 @@ def test_init_duck_db_creates_polymarket_schemas_only(tmp_path, monkeypatch):
         ("polymarket_ops", "pipeline_run_events"),
         ("polymarket_ops", "sync_run_metrics"),
     } <= tables
+    assert ("polymarket_raw", "markets") not in tables

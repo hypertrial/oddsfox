@@ -122,9 +122,9 @@ def _insert_market_tuple(conn, row: tuple) -> None:
 
 
 def _seed_markets(duck, market_rows=None, token_rows=None) -> None:
-    """Seed markets via direct insert; persist tokens through save_markets_batch."""
+    """Seed markets via direct insert; persist tokens through save_market_tokens_batch."""
     with duck.get_connection() as conn:
         for row in market_rows or ():
             _insert_market_tuple(conn, row)
     if token_rows:
-        markets.save_markets_batch([], token_rows)
+        markets.save_market_tokens_batch(token_rows)
