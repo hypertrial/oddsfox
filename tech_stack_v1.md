@@ -46,7 +46,7 @@ or in-memory graph library. Add one only after a measured workload justifies it.
 
 ## Ingestion and validation
 
-Use `httpx` for venue adapters, with explicit timeouts, bounded retries, and
+Use `httpx` for the three explicit public venue adapters, with explicit timeouts, bounded retries, and
 rate-limit handling. Use Pydantic to validate typed semantic objects and generate
 the public versioned IR JSON Schema specified in the
 [technical specification](tech_spec_v1.md#public-v1-semantic-ir). Pydantic is the
@@ -91,9 +91,12 @@ projection, or optimization-solver dependency.
 ## Process model, reports, and API
 
 Run one application process that owns the writable DuckDB connection and
-serializes database writes through a coordinator. A lightweight worker consumes
-the persisted jobs table; inference and network work execute outside short database
-transactions. All consumers access the database through this process while it is
+serializes database writes through a coordinator. Bounded discovery workers and one local-model lane consume persisted work;
+formal comparisons use a separate bounded lane. Inference, document extraction and
+network work execute outside short database transactions. A two-second scheduler
+checks persisted due times; a completed discovery run becomes due again after 900
+seconds. One active run per venue coalesces requests and resumes page checkpoints.
+Worker-level failures expose diagnostics and backoff without stopping other lanes. All consumers access the database through this process while it is
 running. Do not launch independent writable workers or multiple server processes.
 
 Use FastAPI and Pydantic for a loopback-only API. Provide a simple local HTML
@@ -126,3 +129,21 @@ operating system, chosen Python version, lockfile, and results for:
    acceptance-policy version/configuration, memory, latency, and review effort.
 
 These are implementation gates, not checks already performed by this document.
+
+## Discovery runtime additions
+
+Use additive transactional DuckDB version-2 migration for catalogs, retrieval
+snapshots, semantic-head indices, sync state and comparison progress. Existing nodes
+and dependency IDs remain immutable. Backup/restore integrity checks cover the new
+artifact and node references. Keep network clients bounded and model inference
+serialized through the existing MLX lock.
+
+Use `pypdf` for official PDF text extraction and the standard-library HTML parser
+for HTML. Run extraction in a disposable subprocess: 8 MiB input, 200 PDF pages,
+2 MiB extracted text, CPU/time limits and Linux address-space limits. Preserve
+unreadable material as an explicit gap. There is no OCR fallback or arbitrary-site
+crawler. Keep the host allowlist in the document boundary module.
+
+Use the existing plain HTML/CSS/JavaScript frontend for the event browser, with
+server-side pagination and cached comparison reads. Node's built-in test runner
+continues to exercise shipped JavaScript; no frontend package manager is required.

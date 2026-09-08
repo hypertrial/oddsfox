@@ -31,12 +31,57 @@ Each immutable `ContractVersion` records platform, native contract ID, optional
 native version, content hash, retrieval timestamp, source URLs, and capture status.
 Use a local version identity when the venue supplies no revision number. Record
 source effective time separately when available; retrieval time is not effective
-time. An unchanged payload adds a refresh observation without mutating the version
-or creating duplicate content.
+time. Preserve every exact retrieval as a snapshot. Only a deterministic projection
+of governing text, outcomes, observation/resolution definitions and referenced
+material determines a new semantic contract revision. Volume, quote, lifecycle and
+retrieval-time changes update snapshots without invalidating unchanged semantics.
 
 Version referenced material as well as the market payload. A clarification can
 invalidate an interpretation even when the title is unchanged. Store the last
 successful refresh and retrieval failures so consumers can assess freshness.
+
+## Event discovery and local explanations
+
+Keep native venue namespaces distinct: `kalshi`, `polymarket` (International), and
+`polymarket_us`. Version event, discovery, explanation and suggestion envelopes
+separately from Semantic IR 1.0.0. Event catalogs have one row per venue/native event;
+native child IDs are deduplicated before volume aggregation. Parse volume as exact
+decimals; missing fields are unknown. Prefer documented lifetime event totals,
+otherwise require complete current/historical child membership. Kalshi contract
+counts are multiplied by face value. Never substitute session stats or open interest.
+
+Cursor/offset pagination preserves resume checkpoints and detects repeated pages.
+Public discovery adapters do not enumerate authenticated, exact-symbol combo lookups
+(such as the separate Polymarket US beta interface); expose this coverage limitation.
+Only a completed, error-free scan retires unseen catalog entries. Failed child
+membership retrieval preserves the previous event with stale diagnostics and marks
+the scan partial. Store page, membership and governing-document artifacts so volume
+and semantic evidence remain reproducible after catalog updates.
+
+Official document fetching uses explicit HTTPS host allowlists, public-address
+validation, pinned connections and redirect revalidation. Preserve raw HTML/PDF,
+extracted text and unavailable-material diagnostics. Chunk long text with original
+artifact character spans. Structured outcomes, timing and combination legs also
+become citable artifacts linked to their original API payloads.
+
+Local explanations cache by source chunks and versioned model/prompt configuration.
+Matching assesses available explanations and records omitted candidates; newly available
+explanations change the match signature and trigger reassessment.
+Validate citation bounds and preserve original model responses. Indexed title,
+entity and date overlap selects up to 20 cross-venue candidates; local assessment
+uses bounded cited context and explicitly reports non-exhaustive coverage. Neither
+explanations nor suggested matches create canonical registry entries or approvals.
+
+Comparison progress and cached rows are isolated per canonical observation and
+its current interpretations/reviews. Stream complete-group candidates through bounded
+batches, preserving cross-batch edges and pair-specific settlement conditions.
+Read endpoints consume cached results; publication rechecks current semantics and
+approvals. Dataset size is independent of capture-request batch limits.
+
+Public additions: paginated `GET /api/events` and event details; `GET /api/sync` for
+settings, freshness and processing lanes; authenticated `POST /api/sync` and
+`POST /api/sync/pause`; paginated cached `GET /api/comparisons`. Preserve manual
+capture/import/review/export interfaces and `/research` as the adjudication view.
 
 ## Public V1 semantic IR
 

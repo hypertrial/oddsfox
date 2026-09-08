@@ -122,3 +122,26 @@ def test_dense_settlement_candidate_limit_is_explicit(store):
     assert len(candidates(batch)) == 179
     with pytest.raises(ValueError, match="bounded V1 candidate limit"):
         candidates(batch, settlement_pairs=True)
+
+
+def test_full_observation_pairs_cross_250_contract_batch_boundary(store):
+    from itertools import islice
+
+    from oddsfox.reasoning import candidate_pairs
+
+    prototype, _ = pair(store)
+    rows = []
+    for i in range(251):
+        ir = prototype.model_copy(
+            update={
+                "contract_version_id": str(i),
+                "predicate": prototype.predicate.model_copy(update={"threshold": str(i)}),
+            }
+        )
+        rows.append(ir)
+    stream = candidate_pairs(rows, settlement_pairs=True)
+    first = list(islice(stream, 249))
+    following = next(stream)
+    assert len(first) == 249
+    assert tuple(ir.contract_version_id for ir in following) == ("0", "250")
+    assert len(list(stream)) == 251 * 250 // 2 - 250

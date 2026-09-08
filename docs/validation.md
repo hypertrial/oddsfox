@@ -112,3 +112,63 @@ Optional backends now load through the standard-library module loader only when
 a configured model job executes. The current local
 core-only completion gate passes 109 tests, and Linux-target type checking passes;
 a new remote run of the corrected revision is still required.
+
+## Three-venue event discovery implementation (2026-09-08)
+
+The default event browser, public adapters, snapshot migration, durable processing,
+local explanation interface and provisional matching are implemented. The expanded
+completion gate passes 140 tests, Ruff lint/format, ty, unchanged Semantic IR
+1.0.0 schema generation and the package build. Tests include 300 distinct discovered
+events across overlapping pages, 251 captured contracts, comparisons crossing the
+250-contract boundary, checkpoint recovery, bounded rate-limit retries, partial
+outages, unreadable PDF preservation, migration/backup restoration and suggestion
+candidate recovery/reversion. Independent architecture, data and document-security
+reviews found defects that were fixed and retested. This is software evidence,
+not the independent human acceptance evidence described above.
+
+Browser checks used a separate temporary dataset: volume ordering, venue filtering,
+event details, unknown-volume empty state, model-setup guidance and authenticated
+pause were exercised. The 390-pixel viewport had no horizontal overflow; the final
+reloaded desktop page reported no browser console errors. Frontend regression
+checks exercise pagination, filter reset, authenticated pause and the legacy editor.
+
+### Actual discovery coverage
+
+Read-only live sampling retrieved the first 100 events from International and
+Kalshi, then fully processed two representative events from each. International
+samples included Kraken IPO (reported USD 1,607,032.853199; four active children)
+and Macron out (USD 2,151,795.36855; one active child). Kalshi samples included
+Elon Musk visiting Mars (USD 118,572.210000 face-value notional, qualifying) and the
+next NATO secretary-general (USD 6,234.970000, below threshold). Current/historical
+Kalshi membership and linked governing material were exercised; dataset integrity
+passed. These were bounded samples, **not completed universe scans**.
+
+Polymarket US returned HTTP 403 from this environment during implementation
+validation. Its public adapter is covered by fixtures, including missing lifetime
+volume, but current live US coverage remains unverified. No liquidity, open interest
+or book statistic substitutes for missing lifetime turnover. US's separately
+[documented combo API](https://docs.polymarket.us/api-reference/combos/overview)
+requires beta-enabled authenticated access and an exact symbol; its
+[lookup contract](https://docs.polymarket.us/api-reference/combos/get-combos) is
+not a public paginated combo-universe feed. The UI and API disclose that limit.
+
+### Actual explanation quality
+
+The already installed Qwen3-4B-Instruct-2507-4bit model described above was run
+locally with production `explain-captured-lines/3`, temperature zero, 4,096 tokens,
+180-second budget and 8 GiB MLX allocation ceiling. Four synthetic cases completed
+strict schema and captured-citation validation: threshold (18.86 s), sports
+(12.23 s), election (11.61 s), and combination (15.03 s). These are invocation
+latencies, not a throughput benchmark or representative real-corpus accuracy score.
+No cloud inference or new weight download was used.
+
+Quality is **not validated for release**. Inspection found unsupported statements:
+the threshold response questioned a currency that was explicitly USD; the election
+response inferred that recounts cannot alter certification; some statements still
+confused observation conditions with settlement timing. Family output was threshold,
+unknown, unknown and other respectively. Deterministic routing and existing formal
+review gates remain in force independently of those model labels. All explanations
+and suggested matches remain UNREVIEWED; none of these runs accepted a formal claim.
+Raw outputs remain in the local validation dataset. A cited span establishes
+provenance, not that its generated paraphrase is correct. Full discovery completeness,
+real-contract explanation quality and the existing human product gates remain open.

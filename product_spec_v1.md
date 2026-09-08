@@ -31,7 +31,7 @@ language-independent canonical JSON contract is owned by the
 
 ## User workflow and deliverable
 
-1. Import a bounded collection of Polymarket and Kalshi contracts.
+1. Browse automatically discovered qualifying events across Kalshi, Polymarket International and Polymarket US; retain manual capture/import for research.
 2. Inspect a local comparison report containing candidate relationships,
    settlement differences, unresolved questions, and source evidence.
 3. Review uncertain interpretations and record corrections or approval.
@@ -62,12 +62,12 @@ All examples here are illustrative, not claims about listed markets.
 
 ## V1 scope
 
-Support one contract family: binary numeric threshold questions about a single
+Formally verify one contract family: binary numeric threshold questions about a single
 scalar observation at a specified instant, with an identifiable source, unit,
 comparison operator, and resolution policy. Discover equivalence, implication,
 mutual exclusion, and complement relationships within that family.
 
-Start with a curated corpus from both venues. Source availability and actual
+Use a curated, independently labeled corpus for formal-verification evaluation across venues. Source availability and actual
 contract rules determine eligibility; do not force contracts into the supported
 family to meet a coverage target. Include near-matches and unsupported contracts
 in evaluation so that abstention and mismatch detection are measured.
@@ -77,13 +77,38 @@ API. It publishes symbolic probability constraints derived from verified semanti
 these are not market-price estimates. It does not ingest prices or adjust numerical
 probability estimates.
 
-Defer elections as a general domain, categorical partitions, n-ary relationships,
+Defer formal reasoning over elections as a general domain, categorical partitions, n-ary relationships,
 interval maxima, temporal containment, causal inference, forecasting, trade
 execution, graph visualization, and a hosted multi-user service. Extend scope
 only after the first family's interpretation and revision behavior are validated.
 Global probability coherence, larger logical hypergraphs, categorical partitions,
 temporal containment, and trading applications are possible downstream extensions
 enabled by the IR, not V1 deliverables.
+
+## Default discovery and explanation experience
+
+The home view includes each venue's events with at least one market open for
+trading and lifetime volume strictly above USD 100,000. Qualification is per venue
+event, not pooled across exchanges. Include every active child market after event
+qualification. Lifetime event totals include closed children that contributed volume.
+Label venue volume conventions; face-value contract notional and cash turnover are
+not interchangeable measures. Unknown totals belong in a separate visible queue.
+
+Cover all publicly discoverable categories and listed combinations. Explain rules,
+outcomes, timing, sources, exceptions and combination legs using cited local-model
+outputs. Suggest cross-venue matches without automatically merging identities.
+These explanations are unreviewed and do not broaden the formal-verification family.
+Missing governing documents and ambiguities must stay visible.
+
+Refresh on startup and every 15 minutes while the local app runs, with manual
+refresh and pause controls. Show per-venue coverage/freshness, partial failures,
+explanation progress and formal-verification progress separately. Retain the last
+successful data during outages. Never label an incomplete scan as complete.
+
+No model download or cloud inference occurs implicitly. Discovery must work without
+a model; the app explains how to configure one. Local processing is progressive,
+with no promise that all explanations finish within a refresh interval. Human
+review remains required for accepted formal claims.
 
 ## Trust promise
 

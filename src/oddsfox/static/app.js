@@ -16,7 +16,7 @@ async function refresh(){
   $("contract-list").replaceChildren();
   for(const c of data.contracts){
     const el=node("article",undefined,"card"), meta=c.data.metadata;
-    el.append(node("span",c.data.platform.toUpperCase(),"badge"),node("span",meta.capture_status,"badge warning"),node("h3",meta.title||c.logical));
+    el.append(node("span",({kalshi:"Kalshi",polymarket:"Polymarket International",polymarket_us:"Polymarket US"}[c.data.platform]||c.data.platform),"badge"),node("span",meta.capture_status,"badge warning"),node("h3",meta.title||c.logical));
     const last=data.freshness.find(r=>r.logical===c.logical);el.append(node("p",last?`Last retrieval: ${last.retrieved} · ${last.success?"successful":"FAILED — historical capture retained"}`:"No retrieval evidence","small muted"));
     const evidence=node("details");evidence.append(node("summary","Captured evidence & version"),node("p",c.id,"small"));
     for(const [name,id] of Object.entries(c.data.text_artifacts)){const p=node("p");p.append(link(name,`/api/artifacts/${id}`));evidence.append(p);}evidence.append(details("Referenced material",c.data.references));el.append(evidence);
@@ -38,6 +38,7 @@ async function refresh(){
   }
   if(!data.contracts.length)$("contract-list").append(node("div","Your research set starts here. Import captured market JSON or retrieve a bounded list of native IDs above.","empty"));
   $("comparison-list").replaceChildren();
+  if(data.near_match_coverage&&!data.near_match_coverage.complete)$("comparison-list").append(node("p",`Legacy near-match view covers ${data.near_match_coverage.processed} of ${data.near_match_coverage.total} interpretations. Use event details for indexed cross-venue suggestions.`,"condition"));
   const titles=Object.fromEntries(data.contracts.map(c=>[c.id,c.data.metadata.title||c.logical]));
   for(const claim of data.comparisons){const accepted=data.assertions.some(a=>a.logical===claim.claim_id);const el=node("article",undefined,"card");el.append(node("span",accepted?"ACCEPTED":"PROVISIONAL",accepted?"badge success":"badge warning"),node("span",claim.scope === "OBSERVED_EVENT" ? "OBSERVED EVENTS" : "SETTLEMENT OUTCOMES","badge"),node("h3",`${titles[claim.a]} ${claim.relation} ${titles[claim.b]}`),node("p",`${claim.proof.state} · settlement ${claim.settlement.state}`));for(const condition of claim.conditions)el.append(node("p",condition,"condition"));el.append(node("p",claim.constraint.expression.replaceAll(claim.a,"A").replaceAll(claim.b,"B")),details("Premises, proof, source evidence & dependencies",claim));$("comparison-list").append(el);}
   for(const mismatch of data.near_matches){const el=node("article",undefined,"card");el.append(node("span","NEAR-MATCH / NOT COMPARABLE","badge warning"),node("h3",`${titles[mismatch.a]} · ${titles[mismatch.b]}`),node("p",mismatch.reason),details("Observation differences",mismatch.differences));$("comparison-list").append(el);}

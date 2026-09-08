@@ -11,7 +11,7 @@ from oddsfox.ingest import fetch, import_capture, normalize
 
 def test_loopback_host_origin_and_mutation_token(store):
     with TestClient(
-        create_app(store, token="test-session"), base_url="http://127.0.0.1:8777"
+        create_app(store, auto_sync=False, token="test-session"), base_url="http://127.0.0.1:8777"
     ) as client:
         assert client.get("/").status_code == 200
         assert client.get("/api/status", headers={"Host": "evil.example"}).status_code == 400
@@ -37,7 +37,9 @@ def test_loopback_host_origin_and_mutation_token(store):
 def test_report_read_does_not_approve_and_explicit_reviews_publish(store):
     result = load_demo(store)
     headers = {"X-Oddsfox-Token": "test"}
-    with TestClient(create_app(store, token="test"), base_url="http://127.0.0.1:8777") as client:
+    with TestClient(
+        create_app(store, auto_sync=False, token="test"), base_url="http://127.0.0.1:8777"
+    ) as client:
         assert len(client.get("/api/report").json()["comparisons"]) == 2
         assert client.get("/api/assertions").json() == []
         assert client.get("/api/export").json()["assertions"] == []
@@ -71,7 +73,9 @@ def test_captured_markup_is_data_and_missing_documents_explicit(store):
     record = store.get(identity)
     assert store.artifact(record["data"]["payload_artifact"]) == raw
     assert record["data"]["references"][0]["status"] == "not_captured"
-    with TestClient(create_app(store, token="x"), base_url="http://127.0.0.1:8777") as client:
+    with TestClient(
+        create_app(store, auto_sync=False, token="x"), base_url="http://127.0.0.1:8777"
+    ) as client:
         assert "onerror" not in client.get("/").text
         assert "textContent" in client.get("/assets/app.js").text
         assert "innerHTML" not in client.get("/assets/app.js").text
@@ -100,7 +104,12 @@ def test_adapter_capture_and_refresh_failure_are_observable(store):
     assert any(not r["success"] for r in store.status()["refreshes"])
     record = store.get(result[0]["version_id"])
     assert record["data"]["metadata"]["observation_date"] is None
-    assert set(record["data"]["text_artifacts"]) == {"title", "rules_primary", "rules_secondary"}
+    assert set(record["data"]["text_artifacts"]) == {
+        "title",
+        "rules_primary",
+        "rules_secondary",
+        "structured_contract_fields",
+    }
 
 
 @pytest.mark.parametrize("raw", [b"[]", b'{"id":"a","id":"b"}', b'{"id":"a","outcomes":{}}'])
@@ -110,7 +119,9 @@ def test_malformed_capture_rejected(raw):
 
 
 def test_malformed_and_oversize_api_input(store):
-    with TestClient(create_app(store, token="t"), base_url="http://127.0.0.1:8777") as client:
+    with TestClient(
+        create_app(store, auto_sync=False, token="t"), base_url="http://127.0.0.1:8777"
+    ) as client:
         assert (
             client.post(
                 "/api/interpret", json={"ir": {}}, headers={"X-Oddsfox-Token": "t"}
@@ -147,7 +158,9 @@ def test_real_style_decimal_strike_ticker_is_allowed(store):
     "content_type", ["application/json", "Application/JSON", "application/problem+json"]
 )
 def test_duplicate_keys_rejected_for_all_json_media_types(store, content_type):
-    with TestClient(create_app(store, token="t"), base_url="http://127.0.0.1:8777") as client:
+    with TestClient(
+        create_app(store, auto_sync=False, token="t"), base_url="http://127.0.0.1:8777"
+    ) as client:
         response = client.post(
             "/api/import",
             content=b'{"platform":"kalshi","platform":"polymarket","payload":"{}"}',

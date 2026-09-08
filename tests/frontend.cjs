@@ -34,3 +34,33 @@ test('loading a draft preserves the visible editor and saving still refreshes', 
   assert.deepEqual(JSON.parse(saved.options.body),{ir:edited});
   assert.equal(requests.filter(request => request.path==='/api/report').length,2);
 });
+
+test('event browser paginates, resets filters, and authenticates pause without running inference', async () => {
+  Object.defineProperty(Element.prototype, 'firstChild', {get(){return this.children[0];},configurable:true});
+  const elements={}, requests=[];
+  const document={hidden:false,getElementById:id=>elements[id]??=new Element('div'),createElement:tag=>new Element(tag)};
+  document.getElementById('filter-qualification').value='qualified';
+  document.getElementById('token').value='fixture-session';
+  let paused=false;
+  const fetch=async(path, options)=>{
+    requests.push({path,options});
+    if(path==='/api/sync/pause')paused=JSON.parse(options.body).paused;
+    const data=path.startsWith('/api/events?') ? {total:31,items:[],next_offset:path.includes('offset=30')?null:30} :
+      {counts:[],analysis:[],models:[],lanes:[],categories:[],coverage_notes:[],formal_verification:{groups:0},venues:[{venue:'kalshi',paused,data:{state:'complete'}}]};
+    return {ok:true,json:async()=>data};
+  };
+  vm.runInNewContext(fs.readFileSync('src/oddsfox/static/events.js','utf8'), {document,fetch,URLSearchParams,Intl,setInterval:()=>{}});
+  const settle=()=>new Promise(resolve=>setImmediate(resolve));
+  await settle();
+  elements.next.listeners.click();await settle();
+  assert(requests.some(r=>r.path.includes('offset=30')));
+  elements['filter-qualification'].value='unknown';
+  elements['filter-qualification'].listeners.change();await settle();
+  assert(requests.at(-2).path.includes('offset=0'));
+  assert(requests.at(-2).path.includes('qualification=unknown'));
+  await elements.pause.listeners.click();
+  const mutation=requests.find(r=>r.path==='/api/sync/pause');
+  assert.equal(mutation.options.headers['X-Oddsfox-Token'],'fixture-session');
+  assert.deepEqual(JSON.parse(mutation.options.body),{paused:true});
+  assert.equal(elements.pause.textContent,'Resume sync');
+});

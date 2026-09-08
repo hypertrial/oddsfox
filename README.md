@@ -21,22 +21,53 @@ Install [uv](https://docs.astral.sh/uv/), then:
 
 ```sh
 uv sync --locked
-uv run oddsfox --data .oddsfox/demo demo
-uv run oddsfox --data .oddsfox/demo serve
+uv run oddsfox serve
 ```
 
-Open `http://127.0.0.1:8777`. The demonstration contains clearly marked synthetic
-contracts from two venue adapters and a deliberately different reference source.
-Run `demo` once against an empty data directory; choose another directory for a
-new demonstration.
-It starts with provisional interpretations. Paste the session token printed by
-the server into the report to make explicit review changes. Inspect source
-quotations, approve exact interpretations, then publish reviewed claims.
-For automated demo checks, `demo --approve-synthetic` records explicitly synthetic
-approvals; these are never independent human benchmark evidence.
+Open `http://127.0.0.1:8777`. The home page discovers open events from **Kalshi,
+Polymarket International and Polymarket US**, with a default lifetime-volume
+threshold strictly above $100,000 per venue event. All active markets in a qualifying
+event are included. Kalshi volume is USD face-value notional; the Polymarket venues
+use reported USD turnover. Missing lifetime totals appear in **Volume unknown**.
 
-Use one process per dataset. While the server is running, use its report or API;
-the CLI refuses a second writer. Stop the server before using offline commands.
+Discovery runs on startup and every 15 minutes while the server runs. The session
+token printed in the terminal authorizes Refresh now, pause/resume and review
+changes. Partial scans and failures remain visible; last successful data is retained.
+Use venue/category/analysis filters and open an event to inspect its captured rules.
+
+For automatic local explanations, install the optional model runtime and provide
+an explicitly downloaded quantized model:
+
+```sh
+uv sync --locked --extra model
+uv run oddsfox serve --model /path/to/quantized-mlx-model
+```
+
+Explanations and cross-venue match suggestions are **unreviewed AI outputs**, with
+captured citations and explicit gaps. They are not verified equivalences. No model
+is downloaded automatically and there is no cloud fallback. Initial processing can
+take hours; source chunks are cached and progress appears as work completes.
+
+Offline discovery is also available with `uv run oddsfox sync`, optionally limited
+by `--venue kalshi`, `--venue polymarket`, or `--venue polymarket_us`.
+Use one process per dataset; stop the server before invoking offline CLI commands.
+The public venue endpoints require no trading credentials, but network access or
+venue-side restrictions can prevent a scan; the app reports these failures.
+Polymarket US public listings do not expose a complete combination universe; its
+separate beta combo lookup requires authenticated access and a known symbol.
+See [executed validation and coverage limits](docs/validation.md).
+
+### Synthetic demonstration
+
+```sh
+uv run oddsfox --data .oddsfox/demo demo
+uv run oddsfox --data .oddsfox/demo serve --no-sync
+```
+
+Open `http://127.0.0.1:8777/research` for the synthetic contract/review demonstration.
+Use an empty directory for a new demo. `demo --approve-synthetic` is available for
+automated checks; synthetic approvals are never independent human benchmark evidence.
+The review workspace also remains available from the event browser.
 
 ## Research workflow
 
@@ -66,7 +97,7 @@ the CLI refuses a second writer. Stop the server before using offline commands.
 5. Export with `oddsfox export --output research.json`, or
    `oddsfox export --format parquet --output accepted.parquet` for current accepted
    assertions. `--history` explicitly includes obsolete JSON records. Refresh a
-   source using capture again; affected current conclusions become stale while
+   source using capture again; governing-content changes make affected conclusions stale while
    their evidence remains available.
 
 Parquet files store accepted assertions as rows and the JSON export's version,
@@ -88,9 +119,10 @@ ordinary binary resolution. Each condition names the exact pair of contract
 versions, so differently conditioned pairs cannot share probability variables or
 chain into a settlement claim. Observed-event claims remain a distinct scope,
 with sparse edges over both provisional and reviewed interpretations. Settlement
-pairs are evaluated directly. Comparisons accept at most 250 interpretations and
-16,000 candidate pairs; larger components fail explicitly and should be split
-into smaller research sets.
+pairs are evaluated directly. Background comparisons retain progress per canonical
+observation and process bounded batches across the complete group. The dataset is
+not capped at 250 contracts; explicit capture requests remain bounded to 250 IDs.
+The legacy bounded candidate helper retains its limits for evaluation callers.
 
 ## Local model candidates
 
@@ -157,3 +189,14 @@ under MIT. See [LICENSE](LICENSE) for the full terms.
 
 Third-party dependencies, model weights, and market data retain their respective
 licenses and terms; this repository's MIT license does not relicense them.
+
+## Dataset upgrades
+
+Database version 2 adds event catalogs, snapshots, semantic fingerprints and
+processing progress transactionally. Existing immutable records and review history
+are retained. Back up the complete dataset before upgrading; older application
+versions refuse a newer database. Restore the pre-upgrade backup for rollback.
+A code/model/configuration upgrade can still invalidate current conclusions under
+the existing reproducibility policy. Subsequent volume/status-only refreshes do
+not invalidate unchanged governing interpretations. Source artifact history is
+retained, so long-running discovery increases disk use.

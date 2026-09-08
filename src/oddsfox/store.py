@@ -27,6 +27,32 @@ class StaleInput(ValueError):
     pass
 
 
+def governing(data: dict) -> str:
+    """Semantic identity excludes quote/volume/retrieval and trading-state changes."""
+    metadata = data["metadata"]
+    return fingerprint(
+        {
+            "platform": data["platform"],
+            "native_id": data["native_id"],
+            "texts": data["text_artifacts"],
+            "references": data.get("references", []),
+            "metadata": {
+                k: v
+                for k, v in metadata.items()
+                if v != {}
+                and k
+                not in {
+                    "lifecycle",
+                    "source_effective_time",
+                    "volume",
+                    "volume_basis",
+                    "retrieved_at",
+                }
+            },
+        }
+    )
+
+
 class Store:
     def __init__(self, directory: str | Path):
         self.directory = Path(directory).resolve()
@@ -43,12 +69,13 @@ class Store:
         self.db = duckdb.connect(str(self.directory / "oddsfox.duckdb"))
         self.db.execute("CREATE TABLE IF NOT EXISTS metadata (version INTEGER PRIMARY KEY)")
         versions = self.db.execute("SELECT version FROM metadata").fetchall()
-        if versions and versions != [(1,)]:
+        if versions and versions not in ([(1,)], [(2,)]):
             self.close()
             raise ValueError(
                 "unsupported database version; preserve dataset and migrate explicitly"
             )
-        self.db.execute("INSERT INTO metadata VALUES (1) ON CONFLICT DO NOTHING")
+        if not versions:
+            self.db.execute("INSERT INTO metadata VALUES (1)")
         self.db.execute("""CREATE TABLE IF NOT EXISTS nodes (
             id VARCHAR PRIMARY KEY, kind VARCHAR NOT NULL, logical VARCHAR NOT NULL,
             data JSON NOT NULL, current BOOLEAN NOT NULL, status VARCHAR NOT NULL,
@@ -65,6 +92,40 @@ class Store:
         self.db.execute("""CREATE TABLE IF NOT EXISTS attempts (
             job_id VARCHAR NOT NULL, number INTEGER NOT NULL, state VARCHAR NOT NULL,
             diagnostic VARCHAR NOT NULL, artifact VARCHAR, created VARCHAR NOT NULL)""")
+        # Additive, atomic migration: old immutable nodes and dependencies are untouched.
+        with self.transaction():
+            self.db.execute("""CREATE TABLE IF NOT EXISTS snapshots (
+                logical VARCHAR NOT NULL, version_id VARCHAR NOT NULL,
+                artifact VARCHAR NOT NULL, data JSON NOT NULL, retrieved VARCHAR NOT NULL)""")
+            self.db.execute("""CREATE TABLE IF NOT EXISTS semantic_heads (
+                logical VARCHAR PRIMARY KEY, digest VARCHAR NOT NULL, version_id VARCHAR NOT NULL)""")
+            self.db.execute("""CREATE TABLE IF NOT EXISTS events (
+                id VARCHAR PRIMARY KEY, venue VARCHAR NOT NULL, native_id VARCHAR NOT NULL,
+                title VARCHAR NOT NULL, category VARCHAR NOT NULL, volume DECIMAL(38,12),
+                qualification VARCHAR NOT NULL, active BOOLEAN NOT NULL, seen_run VARCHAR NOT NULL,
+                semantic_id VARCHAR, data JSON NOT NULL, updated VARCHAR NOT NULL)""")
+            self.db.execute("""CREATE TABLE IF NOT EXISTS event_terms (
+                term VARCHAR NOT NULL, event_id VARCHAR NOT NULL, PRIMARY KEY(term,event_id))""")
+            self.db.execute("CREATE INDEX IF NOT EXISTS event_term_lookup ON event_terms(term)")
+            self.db.execute("CREATE INDEX IF NOT EXISTS event_catalog_order ON events(volume)")
+            self.db.execute("""CREATE TABLE IF NOT EXISTS sync_state (
+                venue VARCHAR PRIMARY KEY, job_id VARCHAR, due DOUBLE NOT NULL,
+                paused BOOLEAN NOT NULL, data JSON NOT NULL)""")
+            self.db.execute(
+                "CREATE TABLE IF NOT EXISTS comparison_rows (signature VARCHAR, id VARCHAR, data JSON, PRIMARY KEY(signature,id))"
+            )
+            self.db.execute(
+                "CREATE TABLE IF NOT EXISTS comparison_groups (group_id VARCHAR PRIMARY KEY, signature VARCHAR, state VARCHAR, processed INTEGER, pair_cursor INTEGER, updated DOUBLE)"
+            )
+            self.db.execute(
+                "CREATE TABLE IF NOT EXISTS lane_state (lane VARCHAR PRIMARY KEY, state VARCHAR, diagnostic VARCHAR, retry_at DOUBLE)"
+            )
+            for row in self.list("contract"):
+                self.db.execute(
+                    "INSERT INTO semantic_heads VALUES (?,?,?) ON CONFLICT DO NOTHING",
+                    [row["logical"], governing(row["data"]), row["id"]],
+                )
+            self.db.execute("UPDATE metadata SET version=2 WHERE version=1")
         with self.transaction():
             self.db.execute(
                 "INSERT INTO attempts SELECT id,attempts,'interrupted','process stopped before completion',NULL,? FROM jobs WHERE state='running'",
@@ -244,11 +305,9 @@ class Store:
         logical = f"{platform}:{native_id}"
         with self.transaction():
             current = self.current("contract", logical)
-            if current is None and len(self.list("contract")) >= 250:
-                raise ValueError(
-                    "V1 dataset is limited to 250 current contracts; use another dataset"
-                )
-            if current and current["data"] == data:
+            digest = governing(data)
+            heads = self._rows("SELECT digest FROM semantic_heads WHERE logical=?", [logical])
+            if current and heads and heads[0]["digest"] == digest:
                 identity = current["id"]
             else:
                 # Capture sequence preserves a source reverting to a historical payload.
@@ -266,6 +325,20 @@ class Store:
                     identity = current["id"]
                 else:
                     identity = self.insert("contract", logical, data, [], "CAPTURED")
+            self.db.execute(
+                "INSERT INTO semantic_heads VALUES (?,?,?) ON CONFLICT(logical) DO UPDATE SET digest=excluded.digest,version_id=excluded.version_id",
+                [logical, digest, identity],
+            )
+            self.db.execute(
+                "INSERT INTO snapshots VALUES (?,?,?,?,?)",
+                [
+                    logical,
+                    identity,
+                    raw_id,
+                    json.dumps({"metadata": metadata, "references": references}),
+                    now(),
+                ],
+            )
             self.db.execute(
                 "INSERT INTO refreshes VALUES (?,?,?,?,?)", [logical, identity, now(), True, ""]
             )
@@ -416,10 +489,15 @@ class Store:
                 elif isinstance(value, str) and (key.endswith("artifact") or key == "artifact_id"):
                     required.add(value)
 
+            for row in self._rows("SELECT data FROM events"):
+                visit(row["data"])
             for row in self._rows("SELECT data FROM nodes"):
                 visit(row["data"])
             for row in self._rows("SELECT artifact FROM attempts WHERE artifact IS NOT NULL"):
                 required.add(row["artifact"])
+            for row in self._rows("SELECT artifact,data FROM snapshots"):
+                required.add(row["artifact"])
+                visit(row["data"])
             for identity in required:
                 try:
                     self.artifact(identity)
@@ -431,3 +509,11 @@ class Store:
             assert missing_row is not None
             if missing_row[0]:
                 raise ValueError("dataset has dangling dependency references")
+            for query in (
+                "SELECT count(*) FROM semantic_heads h LEFT JOIN nodes n ON h.version_id=n.id WHERE n.id IS NULL",
+                "SELECT count(*) FROM events e LEFT JOIN nodes n ON e.semantic_id=n.id WHERE e.semantic_id IS NOT NULL AND n.id IS NULL",
+                "SELECT count(*) FROM snapshots s LEFT JOIN nodes n ON s.version_id=n.id WHERE n.id IS NULL",
+            ):
+                row = self.db.execute(query).fetchone()
+                if row and row[0]:
+                    raise ValueError("dataset has dangling discovery references")

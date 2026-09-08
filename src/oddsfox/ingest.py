@@ -12,6 +12,7 @@ from oddsfox.store import Store
 ENDPOINTS = {
     "polymarket": "https://gamma-api.polymarket.com/markets/",
     "kalshi": "https://external-api.kalshi.com/trade-api/v2/markets/",
+    "polymarket_us": "https://gateway.polymarket.us/v1/market/id/",
 }
 MAX_BYTES = 4 * 1024 * 1024
 
@@ -43,8 +44,10 @@ def normalize(platform: str, raw: bytes) -> tuple[str, dict, dict[str, str], lis
             "source": None,
         }
         rules_present = bool(market.get("rules_primary"))
-    elif platform == "polymarket":
-        market = data
+    elif platform in {"polymarket", "polymarket_us"}:
+        market = data.get("market", data) if platform == "polymarket_us" else data
+        if not isinstance(market, dict):
+            raise ValueError("expected a market object")
         native_id = market.get("id")
         outcomes = market.get("outcomes", [])
         tokens = market.get("clobTokenIds", [])
@@ -52,9 +55,15 @@ def normalize(platform: str, raw: bytes) -> tuple[str, dict, dict[str, str], lis
         tokens = strict_json(tokens) if isinstance(tokens, str) else tokens
         # Preserve native token IDs when available, with the labels kept separately.
         ids = tokens if isinstance(tokens, list) and len(tokens) == 2 else outcomes
+        if platform == "polymarket_us":
+            sides = market.get("marketSides", [])
+            if not isinstance(sides, list) or not all(isinstance(s, dict) for s in sides):
+                raise ValueError("invalid market sides")
+            ids = [str(s["id"]) for s in sides if s.get("id") is not None]
+            outcomes = [s.get("description", "") for s in sides]
         texts = {
             key: market[key]
-            for key in ("question", "description", "resolutionSource")
+            for key in ("question", "description", "resolutionSource", "rulesDisclaimer")
             if isinstance(market.get(key), str)
         }
         metadata = {
@@ -76,6 +85,8 @@ def normalize(platform: str, raw: bytes) -> tuple[str, dict, dict[str, str], lis
         rules_present = bool(market.get("description"))
     else:
         raise ValueError("unsupported venue")
+    if isinstance(native_id, int) and not isinstance(native_id, bool):
+        native_id = str(native_id)
     if not isinstance(native_id, str) or not native_id or len(native_id) > 256:
         raise ValueError("missing or invalid native contract ID")
     if not isinstance(metadata["outcome_ids"], list) or not all(
@@ -91,6 +102,42 @@ def normalize(platform: str, raw: bytes) -> tuple[str, dict, dict[str, str], lis
         for url in sorted(set(re.findall(r"https?://[^\s<>\"\)]+", "\n".join(texts.values()))))
     ]
     metadata["capture_status"] = "available_rules" if rules_present else "missing_rules"
+    metadata["governing_fields"] = {
+        k: market[k]
+        for k in (
+            "close_time",
+            "expiration_time",
+            "latest_expiration_time",
+            "early_close_condition",
+            "strike_type",
+            "floor_strike",
+            "cap_strike",
+            "functional_strike",
+            "custom_strike",
+            "notional_value_dollars",
+            "mve_selected_legs",
+            "mve_collection_ticker",
+            "marketType",
+            "market_type",
+            "gameStartTime",
+            "sportsMarketTypeV2",
+            "line",
+        )
+        if k in market
+    }
+    import json
+
+    texts["structured_contract_fields"] = json.dumps(
+        {
+            "governing_fields": metadata["governing_fields"],
+            "outcome_ids": metadata["outcome_ids"],
+            "outcome_labels": metadata.get("outcome_labels"),
+            "resolution_date": metadata.get("resolution_date"),
+            "observation_date": metadata.get("observation_date"),
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    )
     metadata["governing_material_review_required"] = True
     metadata["source_urls"] = [ENDPOINTS[platform] + quote(native_id, safe="")]
     return native_id, metadata, texts, references

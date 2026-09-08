@@ -29,7 +29,7 @@ accuracy of natural-language interpretation.
 
 Use Python 3.14 and `uv sync --locked`; the optional `model` extra installs the
 Apple Silicon inference runtime. `src/oddsfox` contains the IR, reasoner, single
-DuckDB coordinator, adapters, compiler, report/API, CLI and evaluation runner.
+DuckDB coordinator, adapters, discovery/sync/catalog, local explanations, compiler, event browser/report/API, CLI and evaluation runner.
 Keep local captures, databases and weights under ignored `.oddsfox/` or outside
 the repository. There is one writer per dataset; server users use its API.
 
@@ -43,3 +43,9 @@ outcomes in Pad and never substitute synthetic fixtures for human evidence.
 Update wrappers, these notes and canonical Universal Pad configuration together
 when changing required verification. See `docs/validation.md` for executed checks
 and `docs/benchmark.md` for the frozen evaluation interface.
+
+The default server discovers open events across three venues. Governing contract
+revisions are separate from volatile snapshots; preserve this boundary. Event and
+explanation interfaces have their own versions; Semantic IR remains 1.0.0. Do not
+use model family labels as proof of eligibility or automatically approve suggestions.
+Use `serve --no-sync` for deterministic offline/synthetic demonstrations.

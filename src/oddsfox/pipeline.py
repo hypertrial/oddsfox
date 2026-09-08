@@ -3,6 +3,7 @@
 import hashlib
 import importlib.metadata
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,7 @@ from oddsfox.ir import Observation, SemanticIR, fingerprint, parse_ir
 from oddsfox.reasoning import (
     RELATIONS,
     RULE_VERSION,
-    candidates,
+    candidate_pairs,
     constraints_feasible,
     eligible,
     logical_feasible,
@@ -341,89 +342,227 @@ class Pipeline:
             return identity
 
     def compare(self) -> list[dict]:
+        return [
+            claim
+            for context in self.comparison_contexts().values()
+            for claim in self.iter_comparisons(records=context["records"])
+        ]
+
+    def iter_comparisons(self, *, pair_start=0, pair_limit=None, on_pair=None, records=None):
         with self.store.lock:
-            records = self.store.list("interpretation")
-            irs = [SemanticIR.model_validate(r["data"]["ir"]) for r in records]
-            by_contract = {r["data"]["ir"]["contract_version_id"]: r for r in records}
-            observed_pairs = {
-                frozenset((a.contract_version_id, b.contract_version_id))
-                for subset in (
-                    irs,
-                    [
-                        SemanticIR.model_validate(r["data"]["ir"])
-                        for r in records
-                        if self._approved(r)
-                    ],
-                )
-                for a, b in candidates(subset)
-            }
-            results = []
-            for a, b in candidates(irs, settlement_pairs=True):
-                compatibility = settlement(a, b)
-                for left, right in ((a, b), (b, a)):
-                    for relation in RELATIONS:
+            records = self.store.list("interpretation") if records is None else records
+            approved_ids = {r["id"] for r in records if self._approved(r)}
+        irs = [SemanticIR.model_validate(r["data"]["ir"]) for r in records]
+        by_contract = {r["data"]["ir"]["contract_version_id"]: r for r in records}
+        observed_pairs = {
+            frozenset((a.contract_version_id, b.contract_version_id))
+            for subset in (
+                irs,
+                [
+                    SemanticIR.model_validate(r["data"]["ir"])
+                    for r in records
+                    if r["id"] in approved_ids
+                ],
+            )
+            for a, b in candidate_pairs(subset, observed_edges_only=True)
+        }
+        for pair_index, (a, b) in enumerate(candidate_pairs(irs, settlement_pairs=True)):
+            if pair_index < pair_start:
+                continue
+            if pair_limit is not None and pair_index >= pair_start + pair_limit:
+                return
+            cross_polarity = (a.predicate.comparator in {"GT", "GTE"}) != (
+                b.predicate.comparator in {"GT", "GTE"}
+            )
+            compatibility = settlement(a, b)
+            for left, right in ((a, b), (b, a)):
+                for relation in RELATIONS:
+                    if (
+                        relation != "IMPLIES"
+                        and left.contract_version_id > right.contract_version_id
+                    ):
+                        continue
+                    proof = verify(left, right, relation)
+                    if proof["state"] != "PROVEN_UNDER_PREMISES":
+                        continue
+                    for scope in ("OBSERVED_EVENT", "SETTLEMENT_OUTCOME"):
                         if (
-                            relation != "IMPLIES"
-                            and left.contract_version_id > right.contract_version_id
+                            scope == "OBSERVED_EVENT"
+                            and not cross_polarity
+                            and frozenset((a.contract_version_id, b.contract_version_id))
+                            not in observed_pairs
                         ):
                             continue
-                        proof = verify(left, right, relation)
-                        if proof["state"] != "PROVEN_UNDER_PREMISES":
+                        if scope == "SETTLEMENT_OUTCOME" and compatibility["state"] not in {
+                            "COMPATIBLE",
+                            "CONDITIONAL",
+                        }:
                             continue
-                        for scope in ("OBSERVED_EVENT", "SETTLEMENT_OUTCOME"):
-                            if (
-                                scope == "OBSERVED_EVENT"
-                                and frozenset((a.contract_version_id, b.contract_version_id))
-                                not in observed_pairs
-                            ):
-                                continue
-                            if scope == "SETTLEMENT_OUTCOME" and compatibility["state"] not in {
-                                "COMPATIBLE",
-                                "CONDITIONAL",
-                            }:
-                                continue
-                            conditions = (
-                                compatibility["conditions"] if scope == "SETTLEMENT_OUTCOME" else []
-                            )
-                            operands = [
-                                by_contract[left.contract_version_id],
-                                by_contract[right.contract_version_id],
-                            ]
-                            claim = {
-                                "a": left.contract_version_id,
-                                "b": right.contract_version_id,
-                                "relation": relation,
-                                "scope": scope,
-                                "conditions": conditions,
-                                "interpretations": [r["id"] for r in operands],
-                                "ir_digests": [left.digest(), right.digest()],
-                                "interpretation_assessments": [
-                                    "REVIEWED" if self._approved(r) else r["data"]["assessment"]
-                                    for r in operands
-                                ],
-                                "settlement": compatibility,
-                                "proof": proof,
-                                "premises": {
-                                    "domain": "real",
-                                    "common_observation": left.observation.model_dump(),
-                                },
-                                "configuration": [r["data"]["configuration"] for r in operands],
-                                "evidence": [
-                                    left.model_dump()["field_evidence"],
-                                    right.model_dump()["field_evidence"],
-                                ],
-                                "constraint": probability_constraint(
-                                    relation,
-                                    left.contract_version_id,
-                                    right.contract_version_id,
-                                    conditions,
-                                ),
-                            }
-                            claim["claim_id"] = fingerprint(
-                                {k: claim[k] for k in ("a", "b", "relation", "scope", "conditions")}
-                            )
-                            results.append(claim)
-            return results
+                        conditions = (
+                            compatibility["conditions"] if scope == "SETTLEMENT_OUTCOME" else []
+                        )
+                        operands = [
+                            by_contract[left.contract_version_id],
+                            by_contract[right.contract_version_id],
+                        ]
+                        claim = {
+                            "a": left.contract_version_id,
+                            "b": right.contract_version_id,
+                            "relation": relation,
+                            "scope": scope,
+                            "conditions": conditions,
+                            "interpretations": [r["id"] for r in operands],
+                            "ir_digests": [left.digest(), right.digest()],
+                            "interpretation_assessments": [
+                                "REVIEWED" if r["id"] in approved_ids else r["data"]["assessment"]
+                                for r in operands
+                            ],
+                            "settlement": compatibility,
+                            "proof": proof,
+                            "premises": {
+                                "domain": "real",
+                                "common_observation": left.observation.model_dump(),
+                            },
+                            "configuration": [r["data"]["configuration"] for r in operands],
+                            "evidence": [
+                                left.model_dump()["field_evidence"],
+                                right.model_dump()["field_evidence"],
+                            ],
+                            "constraint": probability_constraint(
+                                relation,
+                                left.contract_version_id,
+                                right.contract_version_id,
+                                conditions,
+                            ),
+                        }
+                        claim["claim_id"] = fingerprint(
+                            {k: claim[k] for k in ("a", "b", "relation", "scope", "conditions")}
+                        )
+                        yield claim
+            if on_pair:
+                on_pair(pair_index + 1)
+
+    def comparison_contexts(self):
+        with self.store.lock:
+            groups = {}
+            for record in self.store.list("interpretation"):
+                ir = SemanticIR.model_validate(record["data"]["ir"])
+                contract = self.store.get(ir.contract_version_id)["data"]
+                fields = contract["metadata"].get("governing_fields", {})
+                if (
+                    not eligible(ir)
+                    or fields.get("mve_selected_legs")
+                    or fields.get("mve_collection_ticker")
+                    or fields.get("is_combination")
+                ):
+                    continue
+                key = fingerprint(ir.observation.model_dump())
+                groups.setdefault(key, []).append(record)
+            contexts = {}
+            for key, records in groups.items():
+                reviews = [self.store.current("review", r["id"]) for r in records]
+                signature = fingerprint(
+                    {
+                        "records": sorted(r["id"] for r in records),
+                        "reviews": sorted(r["id"] for r in reviews if r),
+                    }
+                )
+                contexts[key] = {"signature": signature, "records": records}
+            return contexts
+
+    def comparison_signature(self):
+        return fingerprint({k: v["signature"] for k, v in self.comparison_contexts().items()})
+
+    def cached_comparisons(self):
+        contexts = self.comparison_contexts()
+        states = []
+        for key, context in contexts.items():
+            rows = self.store._rows(
+                "SELECT * FROM comparison_groups WHERE group_id=? AND signature=?",
+                [key, context["signature"]],
+            )
+            states.append(rows[0] if rows else {"state": "pending", "processed": 0})
+        return {
+            "state": "complete"
+            if all(s["state"] == "complete" for s in states)
+            else "running"
+            if any(s["state"] == "running" for s in states)
+            else "pending",
+            "processed": sum(s["processed"] for s in states),
+            "groups": len(contexts),
+            "signature": fingerprint({k: v["signature"] for k, v in contexts.items()}),
+        }
+
+    def cached_rows(self, offset=0, limit=250):
+        signatures = [v["signature"] for v in self.comparison_contexts().values()]
+        if not signatures:
+            return []
+        return [
+            r["data"]
+            for r in self.store._rows(
+                "SELECT data FROM comparison_rows WHERE signature IN ("
+                + ",".join("?" for _ in signatures)
+                + ") ORDER BY id LIMIT ? OFFSET ?",
+                [*signatures, limit, offset],
+            )
+        ]
+
+    def refresh_comparisons(self, max_pairs=250):
+        pending = []
+        for key, context in self.comparison_contexts().items():
+            rows = self.store._rows(
+                "SELECT * FROM comparison_groups WHERE group_id=? AND signature=?",
+                [key, context["signature"]],
+            )
+            if not rows or rows[0]["state"] != "complete":
+                pending.append((rows[0]["updated"] if rows else 0, key, context, rows))
+        if not pending:
+            return
+        _, key, context, rows = min(pending, key=lambda x: (x[0], x[1]))
+        signature = context["signature"]
+        cursor = rows[0]["pair_cursor"] if rows else 0
+        count = rows[0]["processed"] if rows else 0
+        with self.store.transaction():
+            self.store.db.execute(
+                "INSERT INTO comparison_groups VALUES (?,?,'running',?,?,?) ON CONFLICT(group_id) DO UPDATE SET signature=excluded.signature,state='running',processed=excluded.processed,pair_cursor=excluded.pair_cursor,updated=excluded.updated",
+                [key, signature, count, cursor, time.time()],
+            )
+        advanced = cursor
+
+        def checkpoint(value):
+            nonlocal advanced
+            with self.store.transaction():
+                current = self.comparison_contexts().get(key)
+                if not current or current["signature"] != signature:
+                    raise StaleInput("comparison observation changed")
+                self.store.db.execute(
+                    "UPDATE comparison_groups SET pair_cursor=?,processed=?,updated=? WHERE group_id=? AND signature=?",
+                    [value, count, time.time(), key, signature],
+                )
+            advanced = value
+
+        try:
+            for claim in self.iter_comparisons(
+                pair_start=cursor,
+                pair_limit=max_pairs,
+                on_pair=checkpoint,
+                records=context["records"],
+            ):
+                with self.store.transaction():
+                    self.store.db.execute(
+                        "INSERT INTO comparison_rows VALUES (?,?,?) ON CONFLICT DO NOTHING",
+                        [signature, claim["claim_id"], json.dumps(claim)],
+                    )
+                count += 1
+        except StaleInput:
+            return
+        with self.store.transaction():
+            current = self.comparison_contexts().get(key)
+            if current and current["signature"] == signature and advanced < cursor + max_pairs:
+                self.store.db.execute(
+                    "UPDATE comparison_groups SET state='complete',processed=? WHERE group_id=? AND signature=?",
+                    [count, key, signature],
+                )
 
     def _approved(self, interpretation: dict) -> bool:
         review = self.store.current("review", interpretation["id"])

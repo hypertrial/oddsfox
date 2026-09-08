@@ -30,15 +30,24 @@ def parser() -> argparse.ArgumentParser:
         default=[],
         help="explicit local quantized model directory",
     )
+    serve.add_argument(
+        "--no-sync",
+        action="store_true",
+        help="disable automatic discovery (for synthetic demos/offline research)",
+    )
+    sync = sub.add_parser(
+        "sync", help="discover all qualifying events from the three public venues"
+    )
+    sync.add_argument("--venue", action="append", choices=["kalshi", "polymarket", "polymarket_us"])
     demo = sub.add_parser(
         "demo", help="load clearly marked synthetic examples into an empty dataset"
     )
     demo.add_argument("--approve-synthetic", action="store_true")
     capture = sub.add_parser("capture", help="retrieve bounded native market IDs")
-    capture.add_argument("venue", choices=["polymarket", "kalshi"])
+    capture.add_argument("venue", choices=["polymarket", "kalshi", "polymarket_us"])
     capture.add_argument("ids", nargs="+")
     imp = sub.add_parser("import", help="import an exact captured market JSON file")
-    imp.add_argument("venue", choices=["polymarket", "kalshi"])
+    imp.add_argument("venue", choices=["polymarket", "kalshi", "polymarket_us"])
     imp.add_argument("file", type=Path)
     imp.add_argument("--documents", type=Path, help="JSON list of captured referenced documents")
     draft = sub.add_parser("draft", help="emit an explicitly unknown IR candidate")
@@ -153,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:
                             token=token,
                             port=args.port,
                             models={p.name: p.resolve() for p in args.model},
+                            auto_sync=not args.no_sync,
                         ),
                         host="127.0.0.1",
                         port=args.port,
@@ -161,6 +171,17 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 case "demo":
                     write_json(load_demo(store, args.approve_synthetic))
+                case "sync":
+                    from oddsfox.catalog import sync_status
+                    from oddsfox.sync import SyncRunner
+
+                    runner = SyncRunner(store)
+                    try:
+                        for venue in args.venue or ["kalshi", "polymarket", "polymarket_us"]:
+                            runner.run_venue(venue, runner.request(venue))
+                        write_json(sync_status(store))
+                    finally:
+                        runner.close()
                 case "capture":
                     write_json(fetch(store, args.venue, args.ids))
                 case "import":

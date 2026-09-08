@@ -171,11 +171,20 @@ def candidates(
     """Sparse observed-event edges or explicit pairs for conditional settlement."""
     if len(irs) > 250:
         raise ValueError("V1 comparison batch is limited to 250 interpretations")
+    result = []
+    for pair in candidate_pairs(irs, settlement_pairs=settlement_pairs):
+        result.append(pair)
+        if len(result) > 16000:
+            raise ValueError("comparison component exceeds the bounded V1 candidate limit")
+    return result
+
+
+def candidate_pairs(irs: list[SemanticIR], *, settlement_pairs=False, observed_edges_only=False):
+    """Stream whole-observation pairs; never partition away cross-batch relations."""
     groups: dict[str, list[SemanticIR]] = {}
     for ir in irs:
         if eligible(ir):
             groups.setdefault(fingerprint(ir.observation.model_dump()), []).append(ir)
-    result = []
     for group in groups.values():
 
         def order(ir: SemanticIR):
@@ -194,13 +203,11 @@ def candidates(
             [ir for ir in group if ir.predicate.comparator in {"LT", "LTE"}], key=order
         )
         # Pair-specific settlement conditions do not support transitive closure.
-        result.extend(combinations(increasing, 2) if settlement_pairs else pairwise(increasing))
-        result.extend(combinations(decreasing, 2) if settlement_pairs else pairwise(decreasing))
+        yield from (combinations(increasing, 2) if settlement_pairs else pairwise(increasing))
+        yield from (combinations(decreasing, 2) if settlement_pairs else pairwise(decreasing))
         # Nontransitive exclusion/complement needs explicit cross-polarity candidates.
-        result.extend((a, b) for a in increasing for b in decreasing)
-        if len(result) > 16000:
-            raise ValueError("comparison component exceeds the bounded V1 candidate limit")
-    return result
+        if not observed_edges_only:
+            yield from ((a, b) for a in increasing for b in decreasing)
 
 
 def differences(irs: list[SemanticIR]) -> list[dict]:

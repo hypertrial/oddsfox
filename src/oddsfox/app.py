@@ -11,11 +11,13 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import Field
 
+from oddsfox.catalog import event_detail, event_list, sync_status
 from oddsfox.compiler import blank_ir, prepare_compile, run_compile_job
 from oddsfox.ingest import fetch, import_capture
 from oddsfox.ir import SemanticIR, StrictModel, Text, strict_json
 from oddsfox.pipeline import Pipeline
 from oddsfox.store import StaleInput, Store
+from oddsfox.sync import SyncRunner
 
 
 class ReviewRequest(StrictModel):
@@ -49,6 +51,18 @@ class InterpretRequest(StrictModel):
     derivations: dict = Field(default_factory=dict)
 
 
+class PauseRequest(StrictModel):
+    paused: bool
+
+
+class SyncRequest(StrictModel):
+    venues: list[str] = Field(
+        default_factory=lambda: ["kalshi", "polymarket", "polymarket_us"],
+        min_length=1,
+        max_length=3,
+    )
+
+
 class ModelRequest(StrictModel):
     contract_version_id: Text
     model_name: Text
@@ -62,6 +76,7 @@ def create_app(
     token: str | None = None,
     port: int = 8777,
     models: dict[str, Path] | None = None,
+    auto_sync: bool = True,
 ) -> FastAPI:
     token = token or secrets.token_urlsafe(32)
     allowed_host = f"127.0.0.1:{port}"
@@ -69,6 +84,7 @@ def create_app(
     pipeline = Pipeline(store)
     worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="oddsfox-worker")
     models = models or {}
+    runner = SyncRunner(store, models)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -82,7 +98,14 @@ def create_app(
                 identity = job["config"].get("model", {}).get("identity")
                 if identity in models:
                     worker.submit(run_compile_job, store, job["id"], models[identity])
+        if auto_sync:
+            runner.start()
+        else:
+            for _ in pipeline.comparison_contexts():
+                pipeline.refresh_comparisons()
+            runner.start(discovery=False)
         yield
+        runner.close()
         worker.shutdown(wait=True, cancel_futures=False)
 
     app = FastAPI(
@@ -133,14 +156,76 @@ def create_app(
     def report():
         return (Path(__file__).parent / "static" / "index.html").read_text()
 
+    @app.get("/research", response_class=HTMLResponse)
+    def research():
+        return (Path(__file__).parent / "static" / "research.html").read_text()
+
     @app.get("/assets/{name}")
     def asset(name: str):
-        if name not in {"app.js", "style.css"}:
+        if name not in {"app.js", "events.js", "style.css"}:
             raise HTTPException(404)
         return Response(
             (Path(__file__).parent / "static" / name).read_bytes(),
             media_type="text/javascript" if name.endswith(".js") else "text/css",
         )
+
+    @app.get("/api/events")
+    def events(
+        venue: str | None = None,
+        category: str | None = None,
+        qualification: str = "qualified",
+        analysis: str | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ):
+        return event_list(
+            store,
+            venue=venue,
+            category=category,
+            qualification=qualification,
+            analysis=analysis,
+            offset=offset,
+            limit=limit,
+        )
+
+    @app.get("/api/events/{identity}")
+    def event(identity: str):
+        return event_detail(store, identity)
+
+    @app.get("/api/sync")
+    def sync_settings():
+        return sync_status(store) | {
+            "models": sorted(models),
+            "formal_verification": pipeline.cached_comparisons(),
+        }
+
+    @app.post("/api/sync", status_code=202)
+    def sync_now(body: SyncRequest):
+        from oddsfox.discovery import VENUES
+
+        if any(v not in VENUES for v in body.venues):
+            raise ValueError("unknown venue")
+        jobs = [runner.request(v, manual=True) for v in dict.fromkeys(body.venues)]
+        with store.transaction():
+            for v in body.venues:
+                store.db.execute("UPDATE sync_state SET due=0 WHERE venue=?", [v])
+        return {"jobs": jobs, "note": "Queued; resume automatic sync if paused."}
+
+    @app.post("/api/sync/pause")
+    def sync_pause(body: PauseRequest):
+        runner.pause(body.paused)
+        return sync_status(store)
+
+    @app.get("/api/comparisons")
+    def comparisons(offset: int = 0, limit: int = 50):
+        if offset < 0 or not 1 <= limit <= 100:
+            raise ValueError("invalid comparison page")
+        cache = pipeline.cached_comparisons()
+        return cache | {
+            "items": pipeline.cached_rows(offset, limit),
+            "offset": offset,
+            "limit": limit,
+        }
 
     @app.get("/api/schema")
     def schema():
@@ -154,12 +239,19 @@ def create_app(
     def report_data():
         with store.lock:
             data = pipeline.export()
-            data["comparisons"] = pipeline.compare()
+            cache = pipeline.cached_comparisons()
+            data["comparison_status"] = cache
+            data["comparisons"] = pipeline.cached_rows()
             from oddsfox.reasoning import differences
 
             data["near_matches"] = differences(
-                [SemanticIR.model_validate(r["data"]["ir"]) for r in data["interpretations"]]
+                [SemanticIR.model_validate(r["data"]["ir"]) for r in data["interpretations"][:250]]
             )
+            data["near_match_coverage"] = {
+                "processed": min(250, len(data["interpretations"])),
+                "total": len(data["interpretations"]),
+                "complete": len(data["interpretations"]) <= 250,
+            }
             data["status"] = store.status()
             data["models"] = sorted(models)
             return data
@@ -248,6 +340,11 @@ def create_app(
                 store.complete_job(identity, output)
         except Exception as exc:
             store.fail_job(identity, f"{type(exc).__name__}: {str(exc)[:1500]}")
+
+    @app.post("/api/comparisons/refresh", status_code=202)
+    def recompute():
+        runner.launch_lane("proof_future", "proofs", runner.proofs, pipeline.refresh_comparisons)
+        return {"state": "queued"}
 
     @app.post("/api/capture", status_code=202)
     def capture(body: CaptureRequest):
