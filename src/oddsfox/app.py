@@ -19,6 +19,15 @@ from oddsfox.pipeline import Pipeline
 from oddsfox.store import StaleInput, Store
 from oddsfox.sync import SyncRunner
 
+STATIC_ASSETS = {
+    "app.js": "text/javascript",
+    "events.js": "text/javascript",
+    "style.css": "text/css",
+    "logo.png": "image/png",
+    "inter.woff2": "font/woff2",
+    "jetbrains-mono.woff2": "font/woff2",
+}
+
 
 class ReviewRequest(StrictModel):
     reviewer: Text
@@ -138,7 +147,11 @@ def create_app(
         response = await call_next(request)
         response.headers.update(
             {
-                "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+                "Content-Security-Policy": (
+                    "default-src 'self'; script-src 'self'; style-src 'self'; "
+                    "img-src 'self'; font-src 'self'; connect-src 'self'; "
+                    "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+                ),
                 "X-Content-Type-Options": "nosniff",
                 "Referrer-Policy": "no-referrer",
                 "Cache-Control": "no-store",
@@ -162,12 +175,11 @@ def create_app(
 
     @app.get("/assets/{name}")
     def asset(name: str):
-        if name not in {"app.js", "events.js", "style.css"}:
+        media_type = STATIC_ASSETS.get(name)
+        path = Path(__file__).parent / "static" / name
+        if media_type is None or not path.is_file():
             raise HTTPException(404)
-        return Response(
-            (Path(__file__).parent / "static" / name).read_bytes(),
-            media_type="text/javascript" if name.endswith(".js") else "text/css",
-        )
+        return Response(path.read_bytes(), media_type=media_type)
 
     @app.get("/api/events")
     def events(

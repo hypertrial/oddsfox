@@ -8,7 +8,7 @@ class Element {
   append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.children=children; }
   addEventListener(name, callback) { this.listeners[name]=callback; }
-  setAttribute() {}
+  setAttribute(name, value) { if (name === 'aria-label') this.ariaLabel = value; }
   contains(node) { return walk(this).includes(node); }
   querySelectorAll(selector) { return walk(this).slice(1).filter(n => selector==='[data-focus-key]' ? n.dataset.focusKey : n.tag==='details' && (selector!=='details[open]' || n.open)); }
 }
@@ -28,6 +28,9 @@ test('loading a draft preserves the visible editor and saving still refreshes', 
   const find=text => walk(elements['contract-list']).find(el => el.textContent===text);
   await find('Load empty schema').listeners.click();
   const editor=walk(elements['contract-list']).find(el => el.tag==='textarea');
+  assert.equal(find('Load empty schema').type, 'button');
+  assert.equal(find('Load empty schema').className, 'secondary');
+  assert.equal(find('Save candidate').type, 'button');
   assert.deepEqual(JSON.parse(editor.value),draft);
   const edited={...draft,observation:{source:'Edited source'}};
   editor.value=JSON.stringify(edited);
@@ -54,6 +57,7 @@ test('event browser paginates, resets filters, and authenticates pause without r
   vm.runInNewContext(fs.readFileSync('src/oddsfox/static/events.js','utf8'), {document,fetch,URLSearchParams,Intl,setInterval:()=>{}});
   const settle=()=>new Promise(resolve=>setImmediate(resolve));
   await settle();
+  assert(requests.some(r=>r.path.includes('limit=30')));
   elements.next.listeners.click();await settle();
   assert(requests.some(r=>r.path.includes('offset=30')));
   elements['filter-qualification'].value='unknown';
@@ -98,6 +102,9 @@ test('event refresh withdraws stale details without focus and ignores responses 
  const context=vm.createContext({document,fetch,URLSearchParams,Intl,setInterval:fn=>timer=fn});
  vm.runInContext(fs.readFileSync('src/oddsfox/static/events.js','utf8'),context);
  await new Promise(setImmediate);await vm.runInContext('detail("e")',context);
+  assert.equal(walk(elements['event-detail']).find(e=>e.textContent==='Close details').dataset.focusKey,'button:Close details');
+  assert.equal(walk(elements['event-detail']).find(e=>e.textContent==='Close details').className,'secondary');
+  assert.equal(walk(elements['event-detail']).find(e=>e.textContent==='Close details').type,'button');
  const label=()=>walk(elements['event-detail']).find(e=>e.tag==='h3'&&e.textContent.startsWith('Accepted')).textContent;
  assert.equal(label(),'Accepted formal relationships · 1');
  const evidence=walk(elements['event-detail']).find(n=>n.dataset.key==='contract:c');evidence.open=true;
@@ -124,5 +131,127 @@ test('event and research venue selectors expose exactly the two supported venues
     assert.deepEqual(options.map(m=>m[1]).filter(Boolean).sort(),['kalshi','polymarket']);
     assert(options.some(m=>m[1]==='polymarket'&&m[2]==='Polymarket International'));
     assert(!/Polymarket US|polymarket_us|three venues/.test(html));
+    assert(html.includes('class="skip"') && html.includes('href="#main-content"'));
+    assert(html.includes('/assets/logo.png'));
+    assert(!html.includes('innerHTML'));
   }
+  const research=fs.readFileSync('src/oddsfox/static/research.html','utf8');
+  assert(/<textarea id="payload"/.test(research));
+  assert(/<textarea id="registry-json"/.test(research));
+});
+
+test('event polling uses a 10s interval and skips refresh while the document is hidden', async () => {
+  Object.defineProperty(Element.prototype, 'firstChild', {get(){return this.children[0];},configurable:true});
+  const elements={}, requests=[];
+  let poll;
+  const document={hidden:true,getElementById:id=>elements[id]??=new Element('div'),createElement:tag=>new Element(tag)};
+  document.getElementById('filter-qualification').value='qualified';
+  const fetch=async path=>{
+    requests.push(path);
+    if(path.startsWith('/api/events?'))return {ok:true,json:async()=>({total:0,items:[],next_offset:null})};
+    return {ok:true,json:async()=>({counts:[],analysis:[],models:[],venues:[],categories:[],lanes:[],formal_verification:{}})};
+  };
+  vm.runInNewContext(fs.readFileSync('src/oddsfox/static/events.js','utf8'), {document,fetch,URLSearchParams,Intl,setInterval:(fn,ms)=>{poll={fn,ms};}});
+  await new Promise(setImmediate);
+  assert.equal(poll.ms, 10000);
+  const afterLoad=requests.length;
+  assert.ok(afterLoad >= 2);
+  poll.fn();
+  await new Promise(setImmediate);
+  assert.equal(requests.length, afterLoad);
+  document.hidden=false;
+  poll.fn();
+  await new Promise(setImmediate);
+  assert.ok(requests.length > afterLoad);
+});
+
+test('event cards keep the understand action and render hostile titles as text', async () => {
+  Object.defineProperty(Element.prototype, 'firstChild', {get(){return this.children[0];},configurable:true});
+  const elements={};
+  const document={hidden:false,getElementById:id=>elements[id]??=new Element('div'),createElement:tag=>new Element(tag)};
+  document.getElementById('filter-qualification').value='qualified';
+  const title='<img src=x onerror=alert(1)>';
+  const fetch=async path=>{
+    if(path.startsWith('/api/events?'))return {ok:true,json:async()=>({total:1,items:[{id:'evt',venue:'polymarket',title,category:'sports',analysis_status:'ready',data:{volume:{amount:'100001',basis:'notional'},active_markets:[{}]}}],next_offset:null})};
+    return {ok:true,json:async()=>({counts:[],analysis:[],models:[],venues:[],categories:[],lanes:[],formal_verification:{}})};
+  };
+  vm.runInNewContext(fs.readFileSync('src/oddsfox/static/events.js','utf8'), {document,fetch,URLSearchParams,Intl,setInterval:()=>{}});
+  await new Promise(setImmediate);
+  const card=elements['event-list'].children[0];
+  assert.equal(walk(card).find(e=>e.tag==='h3').textContent, title);
+  assert.equal(walk(card).find(e=>e.textContent==='Understand this event').dataset.focusKey, 'button:Understand this event');
+  assert.equal(walk(card).find(e=>e.textContent==='Understand this event').type, 'button');
+  assert.equal(walk(card).find(e=>e.textContent==='Understand this event').ariaLabel, 'Understand this event: '+title);
+  assert(walk(card).some(e=>e.textContent==='Polymarket International'));
+});
+
+test('review actions distinguish reject from approve and color review status', async () => {
+  const elements={};
+  const document={getElementById:id=>elements[id]??=new Element('div'),createElement:tag=>new Element(tag)};
+  const ir={contract_version_id:'a',observation:{source:'Canonical',measurement_method:'instantaneous'}};
+  const report={
+    contracts:[{id:'a',logical:'a',data:{platform:'kalshi',metadata:{title:'A'},text_artifacts:{},references:[]}}],
+    interpretations:[{id:'i',data:{ir,derivations:{},assessment:'SUPPORTED'}}],
+    assertions:[],
+    reviews:[{logical:'i',data:{approved:false}}],
+    freshness:[],
+    comparisons:[],
+    near_matches:[],
+    models:[],
+    status:{pending_review:1},
+  };
+  const fetch=async()=>({ok:true,json:async()=>report});
+  vm.runInNewContext(fs.readFileSync('src/oddsfox/static/app.js','utf8'),{document,fetch});
+  await new Promise(setImmediate);
+  const nodes=walk(elements['contract-list']);
+  const approve=nodes.find(e=>e.textContent==='Approve interpretation');
+  const reject=nodes.find(e=>e.textContent==='Reject / withdraw approval');
+  const status=nodes.find(e=>e.textContent==='REJECTED / WITHDRAWN');
+  assert.equal(approve.type,'button');
+  assert.notEqual(approve.className,'danger');
+  assert.notEqual(approve.className,'secondary');
+  assert.equal(reject.type,'button');
+  assert.equal(reject.className,'danger');
+  assert.equal(status.className,'badge warning');
+});
+
+test('approved review status uses the success badge', async () => {
+  const elements={};
+  const document={getElementById:id=>elements[id]??=new Element('div'),createElement:tag=>new Element(tag)};
+  const ir={contract_version_id:'a',observation:{source:'Canonical',measurement_method:'instantaneous'}};
+  const report={
+    contracts:[{id:'a',logical:'a',data:{platform:'kalshi',metadata:{title:'A'},text_artifacts:{},references:[]}}],
+    interpretations:[{id:'i',data:{ir,derivations:{},assessment:'SUPPORTED'}}],
+    assertions:[],
+    reviews:[{logical:'i',data:{approved:true}}],
+    freshness:[],
+    comparisons:[],
+    near_matches:[],
+    models:[],
+    status:{pending_review:0},
+  };
+  const fetch=async()=>({ok:true,json:async()=>report});
+  vm.runInNewContext(fs.readFileSync('src/oddsfox/static/app.js','utf8'),{document,fetch});
+  await new Promise(setImmediate);
+  const status=walk(elements['contract-list']).find(e=>e.textContent==='REVIEWED');
+  assert.equal(status.className,'badge success');
+});
+
+test('event detail scroll respects reduced motion', async () => {
+  const elements={};
+  const seen=[];
+  const document={hidden:false,getElementById:id=>elements[id]??=new Element('div'),createElement:tag=>new Element(tag)};
+  document.getElementById('filter-qualification').value='qualified';
+  Element.prototype.focus=function(){document.activeElement=this;};
+  Element.prototype.scrollIntoView=function(opts){seen.push(opts.behavior);};
+  const fetch=async path=>{
+    if(path==='/api/events/e')return {ok:true,json:async()=>({venue:'kalshi',title:'Event',data:{volume:{amount:'100001'},active_markets:[]},assertions:[],contracts:[]})};
+    if(path.startsWith('/api/events?'))return {ok:true,json:async()=>({total:0,items:[],next_offset:null})};
+    return {ok:true,json:async()=>({counts:[],analysis:[],models:[],venues:[],categories:[],lanes:[],formal_verification:{}})};
+  };
+  const context=vm.createContext({document,fetch,URLSearchParams,Intl,setInterval:()=>{},matchMedia:query=>({matches:query==='(prefers-reduced-motion: reduce)'})});
+  vm.runInContext(fs.readFileSync('src/oddsfox/static/events.js','utf8'),context);
+  await new Promise(setImmediate);
+  await vm.runInContext('detail("e")',context);
+  assert.equal(seen.at(-1),'auto');
 });

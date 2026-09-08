@@ -191,6 +191,12 @@ under MIT. See [LICENSE](LICENSE) for the full terms.
 Third-party dependencies, model weights, and market data retain their respective
 licenses and terms; this repository's MIT license does not relicense them.
 
+Bundled Inter and JetBrains Mono variable fonts remain under the SIL Open Font
+License, Version 1.1. See `src/oddsfox/static/OFL-Inter.txt` and
+`src/oddsfox/static/OFL-JetBrainsMono.txt`. The OddsFox mark is a trademark and
+brand asset; it is included for product identification in this application and is
+not licensed under MIT.
+
 ## Dataset upgrades
 
 New datasets use database version 4. Existing versions 1–3 require an explicit

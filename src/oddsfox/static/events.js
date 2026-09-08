@@ -5,7 +5,9 @@ const el = (tag,text,cls) => {const n=document.createElement(tag);if(text!==unde
 let offset=0,nextOffset=null,paused=false,selected=null,loading=false,detailRequest=0;
 function notice(message,error=false){$("notice").replaceChildren(el("p",message,error?"error":"panel"));}
 async function api(path,body){const r=await fetch(path,body===undefined?{}:{method:"POST",headers:{"Content-Type":"application/json","X-Oddsfox-Token":$("token").value},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(typeof data.detail==="string"?data.detail:"Request failed");return data;}
-function button(text,fn){const b=el("button",text);b.dataset.focusKey="button:"+text;b.addEventListener("click",async()=>{b.disabled=true;try{await fn();}catch(e){notice(e.message,true);}finally{b.disabled=false;}});return b;}
+function prefersReducedMotion(){return typeof globalThis.matchMedia==="function"&&globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;}
+function reveal(node){node.focus();node.scrollIntoView({behavior:prefersReducedMotion()?"auto":"smooth",block:"start"});}
+function button(text,fn,cls){const b=el("button",text,cls);b.type="button";b.dataset.focusKey="button:"+text;b.addEventListener("click",async()=>{b.disabled=true;try{await fn();}catch(e){notice(e.message,true);}finally{b.disabled=false;}});return b;}
 function money(value){return value===null?"Volume unknown":new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(Number(value));}
 function keyedDetails(title,key){const d=el("details");d.dataset.key=key;const summary=el("summary",title);summary.dataset.focusKey=key;d.append(summary);return d;}
 function disclosure(title,data,key=title){const d=keyedDetails(title,"data:"+key);d.append(el("pre",JSON.stringify(data,null,2)));return d;}
@@ -13,10 +15,10 @@ function citation(source){const key=`citation:${source.artifact_id}:${source.sta
 async function detail(identity,focus=true){
  if(focus)selected=identity;const request=++detailRequest;
  const d=await api(`/api/events/${encodeURIComponent(identity)}`);if(selected!==identity||request!==detailRequest)return;const box=$("event-detail"),snapshot=JSON.stringify(d);box.hidden=false;
- if(box.dataset.identity===identity&&box.dataset.snapshot===snapshot){if(focus){box.focus();box.scrollIntoView({behavior:"smooth",block:"start"});}return;}
+ if(box.dataset.identity===identity&&box.dataset.snapshot===snapshot){if(focus)reveal(box);return;}
  const open=new Set([...box.querySelectorAll("details[open]")].map(n=>n.dataset.key));
  const focused=box.contains(document.activeElement)?document.activeElement?.dataset.focusKey:null;
- box.replaceChildren();box.append(el("span",names[d.venue],"badge"),el("h2",d.title),button("Close details",()=>{selected=null;++detailRequest;box.hidden=true;}));
+ box.replaceChildren();box.append(el("span",names[d.venue],"badge"),el("h2",d.title),button("Close details",()=>{selected=null;++detailRequest;box.hidden=true;},"secondary"));
  box.append(el("p",`${money(d.data.volume.amount)} · ${d.data.volume.basis} · ${d.data.volume.window}`),el("p",`Observed ${d.data.volume.observed_at} · ${d.data.active_markets.length} active markets`,"small muted"));
  if(d.data.stale_reason)box.append(el("p",d.data.stale_reason,"error"));
  if(d.data.volume.reason)box.append(el("p",d.data.volume.reason,"condition"));
@@ -27,7 +29,7 @@ async function detail(identity,focus=true){
  box.append(el("h3",`Accepted formal relationships · ${d.assertions.length}`));for(const claim of d.assertions)box.append(disclosure(claim.data.relation,claim.data,claim.id));if(!d.assertions.length)box.append(el("p","No accepted claims. Formal verification supports reviewed instantaneous numeric thresholds.","muted"));
  box.append(el("h3","Captured markets & governing evidence"));for(const c of d.contracts){const section=keyedDetails(c.data.metadata.title||c.logical,"contract:"+c.id);for(const [key,id]of Object.entries(c.data.text_artifacts)){const a=el("a",key);a.href=`/api/artifacts/${id}`;a.dataset.focusKey=`contract:${c.id}:${key}`;const p=el("p");p.append(a);section.append(p);}section.append(disclosure("Governing documents",c.data.references,c.id+":documents"));box.append(section);}const review=el("a","Open the review workspace");review.href="/research";review.dataset.focusKey="review";box.append(review,disclosure("Volume provenance and discovery evidence",d.data));box.dataset.identity=identity;box.dataset.snapshot=snapshot;
  for(const node of box.querySelectorAll("details"))if(open.has(node.dataset.key))node.open=true;
- if(focus){box.focus();box.scrollIntoView({behavior:"smooth",block:"start"});}
+ if(focus)reveal(box);
  else if(focused){const target=[...box.querySelectorAll("[data-focus-key]")].find(n=>n.dataset.focusKey===focused);(target||box).focus({preventScroll:true});}
 }
 async function refresh(){if(loading)return;loading=true;try{
@@ -39,7 +41,7 @@ async function refresh(){if(loading)return;loading=true;try{
  $("model-status").replaceChildren(el("p",status.models.length?`Local model: ${status.models.join(", ")}. New or changed rules are analyzed progressively.`:"Discovery is available. To enable explanations, restart with: oddsfox serve --model /path/to/local/quantized-model"));
  paused=status.venues.length>0&&status.venues.every(v=>v.paused);$("pause").textContent=paused?"Resume sync":"Pause sync";$("sync-status").replaceChildren(...status.venues.map(v=>{const d=el("div",undefined,"sync-row");d.append(el("strong",names[v.venue]),el("p",`${v.paused?"Paused · ":""}${v.data.state} · ${v.data.events||0} events processed · last complete scan ${v.data.last_success||"not yet completed"}`,"small"));if(v.data.diagnostic||v.data.scheduler_error)d.append(el("p",v.data.diagnostic||v.data.scheduler_error,"error"));if(v.data.errors?.length)d.append(disclosure("Partial scan errors",v.data.errors));return d;}),disclosure("Discovery coverage",status.coverage_notes),disclosure("Analysis queue",status.analysis),...status.lanes.filter(l=>l.diagnostic).map(l=>el("p",`${l.lane}: ${l.diagnostic} · retry scheduled`,"error")));
  const category=$("filter-category").value;$("filter-category").replaceChildren(el("option","All categories"));$("filter-category").firstChild.value="";for(const value of status.categories){const o=el("option",value);o.value=value;$("filter-category").append(o);}$("filter-category").value=category;
- $("event-list").replaceChildren();for(const e of data.items){const card=el("article",undefined,"card");card.append(el("span",names[e.venue],"badge"),el("span",e.category,"badge"),el("h3",e.title),el("p",money(e.data.volume.amount),"volume"),el("p",e.data.volume.basis,"small muted"),el("p",`${e.data.active_markets.length} active markets · explanation ${e.analysis_status}`,"small"),button("Understand this event",()=>detail(e.id)));$("event-list").append(card);}if(!data.items.length)$("event-list").append(el("div","No events in this view yet. Check discovery progress, volume-unknown events, or adjust your filters.","empty"));
+ $("event-list").replaceChildren();for(const e of data.items){const card=el("article",undefined,"card");const understand=button("Understand this event",()=>detail(e.id));understand.setAttribute("aria-label",`Understand this event: ${e.title}`);card.append(el("span",names[e.venue],"badge"),el("span",e.category,"badge"),el("h3",e.title),el("p",money(e.data.volume.amount),"volume"),el("p",e.data.volume.basis,"small muted"),el("p",`${e.data.active_markets.length} active markets · explanation ${e.analysis_status}`,"small"),understand);$("event-list").append(card);}if(!data.items.length)$("event-list").append(el("div","No events in this view yet. Check discovery progress, volume-unknown events, or adjust your filters.","empty"));
  if(selected!==null)await detail(selected,false);
  }catch(e){notice(e.message,true);}finally{loading=false;}}
 for(const id of ["filter-venue","filter-category","filter-qualification","filter-analysis"])$(id).addEventListener("change",()=>{offset=0;refresh();});

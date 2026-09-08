@@ -226,3 +226,37 @@ Bounded live requests returned one event each from Kalshi ordinary listings
 reachability and response parsing only; they do not establish complete scans or
 explanation quality. No user dataset was migrated during implementation. Exact-revision
 CI awaits the separate commit/push step.
+
+## Local visual system restyle (2026-09-08)
+
+The event browser and research workspace now use the canonical dark OddsFox
+palette, Inter and JetBrains Mono, and the local OddsFox mark. Fonts and the
+logo are served from the explicit `/assets` allowlist; OFL notices and a brand
+carve-out are in the README. `scripts/verify-fast` and `scripts/verify` passed
+189 tests, formatting, types, schema drift and the package build. Browser
+checks used an isolated synthetic demo on `127.0.0.1:8777`: empty home events,
+populated research contracts, skip-link/header/nav, no remote font or image
+requests, and no horizontal overflow at 390px, 768px, and desktop. Keyboard
+landmarks and cyan focus styles are present. The temporary demo server was
+stopped afterward. Independent human product gates remain separate.
+
+## Local UI/UX repair (2026-09-08)
+
+Follow-up inspection of both local pages found remaining interaction defects
+after the visual restyle: every control used the same orange primary, review
+status badges did not distinguish rejection, generated buttons omitted
+`type="button"`, the header was wider than the 1200px content shell, in-page
+tabs did not match primary nav, and `scrollIntoView` ignored reduced motion.
+
+Repairs: primary / secondary / danger button variants; header inner aligned to
+the content shell; skip-link clip pattern; cyan disclosure chevrons; pill tabs;
+review status uses success/warning badges; generated controls set
+`type="button"`. `scripts/verify-fast` and `scripts/verify` passed 189 tests,
+formatting, types, schema drift and the package build. Browser checks used an
+isolated synthetic demo on `127.0.0.1:8778`: empty home events, populated
+research contracts including Approve vs Reject, no remote asset requests, and
+no page-level horizontal overflow at 390px, 768px, and desktop. Populated
+event cards were not present in that demo (discovery empty); Understand/Close
+behavior is covered by the Node frontend tests. Skip-to-content targets
+`main#main-content` with `tabindex="-1"`. A leftover demo process may still be
+bound to port 8778 if it was not stopped locally.
