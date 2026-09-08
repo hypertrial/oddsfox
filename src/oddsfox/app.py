@@ -57,9 +57,9 @@ class PauseRequest(StrictModel):
 
 class SyncRequest(StrictModel):
     venues: list[str] = Field(
-        default_factory=lambda: ["kalshi", "polymarket", "polymarket_us"],
+        default_factory=lambda: ["kalshi", "polymarket"],
         min_length=1,
-        max_length=3,
+        max_length=2,
     )
 
 

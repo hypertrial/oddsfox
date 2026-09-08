@@ -54,8 +54,8 @@ def test_trading_state_is_independent_from_event_active():
     assert tradable(pm(), "polymarket")
     assert not tradable(pm(closed=True), "polymarket")
     assert not tradable(pm(acceptingOrders=False), "polymarket")
-    assert tradable(pm(status="MARKET_STATUS_OPEN"), "polymarket_us")
-    assert not tradable(pm(status="MARKET_STATUS_HALTED"), "polymarket_us")
+    assert tradable({"status": "active"}, "kalshi")
+    assert not tradable({"status": "settled"}, "kalshi")
 
 
 def test_keyset_pages_and_repeat_detection():
@@ -73,21 +73,21 @@ def test_keyset_pages_and_repeat_detection():
             next(iterator)
 
 
-def test_us_missing_volume_stays_visible_without_invented_total(store):
+def test_missing_volume_stays_visible_without_invented_total(store):
     event = {
         "id": "one",
         "title": "Championship",
-        "markets": [pm(volume=None, status="MARKET_STATUS_OPEN")],
+        "markets": [pm(volume=None)],
     }
     with httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(500))) as client:
         save_event(
             store,
             client,
-            "polymarket_us",
+            "polymarket",
             event,
             "run",
             store.put_artifact(b"{}"),
-            "https://gateway.polymarket.us/v1/events",
+            "https://gamma-api.polymarket.com/events/keyset",
         )
     assert event_list(store)["total"] == 0
     result = event_list(store, qualification="unknown")
@@ -122,7 +122,7 @@ def test_over_250_and_migration_backup_integrity(store, tmp_path):
     restored = Store(backup)
     try:
         assert restored.get(first)["id"] == first
-        assert restored.db.execute("SELECT version FROM metadata").fetchall() == [(3,)]
+        assert restored.db.execute("SELECT version FROM metadata").fetchall() == [(4,)]
         restored.verify_integrity()
     finally:
         restored.close()
@@ -143,6 +143,9 @@ def test_existing_v1_migration_retains_nodes(tmp_path):
     original.db.execute("UPDATE metadata SET version=1")
     original.db.execute("DROP TABLE semantic_heads")
     original.close()
+    with pytest.raises(ValueError, match="migrat"):
+        Store(path)
+    Store.migrate(path, tmp_path / "legacy-backup")
     migrated = Store(path)
     try:
         assert migrated.get(identity)["current"]
@@ -375,7 +378,7 @@ def test_ready_matches_progress_without_failed_candidate(store, tmp_path):
 
     a = seed("a", "polymarket", True)
     b = seed("b", "kalshi", True)
-    c = seed("c", "polymarket_us", False)
+    c = seed("c", "kalshi", False)
     calls = []
 
     def generate(prompt, schema):
@@ -480,22 +483,25 @@ def test_processing_failure_is_visible_and_backed_off(store):
         runner.close()
 
 
-def test_offset_discovery_deduplicates_events_and_scans_past_250(store):
+def test_keyset_discovery_deduplicates_events_and_scans_past_250(store):
     def response(request):
-        offset = int(request.url.params.get("offset", "0"))
+        offset = int(request.url.params.get("after_cursor", "0"))
+        assert request.url.path == "/events/keyset"
+        assert "offset" not in request.url.params
         identities = list(range(offset, min(offset + 100, 301)))
         if offset == 100:
-            identities[0] = 99  # Overlap with the previous page, still follow the offset.
+            identities[0] = 99  # Overlap with the previous page, still follow the cursor.
         return httpx.Response(
             200,
             json={
                 "events": [
                     {
                         "id": str(i),
-                        "markets": [pm(str(i), volume=None, status="MARKET_STATUS_OPEN")],
+                        "markets": [pm(str(i), volume=None)],
                     }
                     for i in identities
-                ]
+                ],
+                "next_cursor": str(offset + 100) if offset < 300 else "",
             },
         )
 
@@ -503,12 +509,10 @@ def test_offset_discovery_deduplicates_events_and_scans_past_250(store):
         store, client_factory=lambda: httpx.Client(transport=httpx.MockTransport(response))
     )
     try:
-        runner.run_venue("polymarket_us", runner.request("polymarket_us"))
+        runner.run_venue("polymarket", runner.request("polymarket"))
         assert event_list(store, qualification="unknown")["total"] == 300
         assert (
-            store._rows("SELECT data FROM sync_state WHERE venue='polymarket_us'")[0]["data"][
-                "pages"
-            ]
+            store._rows("SELECT data FROM sync_state WHERE venue='polymarket'")[0]["data"]["pages"]
             == 4
         )
     finally:
@@ -516,7 +520,7 @@ def test_offset_discovery_deduplicates_events_and_scans_past_250(store):
 
 
 def test_retiring_events_requires_successful_complete_scan(store):
-    event = {"id": "e", "markets": [pm(volume=None, status="MARKET_STATUS_OPEN")]}
+    event = {"id": "e", "markets": [pm(volume=None)]}
     failing = False
 
     def response(request):
@@ -528,14 +532,12 @@ def test_retiring_events_requires_successful_complete_scan(store):
         store, client_factory=lambda: httpx.Client(transport=httpx.MockTransport(response))
     )
     try:
-        runner.run_venue("polymarket_us", runner.request("polymarket_us"))
+        runner.run_venue("polymarket", runner.request("polymarket"))
         failing = True
-        runner.run_venue("polymarket_us", runner.request("polymarket_us"))
+        runner.run_venue("polymarket", runner.request("polymarket"))
         assert event_list(store, qualification="unknown")["total"] == 1
         assert (
-            store._rows("SELECT data FROM sync_state WHERE venue='polymarket_us'")[0]["data"][
-                "state"
-            ]
+            store._rows("SELECT data FROM sync_state WHERE venue='polymarket'")[0]["data"]["state"]
             == "failed"
         )
     finally:
@@ -595,7 +597,9 @@ def test_discovery_restart_resumes_after_persisted_page(tmp_path):
     runner = None
 
     def response(request):
-        offset = int(request.url.params.get("offset", "0"))
+        offset = int(request.url.params.get("after_cursor", "0"))
+        assert request.url.path == "/events/keyset"
+        assert "offset" not in request.url.params
         requests.append(offset)
         if offset == 100 and len(requests) == 2:
             runner.stop_event.set()
@@ -605,29 +609,30 @@ def test_discovery_restart_resumes_after_persisted_page(tmp_path):
                 "events": [
                     {
                         "id": str(i),
-                        "markets": [pm(str(i), volume=None, status="MARKET_STATUS_OPEN")],
+                        "markets": [pm(str(i), volume=None)],
                     }
                     for i in range(offset, min(offset + 100, 101))
-                ]
+                ],
+                "next_cursor": "100" if offset == 0 else "",
             },
         )
 
     factory = lambda: httpx.Client(transport=httpx.MockTransport(response))  # noqa: E731
     runner = SyncRunner(store, client_factory=factory)
-    job = runner.request("polymarket_us")
-    runner.run_venue("polymarket_us", job)
+    job = runner.request("polymarket")
+    runner.run_venue("polymarket", job)
     assert event_list(store, qualification="unknown")["total"] == 100
     runner.close()
     store.close()
     resumed = Store(path)
     runner = SyncRunner(resumed, client_factory=factory)
     try:
-        assert runner.request("polymarket_us") == job
-        runner.run_venue("polymarket_us", job)
+        assert runner.request("polymarket") == job
+        runner.run_venue("polymarket", job)
         assert requests == [0, 100, 100]
         assert event_list(resumed, qualification="unknown")["total"] == 101
         assert (
-            resumed._rows("SELECT data FROM sync_state WHERE venue='polymarket_us'")[0]["data"][
+            resumed._rows("SELECT data FROM sync_state WHERE venue='polymarket'")[0]["data"][
                 "state"
             ]
             == "complete"
@@ -748,9 +753,9 @@ def test_partial_page_failure_survives_pause_or_crash(tmp_path, monkeypatch, int
 
     path = tmp_path / "partial-restart"
     store = Store(path)
-    bad = {"id": "bad", "markets": [pm("b", volume=None, status="MARKET_STATUS_OPEN")]}
-    unseen = {"id": "unseen", "markets": [pm("u", volume=None, status="MARKET_STATUS_OPEN")]}
-    tail = {"id": "tail", "markets": [pm("t", volume=None, status="MARKET_STATUS_OPEN")]}
+    bad = {"id": "bad", "markets": [pm("b", volume=None)]}
+    unseen = {"id": "unseen", "markets": [pm("u", volume=None)]}
+    tail = {"id": "tail", "markets": [pm("t", volume=None)]}
 
     def factory():
         return httpx.Client(
@@ -762,11 +767,11 @@ def test_partial_page_failure_survives_pause_or_crash(tmp_path, monkeypatch, int
     with factory() as client:
         for event in [bad, unseen]:
             save_event(
-                store, client, "polymarket_us", event, "old", store.put_artifact(b"{}"), "source"
+                store, client, "polymarket", event, "old", store.put_artifact(b"{}"), "source"
             )
-    bad["marketCounts"] = {"total": 2}
+    bad["markets"] = None
     runner = SyncRunner(store, client_factory=factory)
-    set_sync_state(store, "polymarket_us", last_success="previous-success")
+    set_sync_state(store, "polymarket", last_success="previous-success")
     real = sync_module.save_event
     interrupted = False
 
@@ -782,12 +787,12 @@ def test_partial_page_failure_survives_pause_or_crash(tmp_path, monkeypatch, int
                 runner.pause(True)
 
     monkeypatch.setattr(sync_module, "save_event", capturing)
-    job = runner.request("polymarket_us")
+    job = runner.request("polymarket")
     if interruption == "crash":
         with pytest.raises(KeyboardInterrupt):
-            runner.run_venue("polymarket_us", job)
+            runner.run_venue("polymarket", job)
     else:
-        runner.run_venue("polymarket_us", job)
+        runner.run_venue("polymarket", job)
     runner.close()
     store.close()
     reopened = Store(path)
@@ -795,14 +800,12 @@ def test_partial_page_failure_survives_pause_or_crash(tmp_path, monkeypatch, int
     monkeypatch.setattr(sync_module, "save_event", real)
     try:
         runner.pause(False)
-        runner.run_venue("polymarket_us", runner.request("polymarket_us"))
-        state = reopened._rows("SELECT data FROM sync_state WHERE venue='polymarket_us'")[0]["data"]
+        runner.run_venue("polymarket", runner.request("polymarket"))
+        state = reopened._rows("SELECT data FROM sync_state WHERE venue='polymarket'")[0]["data"]
         assert state["state"] == "partial"
         assert state["error_count"] >= 1
         assert state["last_success"] == "previous-success"
-        assert reopened._rows("SELECT active FROM events WHERE id='polymarket_us:unseen'")[0][
-            "active"
-        ]
+        assert reopened._rows("SELECT active FROM events WHERE id='polymarket:unseen'")[0]["active"]
     finally:
         runner.close()
         reopened.close()
@@ -832,3 +835,99 @@ def test_exhausted_formal_job_is_not_prepared_forever(store, tmp_path, monkeypat
     assert (
         "failed strict evidence validation" in store.list("compilation_issue")[0]["data"]["reason"]
     )
+
+
+@pytest.mark.parametrize("venue", ["polymarket_us", "unknown", "", "POLYMARKET"])
+def test_removed_and_unknown_venues_rejected_without_work(store, monkeypatch, venue):
+    from fastapi.testclient import TestClient
+
+    from oddsfox.app import create_app
+    from oddsfox.ingest import fetch
+
+    with monkeypatch.context() as network:
+        network.setattr(
+            httpx.Client,
+            "send",
+            lambda *a, **k: pytest.fail("invalid venue caused network work"),
+        )
+        runner = SyncRunner(store)
+        try:
+            with pytest.raises(ValueError):
+                runner.request(venue)
+            with pytest.raises(ValueError):
+                fetch(store, venue, ["one"])
+            with pytest.raises(ValueError):
+                import_capture(store, venue, json.dumps(pm()).encode())
+        finally:
+            runner.close()
+    assert store._rows("SELECT * FROM jobs") == []
+    assert store.list("contract", True) == []
+
+    monkeypatch.setattr(SyncRunner, "start", lambda *a, **k: None)
+    monkeypatch.setattr("oddsfox.app.fetch", lambda *a, **k: pytest.fail("capture dispatched"))
+    with TestClient(
+        create_app(store, auto_sync=False, token="fixture-session"),
+        base_url="http://127.0.0.1:8777",
+        headers={"X-Oddsfox-Token": "fixture-session"},
+    ) as client:
+        for route, body in [
+            ("/api/sync", {"venues": ["kalshi", venue]}),
+            ("/api/capture", {"platform": venue, "native_ids": ["one"]}),
+            ("/api/import", {"platform": venue, "payload": json.dumps(pm())}),
+        ]:
+            assert client.post(route, json=body).status_code == 422
+        assert client.get("/api/events", params={"venue": venue}).status_code == 422
+    assert store._rows("SELECT * FROM jobs") == []
+    assert store.list("contract", True) == []
+
+
+def test_sync_status_and_default_request_contain_only_supported_venues(store, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from oddsfox.app import create_app
+
+    monkeypatch.setattr(SyncRunner, "start", lambda *a, **k: None)
+    with TestClient(
+        create_app(store, auto_sync=False, token="fixture-session"),
+        base_url="http://127.0.0.1:8777",
+        headers={"X-Oddsfox-Token": "fixture-session"},
+    ) as client:
+        assert {r["venue"] for r in client.get("/api/sync").json()["venues"]} == {
+            "kalshi",
+            "polymarket",
+        }
+        response = client.post("/api/sync", json={})
+        assert response.status_code == 202
+        jobs = store._rows("SELECT * FROM jobs")
+        assert len(jobs) == 2
+        assert {j["config"]["venue"] for j in jobs} == {"kalshi", "polymarket"}
+        assert all(j["stage"] == "discover" and j["state"] == "pending" for j in jobs)
+
+
+@pytest.mark.parametrize("venue", ["polymarket_us", "unknown"])
+@pytest.mark.parametrize("command", ["sync", "capture", "import"])
+def test_cli_rejects_removed_or_unknown_venue_before_opening_dataset(tmp_path, venue, command):
+    from oddsfox.cli import main
+
+    path = tmp_path / "must-not-exist"
+    args = ["--data", str(path), command]
+    args += ["--venue", venue] if command == "sync" else [venue, "one"]
+    with pytest.raises(SystemExit) as rejected:
+        main(args)
+    assert rejected.value.code == 2
+    assert not path.exists()
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://polymarket.us/rules",
+        "https://docs.polymarket.us/rules",
+        "https://gateway.polymarket.us/v1/events",
+        "https://polymarketexchange.com/files/legal/latest/rulebook",
+    ],
+)
+def test_removed_venue_document_hosts_rejected_before_dns(monkeypatch, url):
+    monkeypatch.setattr("socket.getaddrinfo", lambda *a, **k: pytest.fail("removed host resolved"))
+    with pytest.raises(ValueError):
+        validate_url(url)

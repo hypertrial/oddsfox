@@ -23,5 +23,7 @@ interpretation approval, formal verification and current dependency versions.
 
 The implementation rejects other schema major versions. Persistence has its own
 schema version, independent of Semantic IR 1.0.0.
-Dataset migrations preserve artifacts and review history; governing or compiler
-changes invalidate dependent approvals before recompilation.
+Schema 4 requires explicit backup-backed migration for older datasets and purges
+the retired venue plus dependent results. Unrelated artifacts and review history
+are preserved; governing or compiler changes invalidate dependent approvals before
+recompilation. See the README upgrade procedure.

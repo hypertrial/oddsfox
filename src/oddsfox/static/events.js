@@ -1,6 +1,6 @@
 "use strict";
 const $ = id => document.getElementById(id);
-const names = {kalshi:"Kalshi",polymarket:"Polymarket International",polymarket_us:"Polymarket US"};
+const names = {kalshi:"Kalshi",polymarket:"Polymarket International"};
 const el = (tag,text,cls) => {const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 let offset=0,nextOffset=null,paused=false,selected=null,loading=false,detailRequest=0;
 function notice(message,error=false){$("notice").replaceChildren(el("p",message,error?"error":"panel"));}

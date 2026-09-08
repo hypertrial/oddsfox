@@ -24,11 +24,11 @@ uv sync --locked
 uv run oddsfox serve
 ```
 
-Open `http://127.0.0.1:8777`. The home page discovers open events from **Kalshi,
-Polymarket International and Polymarket US**, with a default lifetime-volume
+Open `http://127.0.0.1:8777`. The home page discovers open events from **Kalshi and
+Polymarket International**, with a default lifetime-volume
 threshold strictly above $100,000 per venue event. All active markets in a qualifying
-event are included. Kalshi volume is USD face-value notional; the Polymarket venues
-use reported USD turnover. Missing lifetime totals appear in **Volume unknown**.
+event are included. Kalshi volume is USD face-value notional; Polymarket International
+uses reported USD turnover. Missing lifetime totals appear in **Volume unknown**.
 
 Discovery runs on startup and every 15 minutes while the server runs. The session
 token printed in the terminal authorizes Refresh now, pause/resume and review
@@ -49,12 +49,10 @@ is downloaded automatically and there is no cloud fallback. Initial processing c
 take hours; source chunks are cached and progress appears as work completes.
 
 One-shot discovery is also available with `uv run oddsfox sync`, optionally limited
-by `--venue kalshi`, `--venue polymarket`, or `--venue polymarket_us`.
+by `--venue kalshi` or `--venue polymarket`.
 Use one process per dataset; stop the server before invoking offline CLI commands.
 The public venue endpoints require no trading credentials, but network access or
 venue-side restrictions can prevent a scan; the app reports these failures.
-Polymarket US public listings do not expose a complete combination universe; its
-separate beta combo lookup requires authenticated access and a known symbol.
 See [executed validation and coverage limits](docs/validation.md).
 
 ### Synthetic demonstration
@@ -195,15 +193,27 @@ licenses and terms; this repository's MIT license does not relicense them.
 
 ## Dataset upgrades
 
-Database version 2 added event catalogs, snapshots, semantic fingerprints and
-processing progress. Version 3 transactionally replaces rounded catalog volume
-storage with exact decimal ordering, recovering totals from preserved evidence.
-Existing immutable records and review history
-are retained. Back up the complete dataset before upgrading; older application
-versions refuse a newer database. Restore the pre-upgrade backup for rollback.
-Restore validates and migrates a temporary copy, leaving the original backup
-unchanged; it rejects live sources and publishes only a verified destination.
+New datasets use database version 4. Existing versions 1–3 require an explicit
+migration before the server or ordinary CLI commands can open them. Stop OddsFox,
+then run this once for each dataset (the backup directory must not exist):
+
+```sh
+uv run oddsfox --data .oddsfox migrate --backup ../oddsfox-pre-v4-backup
+```
+
+The migration verifies a complete backup before permanently removing retired
+Polymarket US data and dependent results from that dataset. Kalshi and International
+records, shared evidence and model weights are retained. Interrupted artifact cleanup
+resumes on the next startup. If migration fails before commit, the database changes
+roll back; if cleanup fails afterward, startup resumes cleanup before processing jobs.
+The command reports the backup location and deletion counts.
+
+Restore into a new directory with `oddsfox --data /path/to/new-dataset restore
+/path/to/backup`. Restore preserves the backup's schema and never changes the source;
+legacy restored datasets require the migration command before use with this release.
+For rollback to the old application, use the preserved pre-upgrade backup with that
+release. Database versions are independent of Semantic IR 1.0.0.
+
 A code/model/configuration upgrade can still invalidate current conclusions under
-the existing reproducibility policy. Subsequent volume/status-only refreshes do
-not invalidate unchanged governing interpretations. Source artifact history is
-retained, so long-running discovery increases disk use.
+the existing reproducibility policy. Volume/status-only refreshes do not invalidate
+unchanged governing interpretations. Source history increases disk use over time.

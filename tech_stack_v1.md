@@ -46,7 +46,7 @@ or in-memory graph library. Add one only after a measured workload justifies it.
 
 ## Ingestion and validation
 
-Use `httpx` for the three explicit public venue adapters, with explicit timeouts, bounded retries, and
+Use `httpx` for the two explicit public venue adapters, with explicit timeouts, bounded retries, and
 rate-limit handling. Use Pydantic to validate typed semantic objects and generate
 the public versioned IR JSON Schema specified in the
 [technical specification](tech_spec_v1.md#public-v1-semantic-ir). Pydantic is the
@@ -132,13 +132,14 @@ These are implementation gates, not checks already performed by this document.
 
 ## Discovery runtime additions
 
-Use additive transactional DuckDB version-2 migration for catalogs, retrieval
-snapshots, semantic-head indices, sync state and comparison progress. Version 3
-atomically replaces the catalog table to store exact decimal ordering keys, using
-preserved volume evidence to recover precision. Existing nodes
-and dependency IDs remain immutable. Backup/restore integrity checks cover the new
-artifact and node references. Keep network clients bounded and model inference
-serialized through the existing MLX lock.
+DuckDB schema 4 is initialized for new datasets. A private maintenance open takes
+an exclusive dataset lock without running jobs or changing schemas; backup, restore
+and explicit offline migration use this path. Versions 1–3 migrate in one transaction,
+retaining the earlier exact volume-key conversion and removing retired-venue records
+through dependency and persisted-reference closure. A persisted artifact cleanup queue
+bridges the database commit and idempotent filesystem deletion. No migration framework
+or new dependency is required. Keep network clients bounded to two discovery workers
+and model inference serialized through the existing MLX lock.
 
 Use `pypdf` for official PDF text extraction and the standard-library HTML parser
 for HTML. Run extraction in a disposable subprocess: 8 MiB input, 200 PDF pages,

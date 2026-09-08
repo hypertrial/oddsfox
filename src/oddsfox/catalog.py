@@ -107,7 +107,6 @@ def sync_status(store):
             "schema_version": "oddsfox-discovery/1",
             "interval_seconds": 900,
             "coverage_notes": [
-                "Polymarket US: public event/market listings only. Its separate beta combo lookup requires authenticated access and a known symbol; no public combo universe scan is available.",
                 "A complete scan means the documented listing pagination completed without errors, not an independent audit of venue inventory.",
             ],
             "lanes": store._rows("SELECT * FROM lane_state ORDER BY lane"),

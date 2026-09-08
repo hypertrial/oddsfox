@@ -12,7 +12,6 @@ from oddsfox.store import Store
 ENDPOINTS = {
     "polymarket": "https://gamma-api.polymarket.com/markets/",
     "kalshi": "https://external-api.kalshi.com/trade-api/v2/markets/",
-    "polymarket_us": "https://gateway.polymarket.us/v1/market/id/",
 }
 MAX_BYTES = 4 * 1024 * 1024
 
@@ -51,8 +50,8 @@ def normalize(platform: str, raw: bytes) -> tuple[str, dict, dict[str, str], lis
             "source": None,
         }
         rules_present = bool(market.get("rules_primary"))
-    elif platform in {"polymarket", "polymarket_us"}:
-        market = data.get("market", data) if platform == "polymarket_us" else data
+    elif platform == "polymarket":
+        market = data
         if not isinstance(market, dict):
             raise ValueError("expected a market object")
         native_id = market.get("id")
@@ -62,12 +61,6 @@ def normalize(platform: str, raw: bytes) -> tuple[str, dict, dict[str, str], lis
         tokens = strict_json(tokens) if isinstance(tokens, str) else tokens
         # Preserve native token IDs when available, with the labels kept separately.
         ids = tokens if isinstance(tokens, list) and len(tokens) == 2 else outcomes
-        if platform == "polymarket_us":
-            sides = market.get("marketSides", [])
-            if not isinstance(sides, list) or not all(isinstance(s, dict) for s in sides):
-                raise ValueError("invalid market sides")
-            ids = [str(s["id"]) for s in sides if s.get("id") is not None]
-            outcomes = [s.get("description", "") for s in sides]
         texts = {
             key: market[key]
             for key in ("question", "description", "resolutionSource", "rulesDisclaimer")

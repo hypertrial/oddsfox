@@ -44,7 +44,7 @@ Update wrappers, these notes and canonical Universal Pad configuration together
 when changing required verification. See `docs/validation.md` for executed checks
 and `docs/benchmark.md` for the frozen evaluation interface.
 
-The default server discovers open events across three venues. Governing contract
+The default server discovers open events across Kalshi and Polymarket International. Governing contract
 revisions are separate from volatile snapshots; preserve this boundary. Event and
 explanation interfaces have their own versions; Semantic IR remains 1.0.0. Do not
 use model family labels as proof of eligibility or automatically approve suggestions.

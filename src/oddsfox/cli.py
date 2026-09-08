@@ -35,19 +35,17 @@ def parser() -> argparse.ArgumentParser:
         action="store_true",
         help="disable automatic discovery (for synthetic demos/offline research)",
     )
-    sync = sub.add_parser(
-        "sync", help="discover all qualifying events from the three public venues"
-    )
-    sync.add_argument("--venue", action="append", choices=["kalshi", "polymarket", "polymarket_us"])
+    sync = sub.add_parser("sync", help="discover all qualifying events from the two public venues")
+    sync.add_argument("--venue", action="append", choices=["kalshi", "polymarket"])
     demo = sub.add_parser(
         "demo", help="load clearly marked synthetic examples into an empty dataset"
     )
     demo.add_argument("--approve-synthetic", action="store_true")
     capture = sub.add_parser("capture", help="retrieve bounded native market IDs")
-    capture.add_argument("venue", choices=["polymarket", "kalshi", "polymarket_us"])
+    capture.add_argument("venue", choices=["polymarket", "kalshi"])
     capture.add_argument("ids", nargs="+")
     imp = sub.add_parser("import", help="import an exact captured market JSON file")
-    imp.add_argument("venue", choices=["polymarket", "kalshi", "polymarket_us"])
+    imp.add_argument("venue", choices=["polymarket", "kalshi"])
     imp.add_argument("file", type=Path)
     imp.add_argument("--documents", type=Path, help="JSON list of captured referenced documents")
     draft = sub.add_parser("draft", help="emit an explicitly unknown IR candidate")
@@ -92,6 +90,8 @@ def parser() -> argparse.ArgumentParser:
     backup.add_argument("destination", type=Path)
     restore = sub.add_parser("restore", help="verify and restore a backup into a new dataset")
     restore.add_argument("backup", type=Path)
+    migrate = sub.add_parser("migrate", help="upgrade a stopped dataset after a verified backup")
+    migrate.add_argument("--backup", type=Path, required=True)
     return p
 
 
@@ -119,15 +119,13 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         if args.command == "restore":
-            Store.restore(args.backup, args.data)
-            restored = Store(args.data)
-            try:
-                for file in restored.artifacts.iterdir():
-                    if not file.name.startswith(".stage-"):
-                        restored.artifact(file.name)
-                write_json({"restored": str(args.data), "status": restored.status()})
-            finally:
-                restored.close()
+            version = Store.restore(args.backup, args.data)
+            write_json(
+                {"restored": str(args.data), "version": version, "migration_required": version != 4}
+            )
+            return 0
+        if args.command == "migrate":
+            write_json(Store.migrate(args.data, args.backup))
             return 0
         store = Store(args.data)
         pipeline = Pipeline(store)
@@ -166,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
 
                     runner = SyncRunner(store)
                     try:
-                        for venue in args.venue or ["kalshi", "polymarket", "polymarket_us"]:
+                        for venue in args.venue or ["kalshi", "polymarket"]:
                             runner.run_venue(venue, runner.request(venue))
                         write_json(sync_status(store))
                     finally:

@@ -24,11 +24,6 @@ OFFICIAL_HOSTS = frozenset(
         "polymarket.com",
         "www.polymarket.com",
         "docs.polymarket.com",
-        "polymarket.us",
-        "www.polymarket.us",
-        "docs.polymarket.us",
-        "polymarketexchange.com",
-        "www.polymarketexchange.com",
     }
 )
 

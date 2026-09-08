@@ -40,10 +40,16 @@ Version referenced material as well as the market payload. A clarification can
 invalidate an interpretation even when the title is unchanged. Store the last
 successful refresh and retrieval failures so consumers can assess freshness.
 
+Database version 4 removes the retired US venue. Upgrading requires an explicit
+offline migration and a verified pre-deletion backup. Purge all venue history and
+dependent results, including cross-venue suggestions and claims; preserve unrelated
+records and shared evidence. Deletion is transactional, with resumable cleanup of
+artifacts no surviving record references. Restoring a legacy backup retains its
+schema and requires migration before operational use.
+
 ## Event discovery and local explanations
 
-Keep native venue namespaces distinct: `kalshi`, `polymarket` (International), and
-`polymarket_us`. Version event, discovery, explanation and suggestion envelopes
+Keep native venue namespaces distinct: `kalshi` and `polymarket` (International). Version event, discovery, explanation and suggestion envelopes
 separately from Semantic IR 1.0.0. Event catalogs have one row per venue/native event;
 native child IDs are deduplicated before volume aggregation. Parse volume as exact
 decimals; missing fields are unknown. Prefer documented lifetime event totals,
@@ -52,9 +58,7 @@ counts are multiplied by face value. Never substitute session stats or open inte
 Catalog APIs preserve those exact amounts. Indexed ordering must remain numerically
 correct even when totals differ beyond twelve fractional digits.
 
-Cursor/offset pagination preserves resume checkpoints and detects repeated pages.
-Public discovery adapters do not enumerate authenticated, exact-symbol combo lookups
-(such as the separate Polymarket US beta interface); expose this coverage limitation.
+Cursor pagination preserves resume checkpoints and detects repeated pages.
 Only a completed, error-free scan retires unseen catalog entries. Failed child
 membership retrieval preserves the previous event with stale diagnostics and marks
 the scan partial. Failed events are not marked successfully processed; interrupted

@@ -70,6 +70,9 @@ def test_restore_preserves_legacy_source_and_only_publishes_verified_copy(tmp_pa
     assert hashes(source) == before
     assert destination.exists() is not corrupt
     if not corrupt:
+        with pytest.raises(ValueError, match="migration required"):
+            Store(destination)
+        Store.migrate(destination, tmp_path / "pre-migration")
         restored = Store(destination)
         try:
             assert restored.get(ir["contract_version_id"])["current"]
@@ -211,9 +214,10 @@ def legacy_v2(path, *, corrupt=False):
 def test_indexed_v2_migration_recovers_precision_and_preserves_history(tmp_path):
     path = tmp_path / "v2"
     original = legacy_v2(path)
+    Store.migrate(path, tmp_path / "backup")
     dataset = Store(path)
     try:
-        assert dataset.db.execute("SELECT version FROM metadata").fetchone() == (3,)
+        assert dataset.db.execute("SELECT version FROM metadata").fetchone() == (4,)
         assert dataset._rows("SELECT * FROM nodes ORDER BY id") == original
         assert [r["native_id"] for r in event_list(dataset)["items"]] == ["b", "a"]
         assert event_detail(dataset, "polymarket:a")["volume"] == "100000.00000000000001"
@@ -227,7 +231,7 @@ def test_failed_v2_migration_rolls_back_and_releases_source_lock(tmp_path):
     path = tmp_path / "v2"
     original = legacy_v2(path, corrupt=True)
     with pytest.raises(ValueError, match="volume"):
-        Store(path)
+        Store.migrate(path, tmp_path / "backup")
     db = duckdb.connect(str(path / "oddsfox.duckdb"))
     try:
         assert db.execute("SELECT version FROM metadata").fetchone() == (2,)
@@ -249,6 +253,7 @@ def test_failed_v2_migration_rolls_back_and_releases_source_lock(tmp_path):
         db.execute("UPDATE events SET data=? WHERE id='polymarket:a'", [json.dumps(data)])
     finally:
         db.close()
+    Store.migrate(path, tmp_path / "retry-backup")
     retry = Store(path)
     retry.close()
 

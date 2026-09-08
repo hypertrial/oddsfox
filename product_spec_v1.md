@@ -31,7 +31,7 @@ language-independent canonical JSON contract is owned by the
 
 ## User workflow and deliverable
 
-1. Browse automatically discovered qualifying events across Kalshi, Polymarket International and Polymarket US; retain manual capture/import for research.
+1. Browse automatically discovered qualifying events across Kalshi and Polymarket International; retain manual capture/import for research.
 2. Inspect a local comparison report containing candidate relationships,
    settlement differences, unresolved questions, and source evidence.
 3. Review uncertain interpretations and record corrections or approval.

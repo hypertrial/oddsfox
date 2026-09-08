@@ -113,7 +113,7 @@ a configured model job executes. The current local
 core-only completion gate passes 109 tests, and Linux-target type checking passes;
 a new remote run of the corrected revision is still required.
 
-## Three-venue event discovery implementation (2026-09-08)
+## Historical three-venue implementation (2026-09-08)
 
 The default event browser, public adapters, snapshot migration, durable processing,
 local explanation interface and provisional matching are implemented. The expanded
@@ -150,7 +150,7 @@ or book statistic substitutes for missing lifetime turnover. US's separately
 [documented combo API](https://docs.polymarket.us/api-reference/combos/overview)
 requires beta-enabled authenticated access and an exact symbol; its
 [lookup contract](https://docs.polymarket.us/api-reference/combos/get-combos) is
-not a public paginated combo-universe feed. The UI and API disclose that limit.
+not a public paginated combo-universe feed. That adapter has since been removed; this paragraph records the earlier validation outcome.
 
 ### Actual explanation quality
 
@@ -198,3 +198,31 @@ and keyboard focus, and identical detail payloads leave the DOM intact. Retry
 coverage reopens a dataset after its first failed attempt. Negative controls retain invalid-derivation
 rejection, exhausted-job limits, live-source exclusion and closed-detail behavior.
 These are software checks; the live-discovery and human quality gates remain open.
+
+
+## Two-venue removal and explicit migration (2026-09-08)
+
+The supported implementation now covers Kalshi and Polymarket International.
+Polymarket US support has been removed. Schema 4 migration regression coverage
+includes verified backups, legacy restore without source mutation, historical and
+cross-venue result deletion, shared chunk/artifact preservation, failed transaction
+rollback, interrupted cleanup and unsupported-venue rejection before jobs/network.
+Shared pagination, outage and restart tests now use supported-venue fixtures.
+Software checks and bounded live observations for this revision are recorded below;
+the earlier full-universe and independent human quality gates remain unfulfilled.
+
+Executed verification: `scripts/verify-fast` and `scripts/verify` passed with 188
+tests; lint, formatting, type checks, public schema drift and package build passed.
+Independent migration review found and verified fixes for backup artifact integrity,
+historical match jobs suppressing regeneration, and unnecessary startup history scans.
+Browser checks used an isolated synthetic dataset: two venue filters, filtered empty
+state, event details and the two-choice manual import selector all worked; the detail
+panel was visually inspected. The temporary server was stopped afterward.
+
+Bounded live requests returned one event each from Kalshi ordinary listings
+(`KXELONMARS-99`), Kalshi multivariate listings
+(`KXMVECROSSCATEGORY-SHARD1-S2026FF7C4259D33`) and International keyset listings
+(`16183`). Each returned a continuation cursor. These checks establish endpoint
+reachability and response parsing only; they do not establish complete scans or
+explanation quality. No user dataset was migrated during implementation. Exact-revision
+CI awaits the separate commit/push step.

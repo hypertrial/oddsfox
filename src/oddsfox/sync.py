@@ -21,7 +21,9 @@ class SyncRunner:
             lambda: httpx.Client(timeout=20, trust_env=False, follow_redirects=False)
         )
         self.stop_event = threading.Event()
-        self.network = ThreadPoolExecutor(max_workers=3, thread_name_prefix="oddsfox-discovery")
+        self.network = ThreadPoolExecutor(
+            max_workers=len(VENUES), thread_name_prefix="oddsfox-discovery"
+        )
         self.analysis = ThreadPoolExecutor(max_workers=1, thread_name_prefix="oddsfox-explanations")
         self.proofs = ThreadPoolExecutor(max_workers=1, thread_name_prefix="oddsfox-proofs")
         self.futures = {}
@@ -178,6 +180,8 @@ class SyncRunner:
             if not self.discovery_enabled and not state["data"].get("manual"):
                 continue
             venue = state["venue"]
+            if venue not in VENUES:
+                continue
             future = self.futures.get(venue)
             if (
                 state["paused"]

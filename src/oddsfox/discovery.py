@@ -1,4 +1,4 @@
-"""Three explicit public discovery adapters and exact, provenance-bearing event volume."""
+"""Two explicit public discovery adapters and exact, provenance-bearing event volume."""
 
 import json
 import re
@@ -16,12 +16,10 @@ from oddsfox.store import now, volume_order_key
 VENUES = {
     "kalshi": "Kalshi",
     "polymarket": "Polymarket International",
-    "polymarket_us": "Polymarket US",
 }
 BASES = {
     "kalshi": "https://external-api.kalshi.com/trade-api/v2",
     "polymarket": "https://gamma-api.polymarket.com",
-    "polymarket_us": "https://gateway.polymarket.us/v1",
 }
 SCHEMA = "oddsfox-events/1"
 THRESHOLD = Decimal("100000")
@@ -60,9 +58,7 @@ def tradable(market, venue):
         return market.get("status") == "active"
     if not market.get("active") or market.get("closed") or market.get("archived"):
         return False
-    if venue == "polymarket":
-        return market.get("acceptingOrders") is True
-    return market.get("status") == "MARKET_STATUS_OPEN" or market.get("ep3Status") == "OPEN"
+    return market.get("acceptingOrders") is True
 
 
 def volume(event, markets, venue, complete=True):
@@ -155,11 +151,7 @@ def request_json(client, url, params=None):
 def pages(client, venue, checkpoint=None):
     """Yield one page and its resume cursor. No total-event limit or volume prefilter."""
     cp = checkpoint or {"stream": 0, "cursor": "", "offset": 0}
-    streams = (
-        ["/events", "/events/multivariate"]
-        if venue == "kalshi"
-        else ["/events/keyset" if venue == "polymarket" else "/events"]
-    )
+    streams = ["/events", "/events/multivariate"] if venue == "kalshi" else ["/events/keyset"]
     for stream in range(int(cp.get("stream", 0)), len(streams)):
         cursor = cp.get("cursor", "") if stream == cp.get("stream", 0) else ""
         offset = int(cp.get("offset", 0)) if stream == cp.get("stream", 0) else 0
@@ -174,29 +166,16 @@ def pages(client, venue, checkpoint=None):
                     params["cursor"] = cursor
             else:
                 params.update({"closed": "false"})
-                if venue == "polymarket_us":
-                    params.update(
-                        {
-                            "active": "true",
-                            "archived": "false",
-                            "offset": offset,
-                            "orderBy": "id",
-                            "orderDirection": "asc",
-                        }
-                    )
-                elif cursor:
+                if cursor:
                     params["after_cursor"] = cursor
             url = BASES[venue] + streams[stream]
             data, raw = request_json(client, url, params)
             events = data.get("events") if isinstance(data, dict) else data
             if not isinstance(events, list) or not all(isinstance(e, dict) for e in events):
                 raise ValueError("invalid event page")
-            if venue == "polymarket_us":
-                following = str(offset + len(events)) if len(events) == 100 else ""
-            else:
-                following = data.get("cursor" if venue == "kalshi" else "next_cursor", "") or ""
-                if not isinstance(following, str):
-                    raise ValueError("invalid pagination cursor")
+            following = data.get("cursor" if venue == "kalshi" else "next_cursor", "") or ""
+            if not isinstance(following, str):
+                raise ValueError("invalid pagination cursor")
             signature = fingerprint([native_id(e, venue) for e in events])
             if (following and following in seen) or (events and signature in seen):
                 raise ValueError("repeated discovery page/cursor; scan incomplete")
@@ -256,12 +235,6 @@ def complete_markets(client, event, venue, store=None):
                         raise ValueError("repeated membership cursor")
                     seen.add(cursor)
             except httpx.HTTPError, ValueError:
-                complete = False
-    if venue == "polymarket_us":
-        counts = event.get("marketCounts")
-        if isinstance(counts, dict):
-            expected = counts.get("total")
-            if isinstance(expected, int) and expected > len(unique):
                 complete = False
     return list(unique.values()), complete, sources
 
@@ -378,8 +351,6 @@ def save_event(store, client, venue, event, run_id, page_artifact, source_url, d
         series_artifact = store.put_artifact(series_raw)
     else:
         series_artifact = None
-    if venue == "polymarket_us" and active and qualification == "qualified":
-        documents.append("https://polymarketexchange.com/files/legal/latest/rulebook")
     event_context = {
         "native_event_id": eid,
         **{

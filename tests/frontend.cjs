@@ -114,3 +114,15 @@ test('event refresh withdraws stale details without focus and ignores responses 
  release();await new Promise(setImmediate);
  assert.equal(elements['event-detail'].hidden,true);
 });
+
+test('event and research venue selectors expose exactly the two supported venues', () => {
+  for (const [file,id] of [['index.html','filter-venue'],['research.html','venue']]) {
+    const html=fs.readFileSync(`src/oddsfox/static/${file}`,'utf8');
+    const select=html.match(new RegExp(`<select id="${id}">([\\s\\S]*?)</select>`));
+    assert(select, `missing ${id} selector`);
+    const options=[...select[1].matchAll(/<option value="([^"]*)">([^<]*)<\/option>/g)];
+    assert.deepEqual(options.map(m=>m[1]).filter(Boolean).sort(),['kalshi','polymarket']);
+    assert(options.some(m=>m[1]==='polymarket'&&m[2]==='Polymarket International'));
+    assert(!/Polymarket US|polymarket_us|three venues/.test(html));
+  }
+});

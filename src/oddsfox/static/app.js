@@ -16,7 +16,7 @@ async function refresh(){
   $("contract-list").replaceChildren();
   for(const c of data.contracts){
     const el=node("article",undefined,"card"), meta=c.data.metadata;
-    el.append(node("span",({kalshi:"Kalshi",polymarket:"Polymarket International",polymarket_us:"Polymarket US"}[c.data.platform]||c.data.platform),"badge"),node("span",meta.capture_status,"badge warning"),node("h3",meta.title||c.logical));
+    el.append(node("span",({kalshi:"Kalshi",polymarket:"Polymarket International"}[c.data.platform]||c.data.platform),"badge"),node("span",meta.capture_status,"badge warning"),node("h3",meta.title||c.logical));
     const last=data.freshness.find(r=>r.logical===c.logical);el.append(node("p",last?`Last retrieval: ${last.retrieved} · ${last.success?"successful":"FAILED — historical capture retained"}`:"No retrieval evidence","small muted"));
     const evidence=node("details");evidence.append(node("summary","Captured evidence & version"),node("p",c.id,"small"));
     for(const [name,id] of Object.entries(c.data.text_artifacts)){const p=node("p");p.append(link(name,`/api/artifacts/${id}`));evidence.append(p);}evidence.append(details("Referenced material",c.data.references));el.append(evidence);
