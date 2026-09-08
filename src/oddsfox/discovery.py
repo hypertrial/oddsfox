@@ -9,6 +9,7 @@ from urllib.parse import quote
 import httpx
 
 from oddsfox.documents import capture_document
+from oddsfox.http import VENUE_HOSTS, stream_get
 from oddsfox.ingest import ENDPOINTS, normalize
 from oddsfox.ir import fingerprint
 from oddsfox.store import now, volume_order_key
@@ -105,15 +106,14 @@ def _volume(event, markets, venue, complete):
 def request_json(client, url, params=None):
     for attempt in range(3):
         try:
-            with client.stream("GET", url, params=params, timeout=20) as response:
-                response.raise_for_status()
-                chunks, size, start = [], 0, time.monotonic()
-                for chunk in response.iter_bytes():
-                    size += len(chunk)
-                    if size > 16 * 1024 * 1024 or time.monotonic() - start > 45:
-                        raise ValueError("discovery response exceeds resource budget")
-                    chunks.append(chunk)
-            raw = b"".join(chunks)
+            raw = stream_get(
+                client,
+                url,
+                allowed_hosts=VENUE_HOSTS,
+                follow_redirects=False,
+                max_bytes=16 * 1024 * 1024,
+                params=params,
+            )
 
             def unique(pairs):
                 result = {}

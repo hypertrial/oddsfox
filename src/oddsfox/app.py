@@ -86,11 +86,12 @@ def create_app(
     port: int = 8777,
     models: dict[str, Path] | None = None,
     auto_sync: bool = True,
+    allow_consensus: bool = False,
 ) -> FastAPI:
     token = token or secrets.token_urlsafe(32)
     allowed_host = f"127.0.0.1:{port}"
     origin = f"http://{allowed_host}"
-    pipeline = Pipeline(store)
+    pipeline = Pipeline(store, allow_consensus=allow_consensus)
     worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="oddsfox-worker")
     models = models or {}
     runner = SyncRunner(store, models)

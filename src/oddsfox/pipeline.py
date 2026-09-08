@@ -45,8 +45,9 @@ DEFAULT_CONFIG = {
 
 
 class Pipeline:
-    def __init__(self, store: Store):
+    def __init__(self, store: Store, *, allow_consensus: bool = False):
         self.store = store
+        self.allow_consensus = allow_consensus
         active = store.current("configuration", "active")
         if active and any(
             active["data"].get(key) != DEFAULT_CONFIG[key]
@@ -582,12 +583,14 @@ class Pipeline:
                 )
 
     def _approved(self, interpretation: dict) -> bool:
-        review = self.store.current("review", interpretation["id"])
-        return bool(
-            review
-            and review["data"]["approved"]
-            and review["data"]["ir_digest"] == interpretation["data"]["digest"]
-        )
+        from oddsfox.consensus import accepted
+
+        return accepted(self.store, interpretation, allow_consensus=self.allow_consensus)
+
+    def _acceptance_basis(self, interpretation: dict) -> str | None:
+        from oddsfox.consensus import acceptance_basis
+
+        return acceptance_basis(self.store, interpretation, allow_consensus=self.allow_consensus)
 
     def publish(self, proposals: list[dict] | None = None) -> list[str]:
         # Re-derive under the current snapshot; never trust caller-provided proof fields.
@@ -621,16 +624,28 @@ class Pipeline:
                 )
                 return []
             published = []
+            from oddsfox.consensus import consensus_record
+
             for claim in proposals:
                 operands = [self.store.get(i) for i in claim["interpretations"]]
                 self.store.require_current([r["id"] for r in operands])
-                approvals = [self.store.current("review", r["id"]) for r in operands]
+                approvals = []
+                for record in operands:
+                    review = self.store.current("review", record["id"])
+                    consensus = consensus_record(self.store, record)
+                    if review and review["data"].get("approved"):
+                        approvals.append(review)
+                    elif consensus:
+                        approvals.append(consensus)
                 if not all(self._approved(r) for r in operands):
                     continue
-                dependencies = claim["interpretations"] + [a["id"] for a in approvals if a]
+                dependencies = claim["interpretations"] + [a["id"] for a in approvals]
+                bases = [self._acceptance_basis(r) for r in operands]
+                basis = "HUMAN_REVIEW" if "HUMAN_REVIEW" in bases else "LOCAL_MODEL_CONSENSUS"
                 data = claim | {
                     "proof_artifact": proof_artifacts[claim["claim_id"]],
-                    "approvals": [a["id"] for a in approvals if a],
+                    "approvals": [a["id"] for a in approvals],
+                    "acceptance_basis": basis,
                 }
                 published.append(
                     self.store.insert(
@@ -652,6 +667,8 @@ class Pipeline:
             assertions = self.store.list("assertion", history)
             if not history:
                 assertions = [r for r in assertions if r["status"] == "ACCEPTED"]
+            for assertion in assertions:
+                assertion["data"].setdefault("acceptance_basis", "HUMAN_REVIEW")
             interpretations = self.store.list("interpretation", history)
             contracts = self.store.list("contract", history)
             return {
@@ -669,6 +686,7 @@ class Pipeline:
                 "interpretations": interpretations,
                 "assertions": assertions,
                 "reviews": self.store.list("review", history),
+                "consensus_approvals": self.store.list("consensus_approval", history),
                 "registry": self.store.list("registry", history),
                 "freshness": self.store.status()["refreshes"],
             }

@@ -8,6 +8,7 @@ from oddsfox.ir import fingerprint
 from oddsfox.reasoning import RELATIONS
 
 METRIC_VERSION = "oddsfox-metrics/3"
+METRIC_V4 = "oddsfox-metrics/4"
 STAGES = ("ir_fields", "canonical_resolution", "settlement_fields", "settlement_compatibility")
 
 
@@ -256,6 +257,21 @@ def evaluate(benchmark: dict, run: dict) -> dict:
     }
     if not required <= benchmark.keys():
         raise ValueError("benchmark lacks frozen identifiers, labels or comparison universe")
+    version = benchmark.get("metric_definition_version", METRIC_VERSION)
+    label_source = benchmark.get("label_source")
+    if version not in {METRIC_VERSION, METRIC_V4}:
+        raise ValueError("unsupported metric definition version")
+    if label_source == "local_unanimous_consensus":
+        if version != METRIC_V4:
+            raise ValueError("consensus corpora must use oddsfox-metrics/4")
+        if benchmark["independent_human_labels"] is True:
+            raise ValueError("consensus labels cannot set independent_human_labels")
+        if run.get("cross_venue_human_validation") or run.get("near_match_human_validation"):
+            raise ValueError("model ballots cannot set human-validation flags")
+    elif version == METRIC_V4:
+        raise ValueError("metrics v4 requires label_source local_unanimous_consensus")
+    elif label_source not in {None}:
+        raise ValueError("unsupported label_source")
     if run.get("scored_before_case_review") is not True or not run.get("pipeline_configuration"):
         raise ValueError(
             "evaluation needs original pre-review outputs and complete pipeline configuration"
@@ -330,8 +346,9 @@ def evaluate(benchmark: dict, run: dict) -> dict:
     assisted = [t["assisted_seconds"] for t in effort]
     errors = sum(not t["manual_correct"] or not t["assisted_correct"] for t in effort)
     selected_precision = relationships["selected_precision"]["value"]
-    return {
-        "metric_definition_version": METRIC_VERSION,
+    selected_interval = relationships["selected_precision"]["wilson_95"]
+    report = {
+        "metric_definition_version": version,
         "benchmark": {
             k: benchmark[k]
             for k in ("benchmark_id", "revision", "label_version", "labeling_guide", "split")
@@ -369,3 +386,45 @@ def evaluate(benchmark: dict, run: dict) -> dict:
         },
         "caution": "Synthetic/development results and small samples do not establish release quality or population error rates.",
     }
+    if version == METRIC_V4:
+        sampled = len(benchmark["contracts"])
+        contract_ids = set(ids)
+        contract_abstentions = {
+            row.get("id")
+            for row in benchmark.get("label_abstentions", [])
+            if row.get("id") in contract_ids
+        }
+        labeled = sampled - len(contract_abstentions)
+        coverage = labeled / sampled if sampled else None
+        wilson_lower = selected_interval[0] if selected_interval else None
+        venues = {c["venue"] for c in benchmark["contracts"]}
+        report["label_source"] = "local_unanimous_consensus"
+        report["consensus"] = {
+            "protocol": benchmark.get("label_version"),
+            "evaluator_panel": benchmark.get("evaluator_panel"),
+            "label_abstentions": len(contract_abstentions),
+            "label_coverage": coverage,
+        }
+        report["release_gates"] = {
+            "independent_human_labels": False,
+            "complete_zero_error_scans": run.get("complete_zero_error_scans") is True,
+            "sample_size": sampled >= 100,
+            "both_venues_represented": venues >= {"kalshi", "polymarket"},
+            "evaluator_label_coverage": coverage is not None and coverage >= 0.80,
+            "selected_agreement_target": selected_precision is not None
+            and selected_precision >= 0.99,
+            "selected_agreement_wilson_lower": wilson_lower is not None and wilson_lower >= 0.95,
+            "unanimous_cross_venue_relationship": run.get("unanimous_cross_venue_relationship")
+            is True,
+            "unanimous_near_match_rejection": run.get("unanimous_near_match_rejection") is True,
+            "zero_accepted_known_false_equivalences": run.get(
+                "zero_accepted_known_false_equivalences"
+            )
+            is True,
+            "provenance_invalidation": run.get("provenance_invalidation") is True,
+        }
+        report["caution"] = (
+            "Local unanimous consensus is reproducible panel agreement under a frozen "
+            "protocol, not independent human review or proven natural-language correctness."
+        )
+    return report

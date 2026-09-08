@@ -1,31 +1,19 @@
 """Bounded official governing documents; redirects cannot widen the trust boundary."""
 
-import ipaddress
 import json
-import socket
 import subprocess
 import sys
 import tempfile
+import time
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urljoin, urlsplit
 
-import httpx
+from oddsfox.http import DOCUMENT_HOSTS, resolve_public, stream_get, validate_https_url
 
 MAX_BYTES = 8 * 1024 * 1024
 MAX_TEXT = 2 * 1024 * 1024
-OFFICIAL_HOSTS = frozenset(
-    {
-        "kalshi.com",
-        "www.kalshi.com",
-        "kalshi-public-docs.s3.amazonaws.com",
-        "kalshi-public-docs.s3.us-east-1.amazonaws.com",
-        "kalshi-public-docs.s3.us-east-2.amazonaws.com",
-        "polymarket.com",
-        "www.polymarket.com",
-        "docs.polymarket.com",
-    }
-)
+MEMORY_LIMIT = 1024**3
+OFFICIAL_HOSTS = DOCUMENT_HOSTS
 
 
 class TextParser(HTMLParser):
@@ -82,50 +70,47 @@ def extract(raw: bytes) -> str:
 
 
 def validate_url(url: str) -> tuple[str, str]:
-    parsed = urlsplit(url)
-    if (
-        parsed.scheme != "https"
-        or parsed.hostname not in OFFICIAL_HOSTS
-        or parsed.username
-        or parsed.password
-        or parsed.port not in {None, 443}
-    ):
-        raise ValueError("document host is not an approved official HTTPS host")
-    addresses = {
-        str(a[4][0]) for a in socket.getaddrinfo(parsed.hostname, 443, type=socket.SOCK_STREAM)
-    }
-    if not addresses or any(not ipaddress.ip_address(a).is_global for a in addresses):
-        raise ValueError("document host resolves to a non-public network")
-    return parsed.hostname, sorted(addresses)[0]
+    host = validate_https_url(url, OFFICIAL_HOSTS)
+    return resolve_public(host)
 
 
 def retrieve(url: str) -> bytes:
-    # Pin the validated IP while retaining Host and TLS SNI/certificate checks.
-    with httpx.Client(timeout=20, trust_env=False, follow_redirects=False) as client:
-        for _ in range(4):
-            host, address = validate_url(url)
-            target = httpx.URL(url).copy_with(host=address)
-            with client.stream(
-                "GET", target, headers={"Host": host}, extensions={"sni_hostname": host}
-            ) as response:
-                if response.is_redirect:
-                    url = urljoin(url, response.headers["location"])
-                    continue
-                response.raise_for_status()
-                chunks, size = [], 0
-                import time
+    import httpx
 
-                started = time.monotonic()
-                for chunk in response.iter_bytes():
-                    size += len(chunk)
-                    if size > MAX_BYTES or time.monotonic() - started > 45:
-                        raise ValueError("document download exceeds resource limit")
-                    chunks.append(chunk)
-                raw = b"".join(chunks)
-                break
-        else:
-            raise ValueError("too many document redirects")
-    return raw
+    with httpx.Client(timeout=20, trust_env=False, follow_redirects=False) as client:
+        return stream_get(
+            client,
+            url,
+            allowed_hosts=OFFICIAL_HOSTS,
+            follow_redirects=True,
+            max_bytes=MAX_BYTES,
+        )
+
+
+def child_rss_bytes(pid: int) -> int:
+    output = subprocess.check_output(["/bin/ps", "-o", "rss=", "-p", str(pid)], text=True)
+    return int(output.strip().split()[0]) * 1024
+
+
+def supervise_extractor(proc: subprocess.Popen, *, wall_seconds: int = 60) -> bytes:
+    started = time.monotonic()
+    while proc.poll() is None:
+        if time.monotonic() - started > wall_seconds:
+            proc.kill()
+            raise ValueError("governing document could not be safely extracted")
+        if sys.platform == "darwin":
+            try:
+                rss = child_rss_bytes(proc.pid)
+            except subprocess.CalledProcessError, IndexError:
+                rss = None
+            if rss is not None and rss > MEMORY_LIMIT:
+                proc.kill()
+                raise ValueError("document extractor exceeded memory budget")
+        time.sleep(0.2)
+    stdout, _stderr = proc.communicate(timeout=5)
+    if proc.returncode or len(stdout) > MAX_TEXT * 6:
+        raise ValueError("governing document could not be safely extracted")
+    return stdout
 
 
 def extract_bounded(raw: bytes) -> str:
@@ -133,19 +118,19 @@ def extract_bounded(raw: bytes) -> str:
     with tempfile.TemporaryDirectory(prefix="oddsfox-document-") as directory:
         path = Path(directory) / "source"
         path.write_bytes(raw)
-        result = subprocess.run(
+        proc = subprocess.Popen(
             [sys.executable, "-m", "oddsfox.documents", str(path)],
-            capture_output=True,
-            timeout=60,
-            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
-        if result.returncode or len(result.stdout) > MAX_TEXT * 6:
-            raise ValueError("governing document could not be safely extracted")
-        return json.loads(result.stdout)
+        stdout = supervise_extractor(proc)
+        return json.loads(stdout)
 
 
 def capture_document(store, url: str) -> dict:
     """Failures are evidence too; never silently replace complete material with a guess."""
+    import httpx
+
     artifact = None
     try:
         raw = retrieve(url)

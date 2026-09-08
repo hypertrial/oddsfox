@@ -9,13 +9,24 @@ async function api(path, body) {
 }
 function action(label, callback, reload = true, variant) { const b = node("button",label,variant); b.type="button"; b.addEventListener("click",async()=>{b.disabled=true;try{await callback();if(reload)await refresh();}catch(e){notice(e.message,true);}finally{b.disabled=false;}});return b; }
 function details(label, data) { const el=node("details");el.append(node("summary",label),node("pre",typeof data === "string" ? data : pretty(data)));return el; }
+function prefersReducedMotion(){return typeof globalThis.matchMedia==="function"&&globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;}
+function reveal(node){if(!node||typeof node.focus!=="function")return;node.focus();if(typeof node.scrollIntoView==="function")node.scrollIntoView({behavior:prefersReducedMotion()?"auto":"smooth",block:"start"});}
+function contractTarget(){
+  try{
+    const raw=String((typeof location!=="undefined"&&location.search)?new URLSearchParams(location.search).get("contract")||"":"");
+    return /^[A-Za-z0-9._:-]{1,128}$/.test(raw)?raw:"";
+  }catch{return "";}
+}
 function link(label,path){const a=node("a",label);a.href=path;return a;}
 async function refresh(){
   const data=await api("/api/report");
   $("metrics").replaceChildren(...[[data.contracts.length,"Captured contracts"],[data.interpretations.length,"Current interpretations"],[data.assertions.length,"Accepted claims"],[data.status.pending_review,"Awaiting review"]].map(([n,label])=>{const el=node("div",undefined,"metric");el.append(node("strong",n),node("span",label));return el;}));
   $("contract-list").replaceChildren();
+  const target=contractTarget();
+  let focused=null;
   for(const c of data.contracts){
     const el=node("article",undefined,"card"), meta=c.data.metadata;
+    el.id="contract-"+c.id;el.dataset.contractId=c.id;el.tabIndex=-1;
     el.append(node("span",({kalshi:"Kalshi",polymarket:"Polymarket International"}[c.data.platform]||c.data.platform),"badge"),node("span",meta.capture_status,"badge warning"),node("h3",meta.title||c.logical));
     const last=data.freshness.find(r=>r.logical===c.logical);el.append(node("p",last?`Last retrieval: ${last.retrieved} · ${last.success?"successful":"FAILED — historical capture retained"}`:"No retrieval evidence","small muted"));
     const evidence=node("details");evidence.append(node("summary","Captured evidence & version"),node("p",c.id,"small"));
@@ -24,7 +35,14 @@ async function refresh(){
     if(interpretation){
       el.append(node("p",`Source: ${interpretation.data.ir.observation.source || "unresolved"} · ${interpretation.data.ir.observation.measurement_method || "unknown method"}`,"small muted"));
       const review=data.reviews.find(r=>r.logical===interpretation.id);
-      el.append(node("p",review?(review.data.approved?"REVIEWED":"REJECTED / WITHDRAWN"):interpretation.data.assessment,review?(review.data.approved?"badge success":"badge warning"):"badge"),details("Semantic interpretation & evidence",interpretation.data.ir),link("Canonical IR JSON",`/api/interpretations/${interpretation.id}/ir`));
+      const consensus=(data.consensus_approvals||[]).find(r=>r.logical===interpretation.id);
+      const rejected=Boolean(review&&!review.data.approved);
+      let status=interpretation.data.assessment, statusClass="badge";
+      if(review&&review.data.approved){status="REVIEWED";statusClass="badge success";}
+      else if(rejected){status="REJECTED / WITHDRAWN";statusClass="badge warning";}
+      else if(consensus){status="LOCAL MODEL CONSENSUS";statusClass="badge success";}
+      el.append(node("p",status,statusClass),details("Semantic interpretation & evidence",interpretation.data.ir),link("Canonical IR JSON",`/api/interpretations/${interpretation.id}/ir`));
+      if(consensus&&!rejected)el.append(node("p","Acceptance basis: LOCAL MODEL CONSENSUS. A current human rejection vetoes this.","small muted"));
       const quotes=node("details");quotes.append(node("summary","Source excerpts for each semantic field"));quotes.addEventListener("toggle",async()=>{if(!quotes.open || quotes.dataset.loaded)return;try{const rows=await api(`/api/interpretations/${interpretation.id}/evidence`);for(const row of rows){quotes.append(node("p",`${row.field}: ${pretty(row.value)}`,"small"));for(const source of row.sources)quotes.append(node("blockquote",source.text));}quotes.dataset.loaded="true";}catch(e){notice(e.message,true);}});el.append(quotes);
       const reviewBox=node("details");reviewBox.append(node("summary","Review this exact interpretation"),node("p","Check each populated field against its quotation. Approval covers this IR and its exact dependencies; solver results do not establish language accuracy."));
       const rationale=node("input");rationale.placeholder="Rationale and unresolved issues";const label=node("label","Review rationale");label.append(rationale);reviewBox.append(label);
@@ -35,8 +53,11 @@ async function refresh(){
     edit.append(action("Load empty schema",async()=>{input.value=pretty(await api(`/api/contracts/${c.id}/draft`));},false,"secondary"),action("Save candidate",()=>api("/api/interpret",{ir:JSON.parse(input.value),derivations:interpretation?.data.derivations||{}})));el.append(edit);
     for(const model of data.models)el.append(action(`Compile with ${model}`,()=>api("/api/compile",{contract_version_id:c.id,model_name:model})));
     $("contract-list").append(el);
+    if(target&&c.id===target)focused=el;
   }
   if(!data.contracts.length)$("contract-list").append(node("div","Your research set starts here. Import captured market JSON or retrieve a bounded list of native IDs above.","empty"));
+  else if(target&&!focused)notice("That contract version is missing or stale in this dataset.",true);
+  if(focused)reveal(focused);
   $("comparison-list").replaceChildren();
   if(data.comparison_coverage&&!data.comparison_coverage.complete)$("comparison-list").append(node("p",`Comparison view covers ${data.comparison_coverage.processed} of ${data.comparison_coverage.total} stored rows. Use paginated /api/comparisons for the rest.`,"condition"));
   if(data.near_match_coverage&&!data.near_match_coverage.complete)$("comparison-list").append(node("p",`Legacy near-match view covers ${data.near_match_coverage.processed} of ${data.near_match_coverage.total} interpretations. Use event details for indexed cross-venue suggestions.`,"condition"));

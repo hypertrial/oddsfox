@@ -19,6 +19,11 @@ import duckdb
 
 from oddsfox.ir import fingerprint
 
+DUCKDB_LOCKDOWN: dict[str, str | bool | int | float | list[str]] = {
+    "autoinstall_known_extensions": "false",
+    "autoload_known_extensions": "false",
+}
+
 EVENT_COLUMNS = """id VARCHAR PRIMARY KEY, venue VARCHAR NOT NULL, native_id VARCHAR NOT NULL,
     title VARCHAR NOT NULL, category VARCHAR NOT NULL, volume VARCHAR,
     qualification VARCHAR NOT NULL, active BOOLEAN NOT NULL, seen_run VARCHAR NOT NULL,
@@ -92,7 +97,7 @@ class Store:
             self._process_lock.close()
             raise RuntimeError("OddsFox is already running for this dataset; use its API") from exc
         try:
-            self.db = duckdb.connect(str(self.directory / "oddsfox.duckdb"))
+            self.db = duckdb.connect(str(self.directory / "oddsfox.duckdb"), config=DUCKDB_LOCKDOWN)
             if exists:
                 try:
                     versions = self.db.execute("SELECT version FROM metadata").fetchall()
@@ -580,7 +585,11 @@ class Store:
                 # Legacy/manual copies may omit the process lock. DuckDB's read-only
                 # connection prevents a concurrent writer without creating that file.
                 try:
-                    connection = duckdb.connect(str(source / "oddsfox.duckdb"), read_only=True)
+                    connection = duckdb.connect(
+                        str(source / "oddsfox.duckdb"),
+                        read_only=True,
+                        config=DUCKDB_LOCKDOWN,
+                    )
                 except duckdb.Error as exc:
                     raise ValueError("backup must be stopped and readable before restore") from exc
                 locks.callback(connection.close)

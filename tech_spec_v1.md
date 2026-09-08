@@ -10,9 +10,9 @@ This document defines the behavior required by the
 and process topology are specified only in the [technology stack](tech_stack_v1.md).
 
 ```text
-Ingest → Version → Interpret → Resolve → Derive and verify → Review → Publish
+Ingest → Version → Interpret → Resolve → Derive and verify → Accept → Publish
                          ↑                                      |
-                         └──────── Corrections and revisions ───┘
+                         └──────── Corrections, vetoes, revisions ───┘
 ```
 
 Persist stage inputs and outputs so an interrupted run can resume. Replay of a
@@ -67,13 +67,16 @@ Store page, membership and governing-document artifacts so volume
 and semantic evidence remain reproducible after catalog updates.
 
 Official document fetching uses explicit HTTPS host allowlists, public-address
-validation, pinned connections and redirect revalidation. Preserve raw HTML/PDF,
-extracted text and unavailable-material diagnostics. Chunk long text with original
-artifact character spans. Structured outcomes, timing and combination legs also
-become citable artifacts linked to their original API payloads.
+validation including IPv4-mapped addresses, IP-pinned connections with original
+Host/TLS SNI, proxies disabled, and fail-closed venue API redirects. Document
+redirects require a `Location` header and revalidate every hop. Preserve raw
+HTML/PDF, extracted text and unavailable-material diagnostics. Chunk long text
+with original artifact character spans. Structured outcomes, timing and combination
+legs also become citable artifacts linked to their original API payloads.
 
 Parent event governing text and combination context are part of each child contract’s
-citable semantic content. Changes invalidate child interpretations, reviews and claims;
+citable semantic content. Changes invalidate child interpretations, reviews,
+consensus approvals and claims;
 volatile page provenance remains in snapshots and does not change semantic identity.
 Reject child-only recaptures that omit already-known parent context, retaining the
 current complete capture and directing refresh through event discovery.
@@ -96,6 +99,7 @@ Public additions: paginated `GET /api/events` and event details; `GET /api/sync`
 settings, freshness and processing lanes; authenticated `POST /api/sync` and
 `POST /api/sync/pause`; paginated cached `GET /api/comparisons`. Preserve manual
 capture/import/review/export interfaces and `/research` as the adjudication view.
+Event details deep-link each exact contract version to `/research?contract=`.
 
 ## Public V1 semantic IR
 
@@ -103,7 +107,8 @@ The primary output of contract compilation is `SemanticIR`, a public serialized
 contract containing `Observation`, `Predicate`, and `SettlementSemantics`.
 Reasoning, evaluation, and exports consume this versioned boundary rather than
 depending on internal Python objects. Interpretation records wrap the IR with
-assessment states, review history, and processing metadata; an IR export by itself
+assessment states, optional human review history, consensus approvals, and
+processing metadata; an IR export by itself
 does not imply semantic approval or a proof.
 
 The exact V1 field inventory follows. Every listed key is required; `T?` means
@@ -246,15 +251,20 @@ Boolean payout under cancellation or exceptional resolution.
 
 | Dimension | States and meaning |
 | --- | --- |
-| Interpretation | `SUPPORTED`: complete within the supported schema, pending semantic review; `REVIEWED`: approved for these exact dependencies; `AMBIGUOUS`: multiple plausible readings or missing governing details; `UNSUPPORTED`: outside V1. |
+| Interpretation | `SUPPORTED`: complete within the supported schema, pending semantic acceptance; `REVIEWED`: human-approved for these exact dependencies; `AMBIGUOUS`: multiple plausible readings or missing governing details; `UNSUPPORTED`: outside V1. Consensus never writes `REVIEWED`. |
 | Formal verification | `PROVEN_UNDER_PREMISES`: a rule or solver establishes the encoded claim; `DISPROVEN`: a valid counterexample exists; `UNKNOWN`: timeout, unsupported encoding, or undecided result; `NOT_RUN`. |
 | Settlement compatibility | `COMPATIBLE`: the relation survives every branch of the reviewed governing policy, with no known omitted branch; `CONDITIONAL`: it holds only under named restrictions; `DIFFERENT`: a material rule difference prevents the proposed settlement relation; `UNKNOWN`: insufficient evidence. |
 | Publication lifecycle | `PROVISIONAL`: awaiting acceptance; `ACCEPTED`: passed publication gates; `STALE`: a dependency changed and reassessment is pending; `WITHDRAWN`: rejected or superseded following reassessment. History remains queryable. |
+| Acceptance basis | `HUMAN_REVIEW`: current human approval of the exact IR; `LOCAL_MODEL_CONSENSUS`: current unanimous producer-panel approval of the exact IR. UI copy for the latter is `LOCAL MODEL CONSENSUS`, never `REVIEWED`. A current human rejection vetoes consensus. |
 
-Semantic review can approve an individual interpretation or a versioned template
-with explicit applicability checks. Template approval does not cover new wording
-or exceptions outside those checks. Record reviewer, time, rationale, and scope.
-No standalone confidence score replaces these states.
+Semantic acceptance can be a human review of an individual interpretation or a
+versioned template with explicit applicability checks, or a current unanimous
+producer-panel `consensus_approval` that depends on the interpretation, every
+producer ballot, panel protocol/configuration, model manifests, governing source
+versions, and citations. Template approval does not cover new wording or exceptions
+outside those checks. Record reviewer or panel identifiers, time, rationale, and
+scope. No standalone confidence score replaces these states. Consensus is not
+independent human review and does not establish natural-language truth.
 
 ## Relation derivation and verification
 
@@ -294,8 +304,9 @@ compatibility or abstain; never export an unconditional settlement implication.
 
 ## Publication and probability constraints
 
-Accepted assertions require reviewed interpretations, a proof under recorded
-premises, and current dependencies. Observed-event assertions can be accepted
+Accepted assertions require accepted interpretations (current human review or
+current unanimous producer-panel consensus, unless a current human rejection
+vetoes consensus), a proof under recorded premises, and current dependencies. Observed-event assertions can be accepted
 despite settlement differences, but must display those differences and must not
 be relabeled as settlement assertions. Settlement assertions additionally require
 compatible rules, or explicit conditions on every displayed and exported claim.
@@ -333,15 +344,15 @@ fingerprint relevant to the stage. A content hash alone must not suppress work
 after a compiler, prompt, model, ontology, or rule change.
 
 Persist dependencies between source versions, interpretations, canonical
-definitions, review approvals, proofs, and constraints. On a relevant change,
+definitions, review approvals, consensus approvals, proofs, and constraints. On a relevant change,
 atomically mark dependent current assertions stale before making the new source
 version current. Recompute the dependency closure, not just immediate graph
 neighbors. Unaffected accepted results remain available.
 
 Commit stage output and job completion together. Use bounded retries and retain
 failed attempts; an exhausted or interrupted job must not expose partial accepted
-output. At publication commit, recheck that every dependency version and review
-approval is still current in the same transaction. A job that finishes after a
+output. At publication commit, recheck that every dependency version, review
+approval, and consensus approval is still current in the same transaction. A job that finishes after a
 revision or approval withdrawal may retain historical output but cannot restore
 the obsolete assertion to accepted status. Recover interrupted jobs on restart.
 Pending compilation attempts remain retryable; only exhausted or unrecoverable
@@ -353,9 +364,10 @@ rather than claim a successful refresh.
 ## Consumer contract
 
 The local report and API expose contract versions, interpretations containing
-versioned semantic IR, comparisons, review decisions, accepted assertions,
-symbolic constraints, and revision history.
+versioned semantic IR, comparisons, review decisions, consensus approvals,
+accepted assertions, symbolic constraints, and revision history.
 Review actions are explicit writes; querying or exporting never implies approval.
+Consensus publication is an explicit operator configuration, off by default.
 Treat imported contract text and model output as untrusted data. Escape them in
 HTML reports, allow only safe external-link schemes, and never interpret their
 contents as executable markup or instructions authorizing a review action.
@@ -363,20 +375,24 @@ contents as executable markup or instructions authorizing a review action.
 Default accepted queries return only current accepted results from a consistent
 database snapshot. Historical and provisional results require explicit selection.
 Every result includes scope, conditions, assessment states, provenance references,
-source freshness, and reasons for abstention or withdrawal. Exports carry a schema
+source freshness, `acceptance_basis` when accepted, and reasons for abstention or withdrawal. Exports carry a schema
 version and a manifest identifying the exact source and processing versions.
 The IR's own schema version is independent of the export envelope version.
 
 ## Evaluation and observability
 
-Implement the product acceptance criteria with a labeled corpus covering positive
+Implement the product acceptance criteria with a consensus-labeled corpus covering positive
 relations, hard negatives, ambiguity, and unsupported cases. Keep held-out contract
 templates or event groups separate from development examples to reduce leakage.
-Record independent labels and disagreement resolution. Score automatic proposals
-before case-specific review so adjudication cannot inflate automatic precision.
+Record evaluator ballots, disagreements, and abstentions. Score automatic proposals
+before case-specific review so later vetoes cannot inflate automatic agreement.
 Evaluate both the full pipeline and each stage with gold upstream inputs to
 distinguish propagated errors from errors introduced by that stage. Keep these
 results separate; component scores cannot replace the end-to-end release gate.
+Metric definition `oddsfox-metrics/3` remains for synthetic human-label fixtures.
+Metric definition `oddsfox-metrics/4` is the consensus path: `label_source` must be
+`local_unanimous_consensus`, `independent_human_labels` must be false, and release
+flags that claim independent human validation cannot be set from model ballots.
 
 ### Benchmark metric contract
 
@@ -404,7 +420,7 @@ denominator as not applicable with its count, never as perfect accuracy.
 | Canonical observation resolution accuracy | Correct canonical ID/version assignments or correctly unresolved decisions divided by labeled observations. Also report precision among resolved assignments and resolution coverage to expose false merges and excessive abstention. |
 | Settlement-semantics interpretation accuracy | Correct payout and policy meanings divided by labeled settlement fields under the frozen labeling guide, not literal wording equality; report each field and whole-record accuracy, including missing-data, cancellation, and exceptional policies. |
 | Settlement-compatibility classification accuracy | Correct compatibility class and required conditions divided by labeled comparisons. Report a confusion matrix across `COMPATIBLE`, `CONDITIONAL`, `DIFFERENT`, and `UNKNOWN`. |
-| Relationship precision | Correct complete claims divided by emitted claims; report both all proposals and the subset selected by the frozen automatic acceptance policy. The existing at-least-99% end-to-end target applies to the selected subset before case-specific human intervention. |
+| Relationship agreement | Complete claims matching unanimous evaluator labels divided by emitted claims; report both all proposals and the subset selected by the frozen automatic acceptance policy. The existing at-least-99% end-to-end target, with Wilson lower bound 0.95, applies to the selected subset before case-specific human intervention. v3 fixtures continue to call this precision against their synthetic labels. |
 | Relationship recall | Correct claims recovered divided by gold positive claims in the fixed comparison set; report both all-proposal and acceptance-selected recall, including missed candidates. |
 | Automatic acceptance coverage | Fixed candidate comparisons with at least one policy-selected claim divided by all fixed candidate comparisons; also report selected claims / emitted claims. Count incorrect selections in coverage and as errors in precision. |
 | Abstention rate and reasons | Explicit abstentions divided by eligible inputs at each stage, split by reason and venue/template. Report failures, missing outputs, and unsupported inputs separately; they remain in applicable accuracy/recall denominators. |
@@ -413,11 +429,19 @@ Persist benchmark ID/revision, label and metric-definition versions, full pipeli
 configuration, and `acceptance_policy_version` plus its complete configuration/hash
 with every run. Freeze policy filters and thresholds before held-out evaluation;
 changing them creates a distinct run, never an overwrite. This evaluation selector
-does not bypass the semantic-review requirement for actual accepted publication.
-Retain raw proposals, policy selections, stage outcomes, and later review decisions
+does not bypass the semantic-acceptance requirement for actual accepted publication.
+Retain raw proposals, policy selections, stage outcomes, judge ballots, and later review decisions
 so corrections cannot retrospectively improve the automatic score. Apply the
 product specification's counts, uncertainty intervals, and venue/template
 breakdowns to these metrics as well as to the end-to-end results.
+
+Local unanimous consensus uses two disjoint panels of at least three models
+each: producers emit runtime IR, evaluators freeze labels. Panels cannot share
+weight revisions or declared model families. Models run sequentially under the
+existing MLX lock. Exact unanimous canonical agreement is required; dissent,
+timeout, invalid schema/evidence, changed model, or missing ballot produces
+`ABSTAINED`, never a negative gold label or accepted claim. Judge prompts are
+separate from compiler and explanation prompts. Semantic IR 1.0.0 is unchanged.
 
 Regression cases include threshold equality boundaries, unit conversion, different
 sources/times/vintages, missing rules, exceptional payouts, inconsistent premises,

@@ -1,0 +1,63 @@
+{
+  "benchmark_hash": "ce86cced39c60e13f01f011045a71ac9bde78ca60f90591c306336faaeeb3a2f",
+  "scored_before_case_review": true,
+  "pipeline_configuration": {
+    "compiler": "test",
+    "model": null,
+    "schema": "1.0.0"
+  },
+  "acceptance_policy": {
+    "version": "test/1",
+    "allowed_scopes": [
+      "OBSERVED_EVENT"
+    ],
+    "allowed_settlement_states": [
+      "CONDITIONAL"
+    ],
+    "require_resolved": true,
+    "normalization": "exact-string-set/1"
+  },
+  "proposals": [
+    {
+      "a": "a",
+      "b": "b",
+      "relation": "IMPLIES",
+      "scope": "OBSERVED_EVENT",
+      "conditions": [],
+      "proof": {
+        "state": "PROVEN_UNDER_PREMISES"
+      },
+      "settlement": {
+        "state": "CONDITIONAL"
+      },
+      "interpretation_assessments": [
+        "SUPPORTED",
+        "SUPPORTED"
+      ]
+    },
+    {
+      "a": "b",
+      "b": "c",
+      "relation": "IMPLIES",
+      "scope": "OBSERVED_EVENT",
+      "conditions": [],
+      "proof": {
+        "state": "PROVEN_UNDER_PREMISES"
+      },
+      "settlement": {
+        "state": "UNKNOWN"
+      },
+      "interpretation_assessments": [
+        "SUPPORTED",
+        "SUPPORTED"
+      ]
+    }
+  ],
+  "stage_outputs": [],
+  "outcomes": [],
+  "complete_zero_error_scans": true,
+  "unanimous_cross_venue_relationship": true,
+  "unanimous_near_match_rejection": true,
+  "zero_accepted_known_false_equivalences": true,
+  "provenance_invalidation": true
+}

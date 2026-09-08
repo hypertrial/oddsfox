@@ -485,3 +485,135 @@ test('research truncated coverage still shows near-matches without empty-state',
   assert.ok(texts.some(text=>text==='NEAR-MATCH / NOT COMPARABLE'));
   assert.ok(!texts.some(text=>text.includes('No eligible shared observation yet')));
 });
+
+test('event details deep-link each contract version into the research workspace', async () => {
+  Object.defineProperty(Element.prototype, 'firstChild', {get(){return this.children[0];},configurable:true});
+  const elements={};
+  const document={hidden:false,getElementById:id=>elements[id]??=new Element('div'),createElement:tag=>new Element(tag)};
+  document.getElementById('filter-qualification').value='qualified';
+  document.getElementById('token').value='fixture-session';
+  const detail={
+    id:'event-1',venue:'kalshi',title:'Example',qualification:'qualified',
+    data:{volume:{amount:'1',basis:'face',window:'lifetime',observed_at:'t',reason:''},active_markets:[],stale_reason:'',combination:null},
+    explanation:null,suggestions:null,assertions:[],
+    contracts:[{id:'contract-abc',logical:'kalshi:x',data:{metadata:{title:'Child'},text_artifacts:{rules:'art'},references:[]}}],
+  };
+  const fetch=async(path)=>({
+    ok:true,
+    json:async()=>path.startsWith('/api/events/')&&!path.includes('?')?detail:
+      path.startsWith('/api/events?')?{total:1,items:[{id:'event-1',venue:'kalshi',title:'Example',category:'X',data:{volume:{amount:'1',basis:'face'},active_markets:[]},analysis_status:'pending'}],next_offset:null}:
+      {counts:[],analysis:[],models:[],lanes:[],categories:[],coverage_notes:[],formal_verification:{groups:0},venues:[]},
+  });
+  vm.runInNewContext(fs.readFileSync('src/oddsfox/static/events.js','utf8'),{document,fetch,URLSearchParams,Intl,setInterval:()=>{},encodeURIComponent});
+  const settle=()=>new Promise(resolve=>setImmediate(resolve));
+  await settle();
+  const understand=walk(elements['event-list']).find(el=>el.textContent==='Understand this event');
+  await understand.listeners.click();
+  await settle();
+  const link=walk(elements['event-detail']).find(el=>el.tag==='a'&&el.textContent==='Open this contract in the review workspace');
+  assert.equal(link.href,'/research?contract=contract-abc');
+});
+
+test('research focuses the requested contract and reports a stale target', async () => {
+  Element.prototype.focus=function(){this.focused=true;};
+  Element.prototype.scrollIntoView=function(){this.scrolled=true;};
+  const report={
+    contracts:[{id:'a',logical:'kalshi:a',data:{platform:'kalshi',metadata:{title:'A',capture_status:'captured'},text_artifacts:{},references:[]}}],
+    interpretations:[],assertions:[],reviews:[],consensus_approvals:[],freshness:[],comparisons:[],near_matches:[],models:[],status:{pending_review:0},
+  };
+  const run=async search=>{
+    const elements={};
+    const document={getElementById:id=>elements[id]??=new Element('div'),createElement:tag=>new Element(tag)};
+    const fetch=async()=>({ok:true,json:async()=>report});
+    vm.runInNewContext(fs.readFileSync('src/oddsfox/static/app.js','utf8'),{document,fetch,location:{search},URLSearchParams,matchMedia:()=>({matches:true})});
+    await new Promise(setImmediate);
+    return elements;
+  };
+  const found=await run('?contract=a');
+  const card=walk(found['contract-list']).find(el=>el.dataset&&el.dataset.contractId==='a');
+  assert.equal(card.id,'contract-a');
+  assert.equal(card.tabIndex,-1);
+  assert.equal(card.focused,true);
+  const missing=await run('?contract=missing');
+  assert.ok(walk(missing.notice).some(el=>String(el.textContent||'').includes('missing or stale')));
+});
+
+test('research deep-link focuses an encoded contract identifier', async () => {
+  Element.prototype.focus=function(){this.focused=true;};
+  Element.prototype.scrollIntoView=function(){this.scrolled=true;};
+  const report={
+    contracts:[{id:'kalshi:a',logical:'kalshi:a',data:{platform:'kalshi',metadata:{title:'A',capture_status:'captured'},text_artifacts:{},references:[]}}],
+    interpretations:[],assertions:[],reviews:[],consensus_approvals:[],freshness:[],comparisons:[],near_matches:[],models:[],status:{pending_review:0},
+  };
+  const elements={};
+  const document={getElementById:id=>elements[id]??=new Element('div'),createElement:tag=>new Element(tag)};
+  const fetch=async()=>({ok:true,json:async()=>report});
+  vm.runInNewContext(fs.readFileSync('src/oddsfox/static/app.js','utf8'),{document,fetch,location:{search:'?contract='+encodeURIComponent('kalshi:a')},URLSearchParams,matchMedia:()=>({matches:true})});
+  await new Promise(setImmediate);
+  const card=walk(elements['contract-list']).find(el=>el.dataset&&el.dataset.contractId==='kalshi:a');
+  assert.equal(card.id,'contract-kalshi:a');
+  assert.equal(card.tabIndex,-1);
+  assert.equal(card.focused,true);
+});
+
+test('consensus status is not REVIEWED and human review remains available', async () => {
+  const report={
+    contracts:[{id:'a',logical:'kalshi:a',data:{platform:'kalshi',metadata:{title:'A'},text_artifacts:{},references:[]}}],
+    interpretations:[{id:'i',data:{ir:{contract_version_id:'a',observation:{source:'Canonical',measurement_method:'instantaneous'}},derivations:{},assessment:'SUPPORTED'}}],
+    assertions:[],
+    reviews:[],
+    consensus_approvals:[{logical:'i',data:{acceptance_basis:'LOCAL_MODEL_CONSENSUS'}}],
+    freshness:[],comparisons:[],near_matches:[],models:[],status:{pending_review:1},
+  };
+  const run=async extra=>{
+    const elements={};
+    const document={getElementById:id=>elements[id]??=new Element('div'),createElement:tag=>new Element(tag)};
+    const fetch=async()=>({ok:true,json:async()=>({...report,...extra})});
+    vm.runInNewContext(fs.readFileSync('src/oddsfox/static/app.js','utf8'),{document,fetch});
+    await new Promise(setImmediate);
+    return walk(elements['contract-list']);
+  };
+  const nodes=await run({});
+  const status=nodes.find(e=>e.textContent==='LOCAL MODEL CONSENSUS');
+  assert.equal(status.className,'badge success');
+  assert.ok(!nodes.some(e=>e.textContent==='REVIEWED'));
+  assert.ok(nodes.some(e=>e.textContent==='Approve interpretation'));
+  assert.ok(nodes.some(e=>e.textContent==='Reject / withdraw approval'));
+  assert.ok(nodes.some(e=>String(e.textContent||'').includes('Acceptance basis: LOCAL MODEL CONSENSUS')));
+  const vetoed=await run({reviews:[{logical:'i',data:{approved:false}}]});
+  assert.ok(vetoed.some(e=>e.textContent==='REJECTED / WITHDRAWN'));
+  assert.ok(!vetoed.some(e=>e.textContent==='LOCAL MODEL CONSENSUS'));
+  assert.ok(!vetoed.some(e=>String(e.textContent||'').includes('LOCAL MODEL CONSENSUS')));
+  assert.ok(!vetoed.some(e=>e.textContent==='REVIEWED'));
+});
+
+test('suggested matches stay UNREVIEWED and never look accepted', async () => {
+  Object.defineProperty(Element.prototype, 'firstChild', {get(){return this.children[0];},configurable:true});
+  const elements={};
+  const document={hidden:false,getElementById:id=>elements[id]??=new Element('div'),createElement:tag=>new Element(tag)};
+  document.getElementById('filter-qualification').value='qualified';
+  const detail={
+    id:'event-1',venue:'kalshi',title:'Example',qualification:'qualified',
+    data:{volume:{amount:'1',basis:'face',window:'lifetime',observed_at:'t',reason:''},active_markets:[],stale_reason:'',combination:null},
+    explanation:null,
+    suggestions:{data:{coverage:'1 candidate',omitted_pending_explanations:[],matches:[{relationship:'possible_match',reason:'similar wording',citations:[]}]}},
+    assertions:[],
+    contracts:[{id:'kalshi:x',logical:'kalshi:x',data:{metadata:{title:'Child'},text_artifacts:{rules:'art'},references:[]}}],
+  };
+  const fetch=async(path)=>({
+    ok:true,
+    json:async()=>path.startsWith('/api/events/')&&!path.includes('?')?detail:
+      path.startsWith('/api/events?')?{total:1,items:[{id:'event-1',venue:'kalshi',title:'Example',category:'X',data:{volume:{amount:'1',basis:'face'},active_markets:[]},analysis_status:'pending'}],next_offset:null}:
+      {counts:[],analysis:[],models:[],lanes:[],categories:[],coverage_notes:[],formal_verification:{groups:0},venues:[]},
+  });
+  vm.runInNewContext(fs.readFileSync('src/oddsfox/static/events.js','utf8'),{document,fetch,URLSearchParams,Intl,setInterval:()=>{},encodeURIComponent});
+  const settle=()=>new Promise(resolve=>setImmediate(resolve));
+  await settle();
+  await walk(elements['event-list']).find(el=>el.textContent==='Understand this event').listeners.click();
+  await settle();
+  const texts=walk(elements['event-detail']).map(e=>e.textContent).filter(Boolean);
+  assert.ok(texts.some(text=>text==='possible_match · UNREVIEWED'));
+  assert.ok(!texts.some(text=>text==='ACCEPTED'||text==='REVIEWED'));
+  const link=walk(elements['event-detail']).find(el=>el.tag==='a'&&el.textContent==='Open this contract in the review workspace');
+  assert.equal(link.href,'/research?contract='+encodeURIComponent('kalshi:x'));
+});

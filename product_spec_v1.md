@@ -21,9 +21,9 @@ contracts. Today, the task requires reading individual resolution rules, checkin
 whether superficially similar contracts actually refer to the same observation,
 and repeating the review when rules change.
 
-OddsFox should reduce that review effort while making consequential differences
-harder to miss. Developers consuming its structured results are a secondary
-audience. The semantic intermediate representation (IR) is a first-class public
+OddsFox should make consequential differences harder to miss and replace
+human-label release gates with named **local model consensus** gates. Developers
+consuming its structured results are a secondary audience. The semantic intermediate representation (IR) is a first-class public
 product artifact: the primary compiler output and stable interface between
 interpretation, reasoning, evaluation, and downstream consumers. Its versioned,
 language-independent canonical JSON contract is owned by the
@@ -34,9 +34,13 @@ language-independent canonical JSON contract is owned by the
 1. Browse automatically discovered qualifying events across Kalshi and Polymarket International; retain manual capture/import for research.
 2. Inspect a local comparison report containing candidate relationships,
    settlement differences, unresolved questions, and source evidence.
-3. Review uncertain interpretations and record corrections or approval.
+3. Optionally review uncertain interpretations, record corrections, or veto
+   model consensus. The normal publication path is unanimous local-model
+   consensus on the supported family, never an automatic approval of
+   explanations or match suggestions.
 4. Export versioned semantic IR and accepted relationships with their explicit
-   assumptions for downstream research, or retrieve them through the local API.
+   assumptions and `acceptance_basis` for downstream research, or retrieve them
+   through the local API.
 5. Refresh the collection and inspect which prior conclusions were withdrawn or
    replaced following source changes.
 
@@ -67,10 +71,13 @@ scalar observation at a specified instant, with an identifiable source, unit,
 comparison operator, and resolution policy. Discover equivalence, implication,
 mutual exclusion, and complement relationships within that family.
 
-Use a curated, independently labeled corpus for formal-verification evaluation across venues. Source availability and actual
-contract rules determine eligibility; do not force contracts into the supported
-family to meet a coverage target. Include near-matches and unsupported contracts
-in evaluation so that abstention and mismatch detection are measured.
+Use a frozen corpus labeled by a disjoint local evaluator panel under a frozen
+unanimous-consensus protocol for formal-verification evaluation across venues.
+Consensus is not independent human review, ground truth, or proven
+natural-language correctness. Source availability and actual contract rules
+determine eligibility; do not force contracts into the supported family to meet
+a coverage target. Include near-matches and unsupported contracts in evaluation so
+that abstention and mismatch detection are measured.
 
 V1 provides a local report, adjudication workflow, structured export, and local
 API. It publishes symbolic probability constraints derived from verified semantics;
@@ -107,14 +114,17 @@ successful data during outages. Never label an incomplete scan as complete.
 
 No model download or cloud inference occurs implicitly. Discovery must work without
 a model; the app explains how to configure one. Local processing is progressive,
-with no promise that all explanations finish within a refresh interval. Human
-review remains required for accepted formal claims.
+with no promise that all explanations finish within a refresh interval. Accepted
+formal claims require current unanimous producer-panel consensus or a current
+human approval, plus existing formal proof. A current human rejection vetoes
+model consensus. Explanations and suggested matches remain unreviewed.
 
 ## Trust promise
 
 OddsFox reports separately:
 
-- How the contract interpretation was established and reviewed.
+- How the contract interpretation was established and on what acceptance basis
+  (`HUMAN_REVIEW` or `LOCAL_MODEL_CONSENSUS`).
 - Whether the formal relationship follows from the encoded premises.
 - Whether settlement rules support the same conclusion, introduce conditions,
   differ materially, or remain unresolved.
@@ -138,22 +148,23 @@ targets as achieved without data.
 
 | Measure | V1 requirement |
 | --- | --- |
-| Relationship precision | Target at least 99% correctness of automatic proposals selected by a frozen acceptance policy, against independent human labels. Score before case-specific approval, rejection, or correction; count erroneous proposals even if review later catches them. Evaluate the complete claim, including scope and conditions. |
-| Coverage and abstention | Report supported contracts / all sampled contracts, completed interpretations / eligible contracts, relationship recall against labeled relationships, and abstention reasons. Publish these alongside precision; abstaining on everything is not success. |
-| Stage-level evaluation | Report field extraction, canonical resolution, settlement interpretation and compatibility classification, relationship precision/recall, automatic acceptance coverage, and abstention using the [metric definitions](tech_spec_v1.md#benchmark-metric-contract). Component metrics supplement the end-to-end gate and identify error sources. |
-| Misleading similarities | Include distinct sources, units, observation times, strict versus inclusive thresholds, and settlement exceptions. No known false equivalence may remain in the release regression suite. |
-| Review effort | Demonstrate lower median time to a correct comparison against manual review on paired tasks, including correction time. Report task count and remaining errors. |
-| Provenance and revisions | Every accepted assertion has complete evidence. All revision fixtures withdraw affected assertions and prevent stale assertions from appearing as current. |
-| Cross-platform value | Demonstrate at least one human-validated relationship automatically derived across venues, plus a correctly explained near-match rejection. If the corpus contains no eligible example, this gate remains unmet. |
+| Selected agreement | Target at least 99% agreement of automatic proposals selected by a frozen acceptance policy with unanimous evaluator-panel labels, with Wilson 95% lower bound at least 0.95. Score before case-specific approval, rejection, or correction; count disagreeing proposals even if later human veto catches them. Evaluate the complete claim, including scope and conditions. Report agreement, never “correctness” or independent human labels. |
+| Coverage and abstention | Complete zero-error scans of both supported venues. Sample at least 100 contracts with both venues represented when inventory permits. Require at least 80% evaluator-label coverage (unanimous labels / sampled contracts). Report pipeline abstention separately from label abstention. Abstaining on everything is not success. Insufficient inventory leaves the gate unmet; do not relax criteria. |
+| Stage-level evaluation | Report field extraction, canonical resolution, settlement interpretation and compatibility classification, relationship agreement/recall against consensus labels, automatic acceptance coverage, and abstention using the [metric definitions](tech_spec_v1.md#benchmark-metric-contract). Component metrics supplement the end-to-end gate and identify error sources. |
+| Misleading similarities | Include distinct sources, units, observation times, strict versus inclusive thresholds, and settlement exceptions. No known false equivalence may remain accepted. Demonstrate at least one unanimous cross-venue relationship and one unanimous near-match rejection. |
+| Automation diagnostics | Report completion coverage, abstention, per-stage latency, total wall time, peak memory, failures/retries, and model-consensus agreement. Optional human review time is a non-release diagnostic, not a release gate. |
+| Provenance and revisions | Every accepted assertion has complete evidence, `acceptance_basis`, panel/protocol identifiers, and ballot dependencies when consensus is the basis. All revision fixtures withdraw affected assertions and prevent stale assertions from appearing as current. |
 
 Syntax validity, semantic interpretation accuracy, processing latency, memory, and
-cost are supporting diagnostics. They do not substitute for claim correctness or
-demonstrated review value. Small samples must not be presented as establishing a
-population-wide error rate.
+cost are supporting diagnostics. They do not substitute for consensus agreement
+or provenance. Small samples must not be presented as establishing a
+population-wide error rate. Unanimous local models do not establish real-world
+semantic truth.
 
 ## Durable value
 
-The accumulated assets are a reviewed contract corpus, reusable interpretations,
-canonical observation definitions, correction data, and versioned evidence.
-Their defensibility depends on demonstrated coverage, precision, and reduced
-review effort; the choice of solver or graph representation alone is not a moat.
+The accumulated assets are a consensus-labeled contract corpus, reusable
+interpretations, canonical observation definitions, optional correction data, and
+versioned evidence. Their defensibility depends on demonstrated coverage, selected
+agreement, and honest provenance; the choice of solver or graph representation
+alone is not a moat.

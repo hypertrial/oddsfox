@@ -30,9 +30,11 @@ boundary/property tests. Pin the resolved tool versions in the lockfile.
 ## Persistence and data processing
 
 Use one local DuckDB database for normalized records, jobs, dependency tracking,
-review decisions, assertions, and current-version pointers. Store exact raw
+review decisions, consensus ballots/approvals, assertions, and current-version pointers. Store exact raw
 payloads and proof artifacts in an immutable, content-addressed directory beside
 the database. Use Parquet for analytical exports and bulk evaluation datasets.
+Disable DuckDB extension autoinstall/autoload. Parquet export uses a narrowly
+scoped write of current accepted assertions.
 
 Stage artifact writes through temporary files and atomically rename them before
 committing database references. An interrupted write may leave an unreferenced
@@ -56,25 +58,33 @@ accepted semantic tables.
 
 ## Local model inference
 
-Use MLX-LM as the initial runtime candidate. Evaluate one quantized model first;
-do not require a small/large model cascade, embeddings, or a reranker for V1.
-Exact matching and reviewed aliases cover the initial canonical registry.
+Use MLX-LM as the initial runtime candidate. V1 local inference is serialized
+through one MLX lock: an optional explanation model, a producer panel of at
+least three distinct model families for runtime IR, and a disjoint evaluator
+panel of at least three models for frozen labels. Do not treat a multi-model
+panel as a compiler cascade, embeddings, or a reranker. Exact matching and
+reviewed aliases cover the initial canonical registry.
 
 Evaluate Outlines with the selected MLX-LM/model combination for constrained
 structured generation. Treat working schema support as a smoke-test requirement,
 not an assumed guarantee for every schema or backend version. Pydantic validation
 remains mandatory regardless of generation constraints.
 
-Pin model identity, weight revision/hash, quantization, runtime, prompt, decoding
-settings, and schema per evaluation run. Select the model using measured semantic
-quality, peak memory, and latency on the target machine. Do not change models
-silently according to free memory: a different model is a versioned configuration
-change requiring evaluation and dependent recomputation.
+Pin model identity, family, weight revision/hash, quantization, chat-template
+text hash, runtime, prompt, decoding settings, and schema per evaluation run.
+Verify the loaded tokenizer chat template against the manifest before inference.
+Select models using measured semantic quality, peak memory, and latency on the
+target machine. Do not change models silently according to free memory: a
+different model is a versioned configuration change requiring evaluation and
+dependent recomputation. Keep local filesystem paths only; no automatic
+downloads or network providers. Unload each model before loading the next.
 
 Set resource limits from measured workloads, and serialize inference initially.
-If no local model meets the product gates, report that limitation; do not relax
+If no local model panel meets the product gates, report that limitation; do not relax
 the meaning of accepted results. Alternate runtimes or external inference require
-a documented deployment decision, not an automatic fallback.
+a documented deployment decision, not an automatic fallback. Consensus publication
+is off by default until a complete metrics-v4 local evidence bundle meets every
+frozen machine gate.
 
 ## Formal reasoning
 
@@ -100,8 +110,8 @@ Worker-level failures expose diagnostics and backoff without stopping other lane
 running. Do not launch independent writable workers or multiple server processes.
 
 Use FastAPI and Pydantic for a loopback-only API. Provide a simple local HTML
-comparison report and explicit review actions through the same application; no
-frontend framework is required. Bind to `127.0.0.1`, reject untrusted host/origin
+comparison report, optional review actions, and consensus-basis display through
+the same application; no frontend framework is required. Bind to `127.0.0.1`, reject untrusted host/origin
 requests, and require an application-issued session token for review writes so
 unrelated web pages cannot silently approve interpretations.
 
@@ -126,7 +136,8 @@ operating system, chosen Python version, lockfile, and results for:
 5. Interrupted-run recovery, consistent reads during processing, and restoration
    of the database with its artifacts.
 6. The product benchmark and technical-spec stage metrics, including the frozen
-   acceptance-policy version/configuration, memory, latency, and review effort.
+   acceptance-policy version/configuration, consensus panel/protocol identifiers,
+   memory, latency, and automation diagnostics.
 
 These are implementation gates, not checks already performed by this document.
 
@@ -143,9 +154,12 @@ and model inference serialized through the existing MLX lock.
 
 Use `pypdf` for official PDF text extraction and the standard-library HTML parser
 for HTML. Run extraction in a disposable subprocess: 8 MiB input, 200 PDF pages,
-2 MiB extracted text, CPU/time limits and Linux address-space limits. Preserve
+2 MiB extracted text, CPU/time limits, Linux address-space limits, and on macOS
+a polled RSS budget of 1 GiB. Preserve
 unreadable material as an explicit gap. There is no OCR fallback or arbitrary-site
-crawler. Keep the host allowlist in the document boundary module.
+crawler. Keep the host allowlist in the document boundary module. Local loopback
+catalog GET remains unauthenticated by design; treat that as an intentional
+single-user contract, not cosmetic hardening.
 
 Use the existing plain HTML/CSS/JavaScript frontend for the event browser, with
 server-side pagination and cached comparison reads. Node's built-in test runner

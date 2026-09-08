@@ -11,9 +11,10 @@ canonical JSON; see the [IR contract](tech_spec_v1.md#public-v1-semantic-ir).
 Symbolic probability constraints are derived outputs of verified semantics.
 Global probability coherence and larger constraint graphs are downstream extensions.
 The repository now includes a runnable local implementation. Release readiness
-still depends on the independent human benchmark, real cross-venue validation,
-and measured review-effort gates in the product specification. Synthetic examples
-and passing software tests do not establish those results.
+still depends on the local unanimous-consensus gates in the product specification.
+Synthetic examples and passing software tests do not establish those results.
+Unanimous local models are not independent human review and do not establish
+natural-language truth.
 
 ## Run locally
 
@@ -64,8 +65,10 @@ uv run oddsfox --data .oddsfox/demo serve --no-sync
 
 Open `http://127.0.0.1:8777/research` for the synthetic contract/review demonstration.
 Use an empty directory for a new demo. `demo --approve-synthetic` is available for
-automated checks; synthetic approvals are never independent human benchmark evidence.
-The review workspace also remains available from the event browser.
+automated checks; synthetic approvals are never consensus or independent-human
+benchmark evidence.
+The review workspace also remains available from the event browser. Event details
+link each captured contract version to `/research?contract=<contract-version-id>`.
 
 ## Research workflow
 
@@ -95,9 +98,14 @@ The review workspace also remains available from the event browser.
    a rule makes its dependent interpretations and accepted claims stale.
 4. Review through the report or `oddsfox review <interpretation-id> --approve
    --governing-material-complete --reviewer <name> --rationale <reason>`.
-   Omitting `--approve` rejects or withdraws an interpretation. `oddsfox compare`
-   produces provisional proposals; `oddsfox publish` checks current reviews and
-   dependencies before accepting them.
+   Omitting `--approve` rejects or withdraws an interpretation and vetoes model
+   consensus. `oddsfox compare` produces provisional proposals; `oddsfox publish`
+   checks current human reviews or, when `--allow-consensus` is set, current
+   unanimous producer-panel approvals, plus dependencies, before accepting them.
+   Consensus publication is off by default. Record a producer-panel approval with
+   `oddsfox consensus-approve <interpretation-id> --producer-model ...` (at least
+   three disjoint local models). That command never writes a human `review`
+   record. Enable server-side publication with `--enable-consensus-publication`.
 5. Export with `oddsfox export --output research.json`, or
    `oddsfox export --format parquet --output accepted.parquet` for current accepted
    assertions. `--history` explicitly includes obsolete JSON records. Refresh a
@@ -138,12 +146,23 @@ The legacy bounded candidate helper retains its limits for evaluation callers.
 ```sh
 uv sync --locked --extra model
 uv run oddsfox compile <contract-version-id> /path/to/quantized-mlx-model
-# Or expose that already-downloaded model in the report:
-uv run oddsfox serve --model /path/to/quantized-mlx-model
+# One explanation model; panels are separate flags:
+uv run oddsfox serve --model /path/to/quantized-mlx-model \
+  --producer-model /path/to/producer-a --producer-model /path/to/producer-b --producer-model /path/to/producer-c \
+  --evaluator-model /path/to/evaluator-a --evaluator-model /path/to/evaluator-b --evaluator-model /path/to/evaluator-c
+uv run oddsfox validate --output /path/to/new-bundle \
+  --producer-model /path/to/producer-a --producer-model /path/to/producer-b --producer-model /path/to/producer-c \
+  --evaluator-model /path/to/evaluator-a --evaluator-model /path/to/evaluator-b --evaluator-model /path/to/evaluator-c
 ```
 
+Pass a single `--model` for explanations. Producer and evaluator panels must each
+contain at least three distinct families with no overlap. `validate` writes a
+create-only hashed evidence bundle. Consensus publication stays off until
+`oddsfox publish --allow-consensus`.
+
 Model weights are separate downloads. OddsFox hashes their files and records
-quantization, runtime, prompt, schema and decoding settings for each job. Initial
+quantization, family, chat-template hash, runtime, prompt, schema and decoding
+settings for each job. Initial
 generation is serialized, with an 8 GiB MLX allocation limit and at most 8,192
 generated tokens. A 300-second budget is checked between prefill/decode steps;
 it is not a hard deadline for model loading or a stalled native backend.
@@ -156,7 +175,7 @@ outputs remain failed attempts with raw evidence. There is no external inference
 fallback or automatic approval. `replay` revalidates a stored response without
 running inference. Inspect `status` for failures, pending work and measurements.
 The selected local model passed a synthetic compilation smoke with 26 evidence
-fields. Real-contract accuracy and the independent human release gates remain
+fields. Real-contract accuracy and the local unanimous-consensus release gates remain
 unevaluated; see the [validation record](docs/validation.md).
 
 ## Evidence, evaluation and recovery
@@ -164,7 +183,8 @@ unevaluated; see the [validation record](docs/validation.md).
 - [Public JSON Schema](schemas/semantic-ir-1.0.0.schema.json) and
   [consumer conformance notes](schemas/README.md).
 - [Benchmark format and release procedure](docs/benchmark.md), with explicitly
-  synthetic [benchmark](examples/benchmark.json) and [run](examples/run.json) inputs.
+  synthetic [v3](examples/benchmark.json) and [v4](examples/benchmark-v4.json)
+  fixtures. v3 remains compatibility-only; v4 is the consensus schema.
 - Stop the server, then `oddsfox backup /path/to/new-backup`. Restore into a new
   dataset with `oddsfox --data /path/to/new-dataset restore /path/to/backup`.
   Backups verify all database-referenced artifacts and hashes before publication.

@@ -97,15 +97,18 @@ technical path, not real-contract accuracy or independent human precision.
 
 ## Release evidence still required
 
-- Frozen real corpus with independent human labels, held-out templates and a
-  measured acceptance policy meeting the documented relationship target.
-- Human validation of an automatically derived eligible cross-venue relationship
-  and an explained near-match rejection.
-- Paired manual/assisted review-time measurements including corrections.
-- Local model semantic quality and resource results on that representative corpus.
+- Frozen real corpus with local unanimous evaluator-panel labels, held-out
+  templates and a measured acceptance policy meeting the documented agreement
+  target, Wilson bound, coverage, and provenance gates.
+- Unanimous cross-venue relationship and unanimous near-match rejection in that
+  frozen corpus.
+- Complete zero-error two-venue scans before freeze; insufficient inventory leaves
+  the gate unmet.
+- Local six-model panel resource results on that representative corpus.
 
 Synthetic demo approvals are explicitly labeled as such. Neither the demo nor
-the scorer manufactures independent human evidence. CI configuration is included;
+the scorer manufactures independent human evidence or consensus evidence. CI
+configuration is included;
 the first pushed implementation run passed its 90 tests but failed type checking
 because optional MLX/Outlines imports were unresolved in the core-only environment.
 Optional backends now load through the standard-library module loader only when
@@ -260,3 +263,21 @@ event cards were not present in that demo (discovery empty); Understand/Close
 behavior is covered by the Node frontend tests. Skip-to-content targets
 `main#main-content` with `tabindex="-1"`. A leftover demo process may still be
 bound to port 8778 if it was not stopped locally.
+
+## Local unanimous consensus software (2026-09-08)
+
+The local unanimous-consensus path is implemented as software: pinned model
+manifests (including chat-template hash, `model_file`/Python/symlink rejection
+before load), disjoint producer/evaluator panels, immutable ballots, write-once
+frozen labels, metrics v4 (`oddsfox-metrics/4`, `label_source:
+local_unanimous_consensus`), `LOCAL_MODEL_CONSENSUS` publication off by default,
+and human-rejection veto. Event details deep-link to
+`/research?contract=<contract-version-id>`. Consensus is not described as ground
+truth, independent human review, or proven natural-language correctness.
+
+Executed verification: `scripts/verify-fast` and `scripts/verify` passed with
+231 tests, Ruff, ty, public schema drift, and the package build. CI remains
+weight-free. **Local six-model panel evaluation and complete two-venue scans were
+not run in this session**; those remain unmet product gates, not a CI substitute.
+Do not enable `--enable-consensus-publication` until a complete v4 local evidence
+bundle satisfies every frozen machine gate.

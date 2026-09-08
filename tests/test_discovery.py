@@ -912,7 +912,7 @@ def test_rate_limit_honors_bounded_retry_after(monkeypatch):
         )
 
     with httpx.Client(transport=httpx.MockTransport(response)) as client:
-        assert request_json(client, "https://example.org")[0] == {}
+        assert request_json(client, "https://gamma-api.polymarket.com/markets")[0] == {}
     assert delays == [10] and attempts == 2
 
 

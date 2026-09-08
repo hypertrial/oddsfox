@@ -454,7 +454,7 @@ def test_unavailable_optional_backend_retains_failed_attempt(store, tmp_path, mo
     def unavailable(name):
         raise ModuleNotFoundError(f"No module named {name}")
 
-    monkeypatch.setattr(compiler, "import_module", unavailable)
+    monkeypatch.setattr("oddsfox.models.import_module", unavailable)
     with pytest.raises(ModuleNotFoundError, match="mlx.core"):
         compiler.run_compile_job(store, job, tmp_path)
     assert store.status()["attempts"][0]["state"] == "failed"

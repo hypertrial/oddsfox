@@ -28,7 +28,14 @@ def parser() -> argparse.ArgumentParser:
         type=Path,
         action="append",
         default=[],
-        help="explicit local quantized model directory",
+        help="one local quantized explanation model directory",
+    )
+    serve.add_argument("--producer-model", type=Path, action="append", default=[])
+    serve.add_argument("--evaluator-model", type=Path, action="append", default=[])
+    serve.add_argument(
+        "--enable-consensus-publication",
+        action="store_true",
+        help="allow LOCAL_MODEL_CONSENSUS publication from the running server",
     )
     serve.add_argument(
         "--no-sync",
@@ -74,7 +81,14 @@ def parser() -> argparse.ArgumentParser:
     rep.add_argument("response_artifact")
     rep.add_argument("config_id")
     sub.add_parser("compare", help="derive provisional comparisons")
-    sub.add_parser("publish", help="publish only current reviewed and proven claims")
+    publish = sub.add_parser(
+        "publish", help="publish current proven claims with human review or consensus"
+    )
+    publish.add_argument(
+        "--allow-consensus",
+        action="store_true",
+        help="accept current unanimous producer-panel approvals; human rejection still vetoes",
+    )
     sub.add_parser("status", help="show attempts, freshness, failures and reviews")
     export = sub.add_parser("export")
     export.add_argument("--output", type=Path)
@@ -86,6 +100,21 @@ def parser() -> argparse.ArgumentParser:
     bench.add_argument("benchmark", type=Path)
     bench.add_argument("run", type=Path)
     bench.add_argument("--output", type=Path, required=True)
+    validate = sub.add_parser(
+        "validate", help="complete two-venue scans, freeze consensus labels, and score producers"
+    )
+    validate.add_argument("--output", type=Path, required=True)
+    validate.add_argument("--producer-model", type=Path, action="append", default=[], required=True)
+    validate.add_argument(
+        "--evaluator-model", type=Path, action="append", default=[], required=True
+    )
+    validate.add_argument("--skip-sync", action="store_true")
+    approve = sub.add_parser(
+        "consensus-approve",
+        help="record a unanimous producer-panel approval; never writes a human review",
+    )
+    approve.add_argument("interpretation_id")
+    approve.add_argument("--producer-model", type=Path, action="append", required=True)
     backup = sub.add_parser("backup", help="checkpoint and copy the stopped application's dataset")
     backup.add_argument("destination", type=Path)
     restore = sub.add_parser("restore", help="verify and restore a backup into a new dataset")
@@ -128,16 +157,28 @@ def main(argv: list[str] | None = None) -> int:
             write_json(Store.migrate(args.data, args.backup))
             return 0
         store = Store(args.data)
-        pipeline = Pipeline(store)
+        pipeline = Pipeline(store, allow_consensus=getattr(args, "allow_consensus", False))
         try:
             match args.command:
                 case "serve":
                     import uvicorn
 
                     from oddsfox.app import create_app
+                    from oddsfox.judge import disjoint_panels
+                    from oddsfox.models import model_manifest
 
                     if not 1024 <= args.port <= 65535:
                         raise ValueError("port must be 1024..65535")
+                    if len(args.model) > 1:
+                        raise ValueError(
+                            "pass one --model for explanations; use --producer-model and --evaluator-model for panels"
+                        )
+                    models = {p.name: p.resolve() for p in args.model}
+                    if args.producer_model or args.evaluator_model:
+                        disjoint_panels(
+                            [model_manifest(p) for p in args.producer_model],
+                            [model_manifest(p) for p in args.evaluator_model],
+                        )
                     token = secrets.token_urlsafe(32)
                     print(
                         f"OddsFox: http://127.0.0.1:{args.port}\nSession token (paste into local report): {token}",
@@ -148,8 +189,9 @@ def main(argv: list[str] | None = None) -> int:
                             store,
                             token=token,
                             port=args.port,
-                            models={p.name: p.resolve() for p in args.model},
+                            models=models,
                             auto_sync=not args.no_sync,
+                            allow_consensus=args.enable_consensus_publication,
                         ),
                         host="127.0.0.1",
                         port=args.port,
@@ -246,6 +288,28 @@ def main(argv: list[str] | None = None) -> int:
                     write_json(pipeline.compare())
                 case "publish":
                     write_json({"assertions": pipeline.publish()})
+                case "validate":
+                    from oddsfox.validation import validate_dataset
+
+                    write_json(
+                        validate_dataset(
+                            store,
+                            args.output,
+                            args.producer_model,
+                            args.evaluator_model,
+                            skip_sync=args.skip_sync,
+                        )
+                    )
+                case "consensus-approve":
+                    from oddsfox.consensus import approve_interpretation
+
+                    write_json(
+                        {
+                            "id": approve_interpretation(
+                                store, args.interpretation_id, args.producer_model
+                            )
+                        }
+                    )
                 case "status":
                     write_json(store.status())
                 case "export":

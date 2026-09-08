@@ -6,6 +6,7 @@ from urllib.parse import quote
 
 import httpx
 
+from oddsfox.http import VENUE_HOSTS, stream_get
 from oddsfox.ir import strict_json
 from oddsfox.store import Store
 
@@ -196,18 +197,13 @@ def fetch(
             url = ENDPOINTS[platform] + quote(native_id, safe="")
             for attempt in range(3):
                 try:
-                    with client.stream("GET", url, timeout=20) as response:
-                        response.raise_for_status()
-                        chunks, size = [], 0
-                        started = time.monotonic()
-                        for chunk in response.iter_bytes():
-                            if time.monotonic() - started > 45:
-                                raise ValueError("response exceeded 45-second capture budget")
-                            size += len(chunk)
-                            if size > MAX_BYTES:
-                                raise ValueError("response exceeds 4 MiB")
-                            chunks.append(chunk)
-                        raw = b"".join(chunks)
+                    raw = stream_get(
+                        client,
+                        url,
+                        allowed_hosts=VENUE_HOSTS,
+                        follow_redirects=False,
+                        max_bytes=MAX_BYTES,
+                    )
                     actual, _, _, _ = normalize(platform, raw)
                     if actual != native_id:
                         raise ValueError("response identity differs from requested market")

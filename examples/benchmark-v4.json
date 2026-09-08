@@ -1,0 +1,98 @@
+{
+  "benchmark_id": "synthetic-test",
+  "revision": "1",
+  "label_version": "1",
+  "labeling_guide": "exact-string-set/1",
+  "split": "development",
+  "independent_human_labels": false,
+  "contracts": [
+    {
+      "id": "a",
+      "venue": "polymarket",
+      "template": "test",
+      "eligible": true
+    },
+    {
+      "id": "b",
+      "venue": "kalshi",
+      "template": "test",
+      "eligible": true
+    },
+    {
+      "id": "c",
+      "venue": "kalshi",
+      "template": "test",
+      "eligible": true
+    }
+  ],
+  "comparisons": [
+    {
+      "a": "a",
+      "b": "b",
+      "scope": "OBSERVED_EVENT",
+      "conditions": []
+    },
+    {
+      "a": "b",
+      "b": "c",
+      "scope": "OBSERVED_EVENT",
+      "conditions": []
+    },
+    {
+      "a": "a",
+      "b": "c",
+      "scope": "OBSERVED_EVENT",
+      "conditions": []
+    }
+  ],
+  "gold_claims": [
+    {
+      "a": "a",
+      "b": "b",
+      "relation": "IMPLIES",
+      "scope": "OBSERVED_EVENT",
+      "conditions": [],
+      "proof": {
+        "state": "PROVEN_UNDER_PREMISES"
+      },
+      "settlement": {
+        "state": "CONDITIONAL"
+      },
+      "interpretation_assessments": [
+        "SUPPORTED",
+        "SUPPORTED"
+      ]
+    },
+    {
+      "a": "b",
+      "b": "c",
+      "relation": "IMPLIES",
+      "scope": "OBSERVED_EVENT",
+      "conditions": [],
+      "proof": {
+        "state": "PROVEN_UNDER_PREMISES"
+      },
+      "settlement": {
+        "state": "CONDITIONAL"
+      },
+      "interpretation_assessments": [
+        "SUPPORTED",
+        "SUPPORTED"
+      ]
+    }
+  ],
+  "stage_labels": [
+    {
+      "id": "a",
+      "stage": "ir_fields",
+      "mode": "pipeline",
+      "expected": {
+        "source": null,
+        "threshold": "1"
+      }
+    }
+  ],
+  "label_source": "local_unanimous_consensus",
+  "metric_definition_version": "oddsfox-metrics/4",
+  "label_abstentions": []
+}

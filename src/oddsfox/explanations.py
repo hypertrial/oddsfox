@@ -2,17 +2,15 @@
 
 import json
 import re
-import time
-from importlib import import_module
 from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
 
 from oddsfox.catalog import candidates_for
-from oddsfox.compiler import MODEL_LOCK, model_manifest
 from oddsfox.discovery import terms
 from oddsfox.ir import StrictModel, fingerprint, strict_json
+from oddsfox.models import MODEL_LOCK, generate_constrained, model_manifest
 from oddsfox.store import StaleInput
 
 VERSION = "oddsfox-explanations/1"
@@ -152,11 +150,6 @@ class AnalysisEngine:
 
     def generate(self, prompt, schema):
         with MODEL_LOCK:
-            mx = import_module("mlx.core")
-            mlx_lm = import_module("mlx_lm")
-            outlines = import_module("outlines")
-            sampler = import_module("mlx_lm.sample_utils").make_sampler(temp=0)
-            # Recheck file metadata before each invocation; a model is not silently swapped.
             current_files = {
                 str(p.relative_to(self.model_path)): (p.stat().st_size, p.stat().st_mtime_ns)
                 for p in self.model_path.rglob("*")
@@ -166,37 +159,18 @@ class AnalysisEngine:
             if previous_files is not None and current_files != previous_files:
                 raise ValueError("local model files changed; restart to version the configuration")
             self._model_files = current_files
-            previous_limit = mx.set_memory_limit(self.config["memory_limit_bytes"])
-            started = time.monotonic()
-
-            def budget(*args):
-                if time.monotonic() - started > self.config["timeout_seconds"]:
-                    raise TimeoutError("local explanation exceeded 180 seconds")
-
-            def bounded_sampler(logits):
-                budget()
-                return sampler(logits)
-
-            try:
-                model, tokenizer = mlx_lm.load(str(self.model_path))[:2]
-                prepared = tokenizer.apply_chat_template(
-                    [{"role": "user", "content": prompt}],
-                    tokenize=False,
-                    add_generation_prompt=True,
-                )
-                result = outlines.from_mlxlm(model, tokenizer)(
-                    prepared,
-                    outlines.types.json_schema(compact_schema(schema)),
-                    max_tokens=self.config["max_tokens"],
-                    sampler=bounded_sampler,
-                    prompt_progress_callback=budget,
-                    verbose=False,
-                )
-                if len(result.encode()) > 128000:
-                    raise ValueError("model output too large")
-                return result
-            finally:
-                mx.set_memory_limit(previous_limit)
+            if model_manifest(self.model_path) != self.manifest:
+                raise ValueError("local model files changed; restart to version the configuration")
+            raw, _peak = generate_constrained(
+                self.model_path,
+                prompt,
+                compact_schema(schema),
+                max_tokens=self.config["max_tokens"],
+                timeout_seconds=self.config["timeout_seconds"],
+                memory_limit_bytes=self.config["memory_limit_bytes"],
+                constrained=True,
+            )
+            return raw
 
     def step(self):
         # One unit at a time: the durable job table is the queue, not executor futures.

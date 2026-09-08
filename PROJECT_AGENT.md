@@ -4,7 +4,7 @@
 
 OddsFox is MIT-licensed FOSS: a local compiler and verifier for prediction-market
 contracts. The repository includes a Python local application and V1 specifications.
-The independent human product gates remain separate from software completion.
+The local unanimous-consensus product gates remain separate from software completion.
 
 - `product_spec_v1.md` owns user needs, scope, and acceptance criteria.
 - `tech_spec_v1.md` owns the public semantic IR, correctness, and system behavior.
@@ -21,9 +21,10 @@ the local `pad-engineering` skill for the shared workflow. Keep ticket bodies,
 exports, credentials, and local Pad state out of this public repository.
 
 Keep V1 limited to the documented local compiler/verifier. Preserve provenance,
-explicit unknowns, versioned semantics, review gates, and revision invalidation.
+explicit unknowns, versioned semantics, consensus or human acceptance, and revision invalidation.
 Solver results establish encoded relationships; they do not establish the
-accuracy of natural-language interpretation.
+accuracy of natural-language interpretation. Unanimous local models do not
+establish real-world semantic truth.
 
 ## Implementation and verification
 
@@ -38,8 +39,8 @@ the repository. There is one writer per dataset; server users use its API.
   JSON Schema drift check and a package build.
 
 Wrappers work from any directory. CI runs the lightweight completion gate. Model
-smokes and independent human release benchmarks run locally; record their actual
-outcomes in Pad and never substitute synthetic fixtures for human evidence.
+smokes and local six-model panel evaluation run locally; record their actual
+outcomes in Pad and never substitute synthetic fixtures for consensus evidence.
 Update wrappers, these notes and canonical Universal Pad configuration together
 when changing required verification. See `docs/validation.md` for executed checks
 and `docs/benchmark.md` for the frozen evaluation interface.
@@ -49,3 +50,6 @@ revisions are separate from volatile snapshots; preserve this boundary. Event an
 explanation interfaces have their own versions; Semantic IR remains 1.0.0. Do not
 use model family labels as proof of eligibility or automatically approve suggestions.
 Use `serve --no-sync` for deterministic offline/synthetic demonstrations.
+Consensus publication remains off unless an operator records producer-panel
+approvals (`oddsfox consensus-approve`) and then publishes with `--allow-consensus`
+or serves with `--enable-consensus-publication`.

@@ -1,20 +1,15 @@
 """Serialized local candidate generation and exact response replay."""
 
-import importlib.metadata
 import json
-import platform
-import resource
-import threading
 import time
-from importlib import import_module
 from pathlib import Path
 
 from oddsfox import __version__
-from oddsfox.ir import SemanticIR, fingerprint, strict_json
+from oddsfox.ir import SemanticIR, strict_json
+from oddsfox.models import MODEL_LOCK, generate_constrained, model_manifest, peak_rss
 from oddsfox.pipeline import Pipeline
 from oddsfox.store import Store
 
-MODEL_LOCK = threading.Lock()
 PROMPT_VERSION = "evidence-json/3"
 GRAMMAR_VERSION = "ir-fields-captured-line-spans/4"
 PAYOUT_EVIDENCE_POINTERS = (
@@ -188,36 +183,6 @@ def source_lines(texts: dict[str, str]) -> dict:
     return result
 
 
-def model_manifest(path: Path) -> dict:
-    if not path.is_dir():
-        raise ValueError("model must be an explicitly downloaded local directory")
-    files = sorted(p for p in path.rglob("*") if p.is_file())
-    relevant = [
-        p for p in files if p.suffix in {".safetensors", ".json", ".model", ".txt", ".jinja"}
-    ]
-    if not any(p.suffix == ".safetensors" for p in relevant):
-        raise ValueError("model directory has no safetensors weights")
-    import hashlib
-
-    hashes = {}
-    for file in relevant:
-        with file.open("rb") as handle:
-            hashes[str(file.relative_to(path))] = hashlib.file_digest(handle, "sha256").hexdigest()
-    config = json.loads((path / "config.json").read_text())
-    quantization = config.get("quantization", config.get("quantization_config"))
-    if not quantization:
-        raise ValueError("V1 model evaluation requires explicitly quantized weights")
-    return {
-        "identity": path.name,
-        "weight_revision": fingerprint(hashes),
-        "files": hashes,
-        "quantization": quantization,
-        "runtime": importlib.metadata.version("mlx-lm"),
-        "outlines": importlib.metadata.version("outlines"),
-        "platform": platform.platform(),
-    }
-
-
 def prepare_compile(
     store: Store,
     contract_id: str,
@@ -275,78 +240,44 @@ def run_compile_job(store: Store, job_id: str, model_path: Path) -> str | None:
             store.require_current(job["inputs"])
             contract_id = next(i for i in job["inputs"] if store.get(i)["kind"] == "contract")
             config_id = next(i for i in job["inputs"] if store.get(i)["kind"] == "configuration")
-            # Resolve optional backends only when this configured job executes.
-            mx = import_module("mlx.core")
-            mlx_lm = import_module("mlx_lm")
-            make_sampler = import_module("mlx_lm.sample_utils").make_sampler
-
-            previous_limit = mx.set_memory_limit(settings["memory_limit_bytes"])
-            try:
-                mx.reset_peak_memory()
-                loaded = mlx_lm.load(str(model_path))
-                model, tokenizer = loaded[0], loaded[1]
-                prompt = tokenizer.apply_chat_template(
-                    [{"role": "user", "content": prompt_for(store, contract_id)}],
-                    tokenize=False,
-                    add_generation_prompt=True,
+            schema = (
+                generation_schema(contract_id, store.source_texts(contract_id))
+                if settings["constrained"]
+                else {}
+            )
+            raw, peak_memory = generate_constrained(
+                model_path,
+                prompt_for(store, contract_id),
+                schema,
+                max_tokens=settings.get("max_tokens", 8192),
+                timeout_seconds=settings.get("timeout_seconds", 300),
+                memory_limit_bytes=settings.get("memory_limit_bytes", 8 * 1024**3),
+                constrained=settings["constrained"],
+            )
+            raw_artifact = store.put_artifact(raw.encode())
+            measurement = {
+                "elapsed_seconds": time.monotonic() - start,
+                "peak_memory_bytes": peak_memory,
+                "process_max_rss": peak_rss(),
+                "configuration": config,
+                "raw_response_artifact": raw_artifact,
+            }
+            with store.transaction():
+                store.insert(
+                    "measurement",
+                    f"{job_id}:{job['attempts'] + 1}",
+                    measurement,
+                    [],
+                    "RECORDED",
+                    make_current=False,
                 )
-                greedy = make_sampler(temp=0)
-
-                def check_budget(*unused):
-                    if time.monotonic() - start > settings["timeout_seconds"]:
-                        raise TimeoutError("local generation exceeded its recorded time budget")
-
-                def sampler(logits):
-                    check_budget()
-                    return greedy(logits)
-
-                kwargs = {
-                    "max_tokens": settings["max_tokens"],
-                    "sampler": sampler,
-                    "prompt_progress_callback": check_budget,
-                    "verbose": False,
-                }
-                if settings["constrained"]:
-                    outlines = import_module("outlines")
-
-                    raw = outlines.from_mlxlm(model, tokenizer)(
-                        prompt,
-                        outlines.types.json_schema(
-                            generation_schema(contract_id, store.source_texts(contract_id))
-                        ),
-                        max_tokens=settings["max_tokens"],
-                        sampler=sampler,
-                        prompt_progress_callback=check_budget,
-                        verbose=False,
-                    )
-                else:
-                    raw = mlx_lm.generate(model, tokenizer, prompt, **kwargs)
-                raw_artifact = store.put_artifact(raw.encode())
-                measurement = {
-                    "elapsed_seconds": time.monotonic() - start,
-                    "peak_memory_bytes": mx.get_peak_memory(),
-                    "process_max_rss": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
-                    "configuration": config,
-                    "raw_response_artifact": raw_artifact,
-                }
-                with store.transaction():
-                    store.insert(
-                        "measurement",
-                        f"{job_id}:{job['attempts'] + 1}",
-                        measurement,
-                        [],
-                        "RECORDED",
-                        make_current=False,
-                    )
-                return Pipeline(store).interpret(
-                    public_model_response(raw),
-                    config_id,
-                    job_id,
-                    mode="new-local-inference",
-                    original_response_artifact=raw_artifact,
-                )
-            finally:
-                mx.set_memory_limit(previous_limit)
+            return Pipeline(store).interpret(
+                public_model_response(raw),
+                config_id,
+                job_id,
+                mode="new-local-inference",
+                original_response_artifact=raw_artifact,
+            )
         except Exception as exc:
             store.fail_job(job_id, f"{type(exc).__name__}: {str(exc)[:1500]}", raw_artifact)
             raise
