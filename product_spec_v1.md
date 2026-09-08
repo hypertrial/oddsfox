@@ -1,0 +1,124 @@
+# OddsFox — Product Specification V1
+
+OddsFox is free and open-source software (FOSS) under the [MIT License](LICENSE).
+Repository-wide licensing scope is documented in the [README](README.md#license).
+
+## Purpose and document ownership
+
+OddsFox helps prediction-market researchers determine which contracts describe
+the same outcome, which logically constrain one another, and which differ in
+settlement rules, with inspectable evidence for every conclusion.
+
+This document owns the user, workflow, scope, and acceptance criteria.
+[Technical specification](tech_spec_v1.md) owns semantics and system behavior.
+[Technology stack](tech_stack_v1.md) owns implementation and deployment choices.
+These documents describe the same V1; none describes a separate hosted edition.
+
+## First user and recurring task
+
+The first user is a researcher maintaining a comparable set of prediction-market
+contracts. Today, the task requires reading individual resolution rules, checking
+whether superficially similar contracts actually refer to the same observation,
+and repeating the review when rules change.
+
+OddsFox should reduce that review effort while making consequential differences
+harder to miss. Developers consuming its structured results are a secondary
+audience. A semantic intermediate representation (IR) is the reusable internal
+asset that supports this workflow.
+
+## User workflow and deliverable
+
+1. Import a bounded collection of Polymarket and Kalshi contracts.
+2. Inspect a local comparison report containing candidate relationships,
+   settlement differences, unresolved questions, and source evidence.
+3. Review uncertain interpretations and record corrections or approval.
+4. Export accepted relationships and their explicit assumptions for downstream
+   research, or retrieve them through the local API.
+5. Refresh the collection and inspect which prior conclusions were withdrawn or
+   replaced following source changes.
+
+Every comparison explains what is related, why, which contract versions it uses,
+which assumptions apply, and what remains uncertain. Declining to establish a
+relationship is a useful result, not a processing failure to hide.
+
+## Worked example
+
+Consider two hypothetical contracts using the same named BTC/USD reference value
+at the same instant:
+
+- A: the value is at least USD 150,000.
+- B: the value is at least USD 100,000.
+
+OddsFox can establish that A's observation predicate implies B's. The report must
+also assess whether their settlement rules preserve that relationship.
+
+A third contract using a different reference source, or the day's maximum instead
+of the single observation, must not inherit the relationship merely because its
+title looks similar. The report should explain the mismatch or request review.
+All examples here are illustrative, not claims about listed markets.
+
+## V1 scope
+
+Support one contract family: binary numeric threshold questions about a single
+scalar observation at a specified instant, with an identifiable source, unit,
+comparison operator, and resolution policy. Discover equivalence, implication,
+mutual exclusion, and complement relationships within that family.
+
+Start with a curated corpus from both venues. Source availability and actual
+contract rules determine eligibility; do not force contracts into the supported
+family to meet a coverage target. Include near-matches and unsupported contracts
+in evaluation so that abstention and mismatch detection are measured.
+
+V1 provides a local report, adjudication workflow, structured export, and local
+API. It publishes symbolic probability constraints for eligible relationships;
+it does not ingest prices or adjust numerical probability estimates.
+
+Defer elections as a general domain, categorical partitions, n-ary relationships,
+interval maxima, temporal containment, causal inference, forecasting, trade
+execution, graph visualization, and a hosted multi-user service. Extend scope
+only after the first family's interpretation and revision behavior are validated.
+
+## Trust promise
+
+OddsFox reports separately:
+
+- How the contract interpretation was established and reviewed.
+- Whether the formal relationship follows from the encoded premises.
+- Whether settlement rules support the same conclusion, introduce conditions,
+  differ materially, or remain unresolved.
+
+A formal proof is conditional on an accurate interpretation and stated premises;
+it is not independent proof that a natural-language contract was understood
+correctly. No aggregate confidence score may conceal these distinctions.
+
+Provisional results remain visibly separate from accepted exports. Missing rules,
+ambiguous sources, and unsupported settlement behavior must produce a qualified
+result or abstention. Source changes withdraw affected current conclusions while
+preserving their history and evidence.
+
+## Acceptance criteria
+
+Freeze the benchmark, labeling guide, and evaluation procedure before the release
+evaluation. Report denominators, sample sizes, uncertainty intervals, and results
+by venue and contract template; do not describe targets as achieved without data.
+
+| Measure | V1 requirement |
+| --- | --- |
+| Relationship precision | Target at least 99% correctness of automatic proposals selected by a frozen acceptance policy, against independent human labels. Score before case-specific approval, rejection, or correction; count erroneous proposals even if review later catches them. Evaluate the complete claim, including scope and conditions. |
+| Coverage and abstention | Report supported contracts / all sampled contracts, completed interpretations / eligible contracts, relationship recall against labeled relationships, and abstention reasons. Publish these alongside precision; abstaining on everything is not success. |
+| Misleading similarities | Include distinct sources, units, observation times, strict versus inclusive thresholds, and settlement exceptions. No known false equivalence may remain in the release regression suite. |
+| Review effort | Demonstrate lower median time to a correct comparison against manual review on paired tasks, including correction time. Report task count and remaining errors. |
+| Provenance and revisions | Every accepted assertion has complete evidence. All revision fixtures withdraw affected assertions and prevent stale assertions from appearing as current. |
+| Cross-platform value | Demonstrate at least one human-validated relationship automatically derived across venues, plus a correctly explained near-match rejection. If the corpus contains no eligible example, this gate remains unmet. |
+
+Syntax validity, semantic interpretation accuracy, processing latency, memory, and
+cost are supporting diagnostics. They do not substitute for claim correctness or
+demonstrated review value. Small samples must not be presented as establishing a
+population-wide error rate.
+
+## Durable value
+
+The accumulated assets are a reviewed contract corpus, reusable interpretations,
+canonical observation definitions, correction data, and versioned evidence.
+Their defensibility depends on demonstrated coverage, precision, and reduced
+review effort; the choice of solver or graph representation alone is not a moat.
