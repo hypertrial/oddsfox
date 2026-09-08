@@ -16,6 +16,7 @@ from oddsfox.ir import SemanticIR, fingerprint
 Relation = Literal["EQUIVALENT", "IMPLIES", "EXCLUDES", "COMPLEMENT"]
 RELATIONS: tuple[Relation, ...] = ("EQUIVALENT", "IMPLIES", "EXCLUDES", "COMPLEMENT")
 RULE_VERSION = "real-threshold-cells/1"
+SETTLEMENT_CLASSIFIER = "ordinary-binary-aligned/1"
 
 
 def truth(comparator: str, threshold: Fraction, value: Fraction) -> bool:
@@ -93,15 +94,26 @@ def verify(
     values = [
         (truth(a.predicate.comparator, x, p), truth(b.predicate.comparator, y, p)) for p in points
     ]
-    if not points or not any(va for va, _ in values) or not any(vb for _, vb in values):
-        return {"state": "UNKNOWN", "reason": "infeasible operand; vacuous relation quarantined"}
     witnesses = [
         str(p)
         for p, (va, vb) in zip(points, values, strict=True)
         if not relation_holds(relation, va, vb)
     ]
+    if witnesses:
+        return {
+            "state": "DISPROVEN",
+            "rule": RULE_VERSION,
+            "relation": relation,
+            "operands": [a.digest(), b.digest()],
+            "domain": {"kind": "real", "lower": lower, "upper": upper},
+            "substitutions": [a.predicate.model_dump(), b.predicate.model_dump()],
+            "cell_representatives": [str(p) for p in points],
+            "counterexamples": witnesses,
+        }
+    if not points or not any(va for va, _ in values) or not any(vb for _, vb in values):
+        return {"state": "UNKNOWN", "reason": "infeasible operand; vacuous relation quarantined"}
     return {
-        "state": "DISPROVEN" if witnesses else "PROVEN_UNDER_PREMISES",
+        "state": "PROVEN_UNDER_PREMISES",
         "rule": RULE_VERSION,
         "relation": relation,
         "operands": [a.digest(), b.digest()],
@@ -263,6 +275,17 @@ def settlement(a: SemanticIR, b: SemanticIR) -> dict:
             "conditions": [],
             "differences": differences,
             "reason": "ordinary payout mapping is not Boolean",
+        }
+    assert sa.payout_mapping is not None and sb.payout_mapping is not None
+    pa = {p.outcome_id: (p.if_true, p.if_false) for p in sa.payout_mapping.outcomes}
+    pb = {p.outcome_id: (p.if_true, p.if_false) for p in sb.payout_mapping.outcomes}
+    shared = set(pa) & set(pb)
+    if shared and any(pa[key] != pb[key] for key in shared):
+        return {
+            "state": "DIFFERENT",
+            "conditions": [],
+            "differences": differences,
+            "reason": "ordinary-binary true-branches are not aligned by outcome_id",
         }
     condition = (
         f"Contract versions {', '.join(sorted((a.contract_version_id, b.contract_version_id)))} "

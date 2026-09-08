@@ -255,3 +255,233 @@ test('event detail scroll respects reduced motion', async () => {
   await vm.runInContext('detail("e")',context);
   assert.equal(seen.at(-1),'auto');
 });
+
+function eventListFetch(handler){
+  Object.defineProperty(Element.prototype, 'firstChild', {get(){return this.children[0];},configurable:true});
+  const elements={};
+  const document={hidden:false,getElementById:id=>elements[id]??=new Element('div'),createElement:tag=>new Element(tag)};
+  document.getElementById('filter-qualification').value='qualified';
+  const fetch=async path=>{
+    if(path.startsWith('/api/events?') || path.startsWith('/api/events/')) return handler(path);
+    return {ok:true,json:async()=>({counts:[],analysis:[],models:[],venues:[],categories:[],lanes:[],formal_verification:{}})};
+  };
+  return {elements,document,fetch};
+}
+
+test('event next click during an in-flight refresh still requests the next page', async () => {
+  const requests=[];
+  let firstComplete=false;
+  let release;
+  const {elements,document,fetch}=eventListFetch(async path=>{
+    const offset=new URLSearchParams(path.split('?')[1]).get('offset');
+    requests.push(offset);
+    if(firstComplete && typeof release!=='function' && release!==true){
+      await new Promise(resolve=>{release=resolve;});
+    }
+    firstComplete=true;
+    return {ok:true,json:async()=>({total:31,items:[],next_offset:offset==='0'?30:null})};
+  });
+  let timer;
+  vm.runInNewContext(fs.readFileSync('src/oddsfox/static/events.js','utf8'), {document,fetch,URLSearchParams,Intl,setInterval:fn=>{timer=fn;}});
+  const settle=()=>new Promise(resolve=>setImmediate(resolve));
+  await settle();
+  assert.ok(requests.includes('0'));
+  timer();
+  await settle();
+  while(typeof release!=='function')await settle();
+  elements.next.listeners.click();
+  release();
+  await settle();
+  await settle();
+  assert.ok(requests.includes('30'));
+});
+
+test('event page offset clamps when the requested page no longer exists', async () => {
+  const {elements,document,fetch}=eventListFetch(async path=>{
+    const offset=Number(new URLSearchParams(path.split('?')[1]).get('offset'));
+    if(offset===0){
+      return {ok:true,json:async()=>({total:5,items:[{id:'e',venue:'kalshi',title:'T',category:'sports',analysis_status:'ready',data:{volume:{amount:'1',basis:'n'},active_markets:[]}}],next_offset:null})};
+    }
+    return {ok:true,json:async()=>({total:5,items:[],next_offset:null})};
+  });
+  const context=vm.createContext({document,fetch,URLSearchParams,Intl,setInterval:()=>{}});
+  vm.runInContext(fs.readFileSync('src/oddsfox/static/events.js','utf8'),context);
+  const settle=()=>new Promise(resolve=>setImmediate(resolve));
+  await settle();
+  await vm.runInContext('offset=30;refresh()',context);
+  await settle();
+  await settle();
+  assert.equal(elements['page-label'].textContent,'1–1 of 5');
+});
+
+test('event page offset clamps when offset equals total', async () => {
+  const item={id:'e',venue:'kalshi',title:'T',category:'sports',analysis_status:'ready',data:{volume:{amount:'1',basis:'n'},active_markets:[]}};
+  const {elements,document,fetch}=eventListFetch(async path=>{
+    const offset=Number(new URLSearchParams(path.split('?')[1]).get('offset'));
+    if(offset===0){
+      return {ok:true,json:async()=>({total:30,items:Array.from({length:30},()=>item),next_offset:null})};
+    }
+    return {ok:true,json:async()=>({total:30,items:[],next_offset:null})};
+  });
+  const context=vm.createContext({document,fetch,URLSearchParams,Intl,setInterval:()=>{}});
+  vm.runInContext(fs.readFileSync('src/oddsfox/static/events.js','utf8'),context);
+  const settle=()=>new Promise(resolve=>setImmediate(resolve));
+  await settle();
+  await vm.runInContext('offset=30;refresh()',context);
+  await settle();
+  await settle();
+  assert.equal(elements['page-label'].textContent,'1–30 of 30');
+});
+
+test('event page offset does not clamp in a loop when total is zero', async () => {
+  const {elements,document,fetch}=eventListFetch(async()=>({ok:true,json:async()=>({total:0,items:[],next_offset:null})}));
+  const context=vm.createContext({document,fetch,URLSearchParams,Intl,setInterval:()=>{}});
+  vm.runInContext(fs.readFileSync('src/oddsfox/static/events.js','utf8'),context);
+  const settle=()=>new Promise(resolve=>setImmediate(resolve));
+  await settle();
+  await vm.runInContext('offset=30;refresh()',context);
+  await settle();
+  await settle();
+  assert.equal(elements['page-label'].textContent,'0 events');
+});
+
+test('failed event detail does not stay selected for polling', async () => {
+  const requests=[];
+  let timer;
+  const {elements,document,fetch}=eventListFetch(async path=>{
+    requests.push(path);
+    if(path==='/api/events/missing')return {ok:false,json:async()=>({detail:'unknown event'})};
+    if(path.startsWith('/api/events?'))return {ok:true,json:async()=>({total:0,items:[],next_offset:null})};
+    return {ok:true,json:async()=>({counts:[],analysis:[],models:[],venues:[],categories:[],lanes:[],formal_verification:{}})};
+  });
+  const context=vm.createContext({document,fetch,URLSearchParams,Intl,setInterval:fn=>{timer=fn;}});
+  vm.runInContext(fs.readFileSync('src/oddsfox/static/events.js','utf8'),context);
+  const settle=()=>new Promise(resolve=>setImmediate(resolve));
+  await settle();
+  await vm.runInContext('detail("missing")',context).catch(()=>{});
+  const before=requests.filter(path=>path==='/api/events/missing').length;
+  assert.equal(before,1);
+  timer();
+  await settle();
+  assert.equal(requests.filter(path=>path==='/api/events/missing').length,1);
+});
+
+test('failed poll of a selected event keeps it selected', async () => {
+  const requests=[];
+  let available=true;
+  let timer;
+  const {elements,document,fetch}=eventListFetch(async path=>{
+    requests.push(path);
+    if(path==='/api/events/e'){
+      if(!available)return {ok:false,json:async()=>({detail:'unknown event'})};
+      return {ok:true,json:async()=>({venue:'kalshi',title:'Event',data:{volume:{amount:'100001'},active_markets:[]},assertions:[],contracts:[]})};
+    }
+    if(path.startsWith('/api/events?'))return {ok:true,json:async()=>({total:0,items:[],next_offset:null})};
+    return {ok:true,json:async()=>({counts:[],analysis:[],models:[],venues:[],categories:[],lanes:[],formal_verification:{}})};
+  });
+  const context=vm.createContext({document,fetch,URLSearchParams,Intl,setInterval:fn=>{timer=fn;}});
+  vm.runInContext(fs.readFileSync('src/oddsfox/static/events.js','utf8'),context);
+  const settle=()=>new Promise(resolve=>setImmediate(resolve));
+  await settle();
+  await vm.runInContext('detail("e")',context);
+  available=false;
+  timer();
+  await settle();
+  const afterFailure=requests.filter(path=>path==='/api/events/e').length;
+  assert.equal(afterFailure,2);
+  timer();
+  await settle();
+  assert.equal(requests.filter(path=>path==='/api/events/e').length,afterFailure+1);
+});
+
+test('research empty-state is omitted when only near-matches exist', async () => {
+  const elements={};
+  const document={getElementById:id=>elements[id]??=new Element('div'),createElement:tag=>new Element(tag)};
+  const report={
+    contracts:[],
+    interpretations:[],
+    assertions:[],
+    reviews:[],
+    freshness:[],
+    comparisons:[],
+    near_matches:[{a:'a',b:'b',reason:'different source',differences:{source:{a:'x',b:'y'}}}],
+    models:[],
+    status:{pending_review:0},
+  };
+  const fetch=async()=>({ok:true,json:async()=>report});
+  vm.runInNewContext(fs.readFileSync('src/oddsfox/static/app.js','utf8'),{document,fetch});
+  await new Promise(setImmediate);
+  const texts=walk(elements['comparison-list']).map(e=>e.textContent).filter(Boolean);
+  assert.ok(texts.some(text=>text==='NEAR-MATCH / NOT COMPARABLE'));
+  assert.ok(!texts.some(text=>text.includes('No eligible shared observation yet')));
+});
+
+test('research comparison coverage banner appears when the report is truncated', async () => {
+  const elements={};
+  const document={getElementById:id=>elements[id]??=new Element('div'),createElement:tag=>new Element(tag)};
+  const report={
+    contracts:[],
+    interpretations:[],
+    assertions:[],
+    reviews:[],
+    freshness:[],
+    comparisons:[],
+    near_matches:[],
+    comparison_coverage:{processed:250,total:251,complete:false},
+    models:[],
+    status:{pending_review:0},
+  };
+  const fetch=async()=>({ok:true,json:async()=>report});
+  vm.runInNewContext(fs.readFileSync('src/oddsfox/static/app.js','utf8'),{document,fetch});
+  await new Promise(setImmediate);
+  const texts=walk(elements['comparison-list']).map(e=>e.textContent).filter(Boolean);
+  assert.ok(texts.some(text=>text.includes('covers 250 of 251 stored rows')));
+  assert.ok(texts.some(text=>text.includes('No eligible shared observation yet')));
+});
+
+test('research comparison coverage banner is omitted when complete', async () => {
+  const elements={};
+  const document={getElementById:id=>elements[id]??=new Element('div'),createElement:tag=>new Element(tag)};
+  const report={
+    contracts:[],
+    interpretations:[],
+    assertions:[],
+    reviews:[],
+    freshness:[],
+    comparisons:[],
+    near_matches:[],
+    comparison_coverage:{processed:2,total:2,complete:true},
+    models:[],
+    status:{pending_review:0},
+  };
+  const fetch=async()=>({ok:true,json:async()=>report});
+  vm.runInNewContext(fs.readFileSync('src/oddsfox/static/app.js','utf8'),{document,fetch});
+  await new Promise(setImmediate);
+  const texts=walk(elements['comparison-list']).map(e=>e.textContent).filter(Boolean);
+  assert.ok(!texts.some(text=>text.includes('covers')));
+  assert.ok(texts.some(text=>text.includes('No eligible shared observation yet')));
+});
+
+test('research truncated coverage still shows near-matches without empty-state', async () => {
+  const elements={};
+  const document={getElementById:id=>elements[id]??=new Element('div'),createElement:tag=>new Element(tag)};
+  const report={
+    contracts:[],
+    interpretations:[],
+    assertions:[],
+    reviews:[],
+    freshness:[],
+    comparisons:[],
+    near_matches:[{a:'a',b:'b',reason:'different source',differences:{source:{a:'x',b:'y'}}}],
+    comparison_coverage:{processed:250,total:251,complete:false},
+    models:[],
+    status:{pending_review:0},
+  };
+  const fetch=async()=>({ok:true,json:async()=>report});
+  vm.runInNewContext(fs.readFileSync('src/oddsfox/static/app.js','utf8'),{document,fetch});
+  await new Promise(setImmediate);
+  const texts=walk(elements['comparison-list']).map(e=>e.textContent).filter(Boolean);
+  assert.ok(texts.some(text=>text.includes('covers 250 of 251 stored rows')));
+  assert.ok(texts.some(text=>text==='NEAR-MATCH / NOT COMPARABLE'));
+  assert.ok(!texts.some(text=>text.includes('No eligible shared observation yet')));
+});

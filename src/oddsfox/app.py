@@ -254,6 +254,7 @@ def create_app(
             cache = pipeline.cached_comparisons()
             data["comparison_status"] = cache
             data["comparisons"] = pipeline.cached_rows()
+            data["comparison_coverage"] = pipeline.cached_row_coverage()
             from oddsfox.reasoning import differences
 
             data["near_matches"] = differences(

@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 const names = {kalshi:"Kalshi",polymarket:"Polymarket International"};
 const el = (tag,text,cls) => {const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
-let offset=0,nextOffset=null,paused=false,selected=null,loading=false,detailRequest=0;
+let offset=0,nextOffset=null,paused=false,selected=null,loading=false,queued=false,detailRequest=0;
 function notice(message,error=false){$("notice").replaceChildren(el("p",message,error?"error":"panel"));}
 async function api(path,body){const r=await fetch(path,body===undefined?{}:{method:"POST",headers:{"Content-Type":"application/json","X-Oddsfox-Token":$("token").value},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(typeof data.detail==="string"?data.detail:"Request failed");return data;}
 function prefersReducedMotion(){return typeof globalThis.matchMedia==="function"&&globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;}
@@ -13,8 +13,10 @@ function keyedDetails(title,key){const d=el("details");d.dataset.key=key;const s
 function disclosure(title,data,key=title){const d=keyedDetails(title,"data:"+key);d.append(el("pre",JSON.stringify(data,null,2)));return d;}
 function citation(source){const key=`citation:${source.artifact_id}:${source.start}:${source.end}`;const d=keyedDetails(`Source excerpt · characters ${source.start}–${source.end}`,key);const a=el("a","Captured source");a.dataset.focusKey=key+":link";a.href=`/api/artifacts/${encodeURIComponent(source.artifact_id)}`;d.append(el("blockquote",source.text),a);return d;}
 async function detail(identity,focus=true){
- if(focus)selected=identity;const request=++detailRequest;
- const d=await api(`/api/events/${encodeURIComponent(identity)}`);if(selected!==identity||request!==detailRequest)return;const box=$("event-detail"),snapshot=JSON.stringify(d);box.hidden=false;
+ const request=++detailRequest;
+ if(focus)selected=identity;
+ try{
+ const d=await api(`/api/events/${encodeURIComponent(identity)}`);if(request!==detailRequest)return;if(selected!==identity)return;selected=identity;const box=$("event-detail"),snapshot=JSON.stringify(d);box.hidden=false;
  if(box.dataset.identity===identity&&box.dataset.snapshot===snapshot){if(focus)reveal(box);return;}
  const open=new Set([...box.querySelectorAll("details[open]")].map(n=>n.dataset.key));
  const focused=box.contains(document.activeElement)?document.activeElement?.dataset.focusKey:null;
@@ -31,10 +33,15 @@ async function detail(identity,focus=true){
  for(const node of box.querySelectorAll("details"))if(open.has(node.dataset.key))node.open=true;
  if(focus)reveal(box);
  else if(focused){const target=[...box.querySelectorAll("[data-focus-key]")].find(n=>n.dataset.focusKey===focused);(target||box).focus({preventScroll:true});}
+ }catch(e){if(focus&&request===detailRequest&&selected===identity)selected=null;throw e;}
 }
-async function refresh(){if(loading)return;loading=true;try{
+async function refresh(){if(loading){queued=true;return;}loading=true;try{
+ for(;;){
+ const requested=offset;
  const params=new URLSearchParams({offset:String(offset),limit:"30",qualification:$("filter-qualification").value});for(const [key,id]of[["venue","filter-venue"],["category","filter-category"],["analysis","filter-analysis"]])if($(id).value)params.set(key,$(id).value);
  const [data,status]=await Promise.all([api(`/api/events?${params}`),api("/api/sync")]);
+ if(requested!==offset){queued=false;if(data.total&&offset>=data.total)offset=Math.floor((data.total-1)/30)*30;continue;}
+ if(data.total&&offset>=data.total){offset=Math.floor((data.total-1)/30)*30;continue;}
  nextOffset=data.next_offset;$("previous").disabled=offset===0;$("next").disabled=nextOffset===null;$("page-label").textContent=data.total?`${offset+1}–${offset+data.items.length} of ${data.total}`:"0 events";
  const count=q=>status.counts.filter(c=>c.qualification===q).reduce((a,c)=>a+c.count,0);const ready=status.analysis.filter(j=>j.stage==="explain"&&j.state==="done").reduce((a,j)=>a+j.count,0);
  $("metrics").replaceChildren(...[[count("qualified"),"Qualifying events"],[count("unknown"),"Volume unknown"],[ready,"Text chunks explained"],[status.formal_verification.groups?status.formal_verification.state:"Not eligible yet","Formal processing"]].map(([n,label])=>{const d=el("div",undefined,"metric");d.append(el("strong",String(n)),el("span",label));return d;}));
@@ -43,7 +50,9 @@ async function refresh(){if(loading)return;loading=true;try{
  const category=$("filter-category").value;$("filter-category").replaceChildren(el("option","All categories"));$("filter-category").firstChild.value="";for(const value of status.categories){const o=el("option",value);o.value=value;$("filter-category").append(o);}$("filter-category").value=category;
  $("event-list").replaceChildren();for(const e of data.items){const card=el("article",undefined,"card");const understand=button("Understand this event",()=>detail(e.id));understand.setAttribute("aria-label",`Understand this event: ${e.title}`);card.append(el("span",names[e.venue],"badge"),el("span",e.category,"badge"),el("h3",e.title),el("p",money(e.data.volume.amount),"volume"),el("p",e.data.volume.basis,"small muted"),el("p",`${e.data.active_markets.length} active markets · explanation ${e.analysis_status}`,"small"),understand);$("event-list").append(card);}if(!data.items.length)$("event-list").append(el("div","No events in this view yet. Check discovery progress, volume-unknown events, or adjust your filters.","empty"));
  if(selected!==null)await detail(selected,false);
- }catch(e){notice(e.message,true);}finally{loading=false;}}
+ break;
+ }
+ }catch(e){notice(e.message,true);}finally{loading=false;if(queued){queued=false;refresh();}}}
 for(const id of ["filter-venue","filter-category","filter-qualification","filter-analysis"])$(id).addEventListener("change",()=>{offset=0;refresh();});
 $("previous").addEventListener("click",()=>{offset=Math.max(0,offset-30);refresh();});$("next").addEventListener("click",()=>{if(nextOffset!==null){offset=nextOffset;refresh();}});
 $("sync").addEventListener("click",async()=>{try{const result=await api("/api/sync",{});notice(result.note);await refresh();}catch(e){notice(e.message,true);}});

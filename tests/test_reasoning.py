@@ -124,6 +124,100 @@ def test_dense_settlement_candidate_limit_is_explicit(store):
         candidates(batch, settlement_pairs=True)
 
 
+def _swap_payouts(ir):
+    mapping = ir.settlement_semantics.payout_mapping
+    outcomes = [
+        row.model_copy(update={"if_true": row.if_false, "if_false": row.if_true})
+        for row in mapping.outcomes
+    ]
+    return ir.model_copy(
+        update={
+            "settlement_semantics": ir.settlement_semantics.model_copy(
+                update={"payout_mapping": mapping.model_copy(update={"outcomes": outcomes})}
+            )
+        }
+    )
+
+
+def _retarget_payouts(ir, ids):
+    mapping = ir.settlement_semantics.payout_mapping
+    outcomes = sorted(
+        (
+            row.model_copy(update={"outcome_id": identity})
+            for row, identity in zip(mapping.outcomes, ids, strict=True)
+        ),
+        key=lambda row: row.outcome_id,
+    )
+    return ir.model_copy(
+        update={
+            "settlement_semantics": ir.settlement_semantics.model_copy(
+                update={"payout_mapping": mapping.model_copy(update={"outcomes": outcomes})}
+            )
+        }
+    )
+
+
+def test_inverted_payouts_are_settlement_different_not_equivalent(store):
+    left, right = pair(store, "GTE", "GTE", "100000", "100000")
+    inverted = _swap_payouts(right)
+    assert settlement(left, right)["state"] == "CONDITIONAL"
+    assert settlement(left, inverted)["state"] == "DIFFERENT"
+    assert "true-branches" in settlement(left, inverted)["reason"]
+    assert verify(left, inverted, "EQUIVALENT")["state"] == "PROVEN_UNDER_PREMISES"
+    pipe = Pipeline(store)
+    records = [
+        {
+            "id": "ia",
+            "data": {
+                "ir": left.model_dump(),
+                "assessment": "SUPPORTED",
+                "configuration": "cfg",
+            },
+        },
+        {
+            "id": "ib",
+            "data": {
+                "ir": inverted.model_dump(),
+                "assessment": "SUPPORTED",
+                "configuration": "cfg",
+            },
+        },
+    ]
+    claims = list(pipe.iter_comparisons(records=records))
+    assert {c["relation"] for c in claims if c["scope"] == "OBSERVED_EVENT"} >= {"EQUIVALENT"}
+    assert not [c for c in claims if c["scope"] == "SETTLEMENT_OUTCOME"]
+
+
+def test_disjoint_ordinary_binary_ids_stay_conditional(store):
+    left, right = pair(store)
+    retargeted = _retarget_payouts(right, ("token-a", "token-b"))
+    assert settlement(left, retargeted)["state"] == "CONDITIONAL"
+
+
+@pytest.mark.parametrize(
+    "swap,state",
+    [(False, "CONDITIONAL"), (True, "DIFFERENT")],
+)
+def test_shared_outcome_alignment_ignores_disjoint_peer_id(store, swap, state):
+    left, right = pair(store)
+    peer = _swap_payouts(right) if swap else right
+    assert settlement(left, _retarget_payouts(peer, ("other", "yes")))["state"] == state
+
+
+def test_bounded_counterexample_is_disproven_not_unknown(store):
+    left, right = pair(store, "GTE", "GT", "1", "1")
+    result = verify(left, right, "IMPLIES", lower="1", upper="1")
+    assert result["state"] == "DISPROVEN"
+    assert "1" in result["counterexamples"]
+
+
+def test_vacuous_complement_counterexample_is_disproven(store):
+    left, right = pair(store, "GT", "GT", "1", "1")
+    result = verify(left, right, "COMPLEMENT", lower="1", upper="1")
+    assert result["state"] == "DISPROVEN"
+    assert "1" in result["counterexamples"]
+
+
 def test_full_observation_pairs_cross_250_contract_batch_boundary(store):
     from itertools import islice
 

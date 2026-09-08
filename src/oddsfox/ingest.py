@@ -159,16 +159,23 @@ def import_capture(
             raise ValueError("document too large")
         if document["status"] == "captured" and not document["text"]:
             raise ValueError("captured document is empty")
-        texts[f"document:{i}"] = document["text"]
-        references = [r for r in references if r["url"] != document["url"]]
-        references.append(
-            {
+        if document["status"] == "captured":
+            key = f"document:{i}"
+            texts[key] = document["text"]
+            entry = {
                 "url": document["url"],
                 "status": document["status"],
-                "text_key": f"document:{i}",
+                "text_key": key,
                 "reason": "user-supplied captured document",
             }
-        )
+        else:
+            entry = {
+                "url": document["url"],
+                "status": document["status"],
+                "reason": "user-supplied captured document",
+            }
+        references = [r for r in references if r["url"] != document["url"]]
+        references.append(entry)
     return store.capture(
         platform, native_id, raw, texts, metadata, sorted(references, key=lambda r: r["url"])
     )

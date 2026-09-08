@@ -34,6 +34,17 @@ def test_loopback_host_origin_and_mutation_token(store):
         assert "test-session" not in client.get("/").text
 
 
+def test_report_comparison_coverage_is_complete_when_empty(store):
+    with TestClient(
+        create_app(store, auto_sync=False, token="test"), base_url="http://127.0.0.1:8777"
+    ) as client:
+        assert client.get("/api/report").json()["comparison_coverage"] == {
+            "processed": 0,
+            "total": 0,
+            "complete": True,
+        }
+
+
 def test_report_read_does_not_approve_and_explicit_reviews_publish(store):
     result = load_demo(store)
     headers = {"X-Oddsfox-Token": "test"}
@@ -41,6 +52,10 @@ def test_report_read_does_not_approve_and_explicit_reviews_publish(store):
         create_app(store, auto_sync=False, token="test"), base_url="http://127.0.0.1:8777"
     ) as client:
         assert len(client.get("/api/report").json()["comparisons"]) == 2
+        coverage = client.get("/api/report").json()["comparison_coverage"]
+        assert coverage["complete"] is True
+        assert coverage["processed"] == 2
+        assert coverage["total"] == 2
         assert client.get("/api/assertions").json() == []
         assert client.get("/api/export").json()["assertions"] == []
         for identity in result["interpretations"]:

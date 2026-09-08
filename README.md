@@ -74,7 +74,10 @@ The review workspace also remains available from the event browser.
    `uv run oddsfox import polymarket market.json` preserves an exact local payload.
    Referenced documents can be supplied with `--documents documents.json`, a list
    of `{ "url": "https://...", "text": "...", "status": "captured" }` records.
-   Missing governing documents prevent approval. A contract already captured through
+   `status` may be `inaccessible` without `text`. A later inaccessible refetch of a
+   previously captured official URL keeps the last governing document bytes; it does
+   not mint a new contract version. Missing governing documents prevent approval. A
+   contract already captured through
    event discovery must also be refreshed through discovery; a child-only import or
    capture cannot discard its known parent rules. Existing manual-only captures
    and imports retain their original workflow.
@@ -116,13 +119,18 @@ a shared real-valued observation. The supported method is `instantaneous`.
 Interval averages, maxima and unresolved methods remain unsupported. cvc5 checks
 the supported encodings and probability constraints. Settlement policy prose is
 not executable: the initial settlement rule produces explicit conditions for
-ordinary binary resolution. Each condition names the exact pair of contract
+ordinary binary resolution. Shared native outcome IDs must have matching
+true-branches; inverted YES/NO maps are settlement `DIFFERENT` and stay in
+observed-event scope. Disjoint ordinary-binary IDs (cross-venue tokens) remain
+conditional. Each condition names the exact pair of contract
 versions, so differently conditioned pairs cannot share probability variables or
 chain into a settlement claim. Observed-event claims remain a distinct scope,
 with sparse edges over both provisional and reviewed interpretations. Settlement
 pairs are evaluated directly. Background comparisons retain progress per canonical
 observation and process bounded batches across the complete group. The dataset is
 not capped at 250 contracts; explicit capture requests remain bounded to 250 IDs.
+`GET /api/report` includes at most 250 current comparison rows and sets
+`comparison_coverage` when more exist; `GET /api/comparisons` remains paginated.
 The legacy bounded candidate helper retains its limits for evaluation callers.
 
 ## Local model candidates

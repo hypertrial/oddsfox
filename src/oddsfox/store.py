@@ -56,7 +56,7 @@ def governing(data: dict) -> str:
             "platform": data["platform"],
             "native_id": data["native_id"],
             "texts": data["text_artifacts"],
-            "references": data.get("references", []),
+            "references": sorted(r.get("url") or "" for r in data.get("references", [])),
             "metadata": {
                 k: v
                 for k, v in metadata.items()
@@ -365,9 +365,36 @@ class Store:
                 raise ValueError(
                     "Known parent governing material cannot be omitted; refresh through event discovery"
                 )
+            if current:
+                previous_by_url = {
+                    ref["url"]: (
+                        ref["text_key"],
+                        current["data"]["text_artifacts"][ref["text_key"]],
+                    )
+                    for ref in current["data"].get("references", [])
+                    if ref.get("url")
+                    and ref.get("text_key")
+                    and ref["text_key"] in current["data"]["text_artifacts"]
+                }
+                used_keys = set(text_artifacts)
+                for ref in references:
+                    if ref.get("text_key") in text_artifacts:
+                        continue
+                    previous = previous_by_url.get(ref.get("url"))
+                    if not previous:
+                        continue
+                    key, artifact_id = previous
+                    if key in used_keys:
+                        key = next(
+                            f"document:{index}"
+                            for index in range(len(used_keys) + 1)
+                            if f"document:{index}" not in used_keys
+                        )
+                    used_keys.add(key)
+                    text_artifacts[key] = artifact_id
+                data["text_artifacts"] = text_artifacts
             digest = governing(data)
-            heads = self._rows("SELECT digest FROM semantic_heads WHERE logical=?", [logical])
-            if current and heads and heads[0]["digest"] == digest:
+            if current and governing(current["data"]) == digest:
                 identity = current["id"]
             else:
                 # Capture sequence preserves a source reverting to a historical payload.

@@ -111,6 +111,205 @@ def test_snapshot_refresh_preserves_semantic_revision_and_dependencies(store):
     assert len(store._rows("SELECT * FROM snapshots")) == 5
 
 
+def test_inaccessible_document_refetch_preserves_semantic_revision(store):
+    texts = {"rules": "same governing text", "document:0": "official pdf"}
+    metadata = {"title": "t", "lifecycle": "open"}
+    captured = [{"url": "https://kalshi.com/a.pdf", "status": "captured", "text_key": "document:0"}]
+    first = store.capture("kalshi", "x", b"{}", texts, metadata, captured)
+    with store.transaction():
+        review = store.insert("review", first, {"approved": True}, [first], "REVIEWED")
+    failed = store.capture(
+        "kalshi",
+        "x",
+        b"{}",
+        {"rules": "same governing text"},
+        metadata,
+        [{"url": "https://kalshi.com/a.pdf", "status": "inaccessible", "reason": "timeout"}],
+    )
+    assert failed == first
+    assert store.get(review)["current"]
+    assert len(store._rows("SELECT * FROM snapshots")) == 2
+    dropped = store.capture(
+        "kalshi",
+        "x",
+        b"{}",
+        {"rules": "same governing text"},
+        metadata,
+        [],
+    )
+    assert dropped != first
+    assert not store.get(review)["current"]
+
+
+def test_known_event_rules_cannot_be_omitted(store):
+    store.capture(
+        "kalshi",
+        "parent",
+        b"{}",
+        {"event_rules": "shared event rules", "rules": "child"},
+        {"title": "t", "lifecycle": "open"},
+        [],
+    )
+    with pytest.raises(ValueError, match="parent governing material"):
+        store.capture(
+            "kalshi",
+            "parent",
+            b"{}",
+            {"rules": "child"},
+            {"title": "t", "lifecycle": "open"},
+            [],
+        )
+
+
+def test_blank_event_rules_cannot_drop_parent_material(store):
+    store.capture(
+        "kalshi",
+        "parent",
+        b"{}",
+        {"event_rules": "shared event rules", "rules": "child"},
+        {"title": "t", "lifecycle": "open"},
+        [],
+    )
+    with pytest.raises(ValueError, match="parent governing material"):
+        store.capture(
+            "kalshi",
+            "parent",
+            b"{}",
+            {"event_rules": "", "rules": "child"},
+            {"title": "t", "lifecycle": "open"},
+            [],
+        )
+
+
+def test_governing_fingerprint_ignores_status_reason_and_url_order(store):
+    texts = {"rules": "same governing text", "document:0": "pdf-a", "document:1": "pdf-b"}
+    metadata = {"title": "t", "lifecycle": "open"}
+    first = store.capture(
+        "kalshi",
+        "x",
+        b"{}",
+        texts,
+        metadata,
+        [
+            {"url": "https://kalshi.com/a.pdf", "status": "captured", "text_key": "document:0"},
+            {"url": "https://kalshi.com/b.pdf", "status": "captured", "text_key": "document:1"},
+        ],
+    )
+    reordered = store.capture(
+        "kalshi",
+        "x",
+        b"{}",
+        texts,
+        metadata,
+        [
+            {
+                "url": "https://kalshi.com/b.pdf",
+                "status": "inaccessible",
+                "reason": "timeout",
+                "text_key": "document:1",
+            },
+            {
+                "url": "https://kalshi.com/a.pdf",
+                "status": "captured",
+                "reason": "ok",
+                "text_key": "document:0",
+            },
+        ],
+    )
+    assert reordered == first
+
+
+def test_omitted_document_text_is_retained_per_url(store):
+    texts = {"rules": "same governing text", "document:0": "pdf-a", "document:1": "pdf-b"}
+    metadata = {"title": "t", "lifecycle": "open"}
+    refs = [
+        {"url": "https://kalshi.com/a.pdf", "status": "captured", "text_key": "document:0"},
+        {"url": "https://kalshi.com/b.pdf", "status": "captured", "text_key": "document:1"},
+    ]
+    first = store.capture("kalshi", "x", b"{}", texts, metadata, refs)
+    retained = store.capture(
+        "kalshi",
+        "x",
+        b"{}",
+        {"rules": "same governing text"},
+        metadata,
+        [
+            {"url": "https://kalshi.com/a.pdf", "status": "inaccessible", "reason": "timeout"},
+            {"url": "https://kalshi.com/b.pdf", "status": "captured"},
+        ],
+    )
+    assert retained == first
+    blobs = {
+        store.artifact(identity)
+        for identity in store.get(retained)["data"]["text_artifacts"].values()
+    }
+    assert blobs == {b"same governing text", b"pdf-a", b"pdf-b"}
+    foreign = store.capture(
+        "kalshi",
+        "x",
+        b"{}",
+        {"rules": "same governing text"},
+        metadata,
+        [{"url": "https://kalshi.com/other.pdf", "status": "inaccessible", "reason": "timeout"}],
+    )
+    assert foreign != first
+    assert list(store.get(foreign)["data"]["text_artifacts"]) == ["rules"]
+
+
+def test_retained_document_reuses_previous_text_key_after_index_hole(store):
+    metadata = {"title": "t", "lifecycle": "open"}
+    first = store.capture(
+        "kalshi",
+        "x",
+        b"{}",
+        {"rules": "same governing text", "document:1": "pdf-b"},
+        metadata,
+        [
+            {"url": "https://kalshi.com/a.pdf", "status": "inaccessible", "reason": "timeout"},
+            {
+                "url": "https://kalshi.com/b.pdf",
+                "status": "captured",
+                "text_key": "document:1",
+            },
+        ],
+    )
+    later = store.capture(
+        "kalshi",
+        "x",
+        b"{}",
+        {"rules": "same governing text"},
+        metadata,
+        [
+            {"url": "https://kalshi.com/a.pdf", "status": "inaccessible", "reason": "timeout"},
+            {"url": "https://kalshi.com/b.pdf", "status": "inaccessible", "reason": "timeout"},
+        ],
+    )
+    assert later == first
+    artifacts = store.get(later)["data"]["text_artifacts"]
+    assert "document:1" in artifacts
+    assert store.artifact(artifacts["document:1"]) == b"pdf-b"
+
+
+def test_import_inaccessible_document_keeps_prior_capture(store):
+    payload = json.dumps(pm()).encode()
+    first = import_capture(
+        store,
+        "polymarket",
+        payload,
+        documents=[{"url": "https://example.com/a.pdf", "text": "official", "status": "captured"}],
+    )
+    later = import_capture(
+        store,
+        "polymarket",
+        payload,
+        documents=[{"url": "https://example.com/a.pdf", "text": "", "status": "inaccessible"}],
+    )
+    assert later == first
+    assert b"official" in {
+        store.artifact(identity) for identity in store.get(later)["data"]["text_artifacts"].values()
+    }
+
+
 def test_over_250_and_migration_backup_integrity(store, tmp_path):
     first = None
     for i in range(251):
@@ -579,6 +778,60 @@ def test_unrelated_observation_preserves_completed_comparison_cache(store):
     after = store._rows("SELECT * FROM comparison_groups ORDER BY group_id")
     assert before == after
     assert claims == pipeline.cached_rows()
+
+
+def test_comparison_coverage_reports_truncated_cached_rows(store):
+    from oddsfox.demo import load_demo
+    from oddsfox.pipeline import Pipeline
+
+    pipeline = Pipeline(store)
+    load_demo(store)
+    for _ in range(3):
+        pipeline.refresh_comparisons()
+    signatures = [context["signature"] for context in pipeline.comparison_contexts().values()]
+    assert signatures
+    with store.transaction():
+        for index in range(251):
+            store.db.execute(
+                "INSERT INTO comparison_rows VALUES (?,?,?) ON CONFLICT DO NOTHING",
+                [signatures[0], f"extra-{index}", "{}"],
+            )
+    coverage = pipeline.cached_row_coverage()
+    assert coverage["total"] >= 251
+    assert coverage["processed"] == 250
+    assert coverage["complete"] is False
+    assert len(pipeline.cached_rows()) == 250
+    from fastapi.testclient import TestClient
+
+    from oddsfox.app import create_app
+
+    with TestClient(create_app(store, auto_sync=False), base_url="http://127.0.0.1:8777") as client:
+        payload = client.get("/api/report").json()["comparison_coverage"]
+        assert payload["complete"] is False
+        assert payload["processed"] == 250
+        assert payload["total"] >= 251
+
+
+def test_comparison_coverage_is_complete_at_exactly_250_rows(store):
+    from oddsfox.demo import load_demo
+    from oddsfox.pipeline import Pipeline
+
+    pipeline = Pipeline(store)
+    load_demo(store)
+    for _ in range(3):
+        pipeline.refresh_comparisons()
+    signatures = [context["signature"] for context in pipeline.comparison_contexts().values()]
+    existing = pipeline.cached_row_coverage()
+    assert signatures and existing["total"] < 250
+    with store.transaction():
+        for index in range(250 - existing["total"]):
+            store.db.execute(
+                "INSERT INTO comparison_rows VALUES (?,?,?) ON CONFLICT DO NOTHING",
+                [signatures[0], f"fill-{index}", "{}"],
+            )
+    coverage = pipeline.cached_row_coverage()
+    assert coverage == {"processed": 250, "total": 250, "complete": True}
+    assert len(pipeline.cached_rows()) == 250
 
 
 def test_decimal_aggregation_does_not_round_qualification_boundary():

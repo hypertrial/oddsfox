@@ -12,6 +12,7 @@ from oddsfox.ir import Observation, SemanticIR, fingerprint, parse_ir
 from oddsfox.reasoning import (
     RELATIONS,
     RULE_VERSION,
+    SETTLEMENT_CLASSIFIER,
     candidate_pairs,
     constraints_feasible,
     eligible,
@@ -465,6 +466,7 @@ class Pipeline:
                     {
                         "records": sorted(r["id"] for r in records),
                         "reviews": sorted(r["id"] for r in reviews if r),
+                        "settlement_classifier": SETTLEMENT_CLASSIFIER,
                     }
                 )
                 contexts[key] = {"signature": signature, "records": records}
@@ -506,6 +508,24 @@ class Pipeline:
                 [*signatures, limit, offset],
             )
         ]
+
+    def cached_row_coverage(self, limit=250):
+        signatures = [v["signature"] for v in self.comparison_contexts().values()]
+        total = 0
+        if signatures:
+            total = int(
+                self.store._rows(
+                    "SELECT COUNT(*) AS n FROM comparison_rows WHERE signature IN ("
+                    + ",".join("?" for _ in signatures)
+                    + ")",
+                    signatures,
+                )[0]["n"]
+            )
+        return {
+            "processed": min(limit, total),
+            "total": total,
+            "complete": total <= limit,
+        }
 
     def refresh_comparisons(self, max_pairs=250):
         pending = []

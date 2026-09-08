@@ -38,11 +38,12 @@ async function refresh(){
   }
   if(!data.contracts.length)$("contract-list").append(node("div","Your research set starts here. Import captured market JSON or retrieve a bounded list of native IDs above.","empty"));
   $("comparison-list").replaceChildren();
+  if(data.comparison_coverage&&!data.comparison_coverage.complete)$("comparison-list").append(node("p",`Comparison view covers ${data.comparison_coverage.processed} of ${data.comparison_coverage.total} stored rows. Use paginated /api/comparisons for the rest.`,"condition"));
   if(data.near_match_coverage&&!data.near_match_coverage.complete)$("comparison-list").append(node("p",`Legacy near-match view covers ${data.near_match_coverage.processed} of ${data.near_match_coverage.total} interpretations. Use event details for indexed cross-venue suggestions.`,"condition"));
   const titles=Object.fromEntries(data.contracts.map(c=>[c.id,c.data.metadata.title||c.logical]));
   for(const claim of data.comparisons){const accepted=data.assertions.some(a=>a.logical===claim.claim_id);const el=node("article",undefined,"card");el.append(node("span",accepted?"ACCEPTED":"PROVISIONAL",accepted?"badge success":"badge warning"),node("span",claim.scope === "OBSERVED_EVENT" ? "OBSERVED EVENTS" : "SETTLEMENT OUTCOMES","badge"),node("h3",`${titles[claim.a]} ${claim.relation} ${titles[claim.b]}`),node("p",`${claim.proof.state} · settlement ${claim.settlement.state}`));for(const condition of claim.conditions)el.append(node("p",condition,"condition"));el.append(node("p",claim.constraint.expression.replaceAll(claim.a,"A").replaceAll(claim.b,"B")),details("Premises, proof, source evidence & dependencies",claim));$("comparison-list").append(el);}
   for(const mismatch of data.near_matches){const el=node("article",undefined,"card");el.append(node("span","NEAR-MATCH / NOT COMPARABLE","badge warning"),node("h3",`${titles[mismatch.a]} · ${titles[mismatch.b]}`),node("p",mismatch.reason),details("Observation differences",mismatch.differences));$("comparison-list").append(el);}
-  if(!data.comparisons.length)$("comparison-list").append(node("div","No eligible shared observation yet. Incomplete semantics and different sources, times or methods remain separate; review the contract details.","empty"));
+  if(!data.comparisons.length && !data.near_matches.length)$("comparison-list").append(node("div","No eligible shared observation yet. Incomplete semantics and different sources, times or methods remain separate; review the contract details.","empty"));
   $("activity-list").replaceChildren(details("Jobs, failures, freshness and pending review",data.status));
 }
 $("refresh").addEventListener("click",()=>refresh().catch(e=>notice(e.message,true)));
