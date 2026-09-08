@@ -55,7 +55,9 @@ the CLI refuses a second writer. Stop the server before using offline commands.
    Save candidate IR with `oddsfox interpret candidate.json`. Each populated
    semantic leaf needs source evidence. Corrections create new interpretations
    and invalidate dependent approvals and claims. Restoring earlier candidate
-   content creates a new revision requiring fresh review.
+   content creates a new revision requiring fresh review. Referenced normalization
+   rules remain dependencies even if the canonical identity is corrected; withdrawing
+   a rule makes its dependent interpretations and accepted claims stale.
 4. Review through the report or `oddsfox review <interpretation-id> --approve
    --governing-material-complete --reviewer <name> --rationale <reason>`.
    Omitting `--approve` rejects or withdraws an interpretation. `oddsfox compare`
@@ -84,7 +86,11 @@ the supported encodings and probability constraints. Settlement policy prose is
 not executable: the initial settlement rule produces explicit conditions for
 ordinary binary resolution. Each condition names the exact pair of contract
 versions, so differently conditioned pairs cannot share probability variables or
-chain into a settlement claim. Observed-event claims remain a distinct scope.
+chain into a settlement claim. Observed-event claims remain a distinct scope,
+with sparse edges over both provisional and reviewed interpretations. Settlement
+pairs are evaluated directly. Comparisons accept at most 250 interpretations and
+16,000 candidate pairs; larger components fail explicitly and should be split
+into smaller research sets.
 
 ## Local model candidates
 
@@ -135,6 +141,9 @@ unevaluated; see the [validation record](docs/validation.md).
 This repository uses Universal Pad for engineering work. Agent workflow and
 repository-specific verification are documented in [AGENTS.md](AGENTS.md) and
 [PROJECT_AGENT.md](PROJECT_AGENT.md).
+
+Install Node.js 22 or newer for the browser JavaScript regression test; it uses
+Node’s built-in test runner and requires no npm packages. CI configures Node 22.
 
 Run `scripts/verify-fast` during development and `scripts/verify` before completing
 work. The latter runs lint, formatting, type checks, tests, schema drift checks and

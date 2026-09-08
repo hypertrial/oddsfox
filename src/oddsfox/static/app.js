@@ -7,7 +7,7 @@ async function api(path, body) {
   const response = await fetch(path, body === undefined ? {} : {method:"POST",headers:{"Content-Type":"application/json","X-Oddsfox-Token":$("token").value},body:JSON.stringify(body)});
   const data = await response.json(); if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : pretty(data.detail)); return data;
 }
-function action(label, callback) { const b = node("button",label); b.addEventListener("click",async()=>{b.disabled=true;try{await callback();await refresh();}catch(e){notice(e.message,true);}finally{b.disabled=false;}});return b; }
+function action(label, callback, reload = true) { const b = node("button",label); b.addEventListener("click",async()=>{b.disabled=true;try{await callback();if(reload)await refresh();}catch(e){notice(e.message,true);}finally{b.disabled=false;}});return b; }
 function details(label, data) { const el=node("details");el.append(node("summary",label),node("pre",typeof data === "string" ? data : pretty(data)));return el; }
 function link(label,path){const a=node("a",label);a.href=path;return a;}
 async function refresh(){
@@ -32,7 +32,7 @@ async function refresh(){
       const actions=node("div",undefined,"actions");for(const approve of [true,false])actions.append(action(approve?"Approve interpretation":"Reject / withdraw approval",()=>api(`/api/reviews/${interpretation.id}`,{reviewer:$("reviewer").value,rationale:rationale.value,approve,governing_material_complete:attestation.checked})));reviewBox.append(actions);el.append(reviewBox);
     }else el.append(node("p","No interpretation yet. Start a candidate or run your configured local model.","muted"));
     const edit=node("details");edit.append(node("summary",interpretation?"Correct interpretation":"Create interpretation candidate"));const input=node("textarea");input.rows=12;input.setAttribute("aria-label","Semantic IR JSON");input.value=interpretation?pretty(interpretation.data.ir):"";edit.append(input);
-    edit.append(action("Load empty schema",async()=>{input.value=pretty(await api(`/api/contracts/${c.id}/draft`));}),action("Save candidate",()=>api("/api/interpret",{ir:JSON.parse(input.value)})));el.append(edit);
+    edit.append(action("Load empty schema",async()=>{input.value=pretty(await api(`/api/contracts/${c.id}/draft`));},false),action("Save candidate",()=>api("/api/interpret",{ir:JSON.parse(input.value)})));el.append(edit);
     for(const model of data.models)el.append(action(`Compile with ${model}`,()=>api("/api/compile",{contract_version_id:c.id,model_name:model})));
     $("contract-list").append(el);
   }

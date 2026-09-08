@@ -68,13 +68,16 @@ chained. Settlement conditions must identify the exact contract versions they
 refer to; a condition about pair A/B is distinct from one about B/C.
 Zero denominators produce null scores and explicit counts.
 
-Metric definition `oddsfox-metrics/2` reports coverage and outcome metrics both
+Metric definition `oddsfox-metrics/3` reports coverage and outcome metrics both
 overall and by venue/template. Unsupported, failed, abstained, reason and missing
 counts cover all sampled contracts, including human-ineligible inputs. The
 abstention `rate` counts eligible abstentions over eligible contracts;
 `eligible_missing` separately reports eligible inputs without an outcome.
 `sampled` identifies the population for the other counts. Completion coverage
-counts completed interpretations over eligible contracts.
+counts completed interpretations over eligible contracts. Version 3 also applies
+the frozen condition-set normalization to settlement-compatibility stage scores:
+permutations, duplicate strings and whitespace differences are equivalent; missing
+or genuinely different conditions remain incorrect.
 
 For paired review experiments, record `paired_review_tasks` with `manual_seconds`,
 `assisted_seconds`, `manual_correct`, and `assisted_correct`; times must include

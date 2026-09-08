@@ -6,6 +6,7 @@ import platform
 import resource
 import threading
 import time
+from importlib import import_module
 from pathlib import Path
 
 from oddsfox import __version__
@@ -274,9 +275,10 @@ def run_compile_job(store: Store, job_id: str, model_path: Path) -> str | None:
             store.require_current(job["inputs"])
             contract_id = next(i for i in job["inputs"] if store.get(i)["kind"] == "contract")
             config_id = next(i for i in job["inputs"] if store.get(i)["kind"] == "configuration")
-            import mlx.core as mx
-            import mlx_lm
-            from mlx_lm.sample_utils import make_sampler
+            # Resolve optional backends only when this configured job executes.
+            mx = import_module("mlx.core")
+            mlx_lm = import_module("mlx_lm")
+            make_sampler = import_module("mlx_lm.sample_utils").make_sampler
 
             previous_limit = mx.set_memory_limit(settings["memory_limit_bytes"])
             try:
@@ -305,7 +307,7 @@ def run_compile_job(store: Store, job_id: str, model_path: Path) -> str | None:
                     "verbose": False,
                 }
                 if settings["constrained"]:
-                    import outlines
+                    outlines = import_module("outlines")
 
                     raw = outlines.from_mlxlm(model, tokenizer)(
                         prompt,

@@ -169,3 +169,39 @@ def test_duplicate_ineligible_outcomes_rejected():
     run["outcomes"] = [{"id": "a", "stage": "interpret", "state": "unsupported"}] * 2
     with pytest.raises(ValueError, match="duplicate stage outcome"):
         evaluate(bench, run)
+
+
+@pytest.mark.parametrize(
+    "actual,correct",
+    [
+        (["B resolves normally", "A resolves normally"], 1),
+        (["A   resolves normally", "B resolves normally", "B resolves normally"], 1),
+        (["A resolves normally"], 0),
+        (None, 0),
+    ],
+)
+def test_compatibility_conditions_use_frozen_normalization(actual, correct):
+    bench, run = benchmark_run()
+    bench["stage_labels"] = [
+        {
+            "id": "a-b",
+            "stage": "settlement_compatibility",
+            "mode": "pipeline",
+            "operands": ["a", "b"],
+            "expected": {
+                "state": "CONDITIONAL",
+                "conditions": ["A resolves normally", "B resolves normally"],
+            },
+        }
+    ]
+    run["benchmark_hash"] = fingerprint(bench)
+    values = {"state": "CONDITIONAL"}
+    if actual is not None:
+        values["conditions"] = actual
+    run["stage_outputs"] = [
+        {"id": "a-b", "stage": "settlement_compatibility", "mode": "pipeline", "values": values}
+    ]
+    result = evaluate(bench, run)
+    for metrics in [result, *result["breakdowns"].values()]:
+        score = metrics["stages"]["settlement_compatibility/pipeline"]
+        assert score["whole_record"]["correct"] == correct

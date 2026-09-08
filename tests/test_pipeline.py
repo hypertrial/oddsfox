@@ -134,3 +134,131 @@ def test_manual_correction_can_restore_content_without_restoring_review(store):
     assert pipeline.publish() == []
     pipeline.review(restored_id, "reviewer", "reviewed restored interpretation anew", True, True)
     assert len(pipeline.publish()) == 2
+
+
+def test_rebound_alias_keeps_rule_dependency(store):
+    p = Pipeline(store)
+    a = sample(store, "a", "150000", source="Reviewed alias")
+    b = sample(store, "b", "100000")
+    rule = p.register(
+        "alias",
+        b["observation"],
+        "test",
+        "source alias",
+        [{"definition": a["observation"], "unit_factor": "1"}],
+    )
+    normalized = store.get(p.interpret(json.dumps(a)))["data"]
+    canonical = p.register("preferred", b["observation"], "test", "preferred identity")
+    for raw in (normalized["ir"], b):
+        raw["observation"].update(
+            canonical_observation_id="preferred", canonical_observation_version=canonical
+        )
+    ai = p.interpret(json.dumps(normalized["ir"]), derivations=normalized["derivations"])
+    bi = p.interpret(json.dumps(b))
+    for identity in (ai, bi):
+        p.review(identity, "test", "checked exact evidence", True, True)
+    assert len(p.publish()) == 2
+    p.register("alias", store.get(rule)["data"]["definition"], "test", "withdraw alias")
+    assert store.get(ai)["current"] is False
+    assert p.export()["assertions"] == []
+    with pytest.raises(ValueError):
+        p.interpret(json.dumps(normalized["ir"]), derivations=normalized["derivations"])
+
+
+def test_unreviewed_intermediate_does_not_suppress_reviewed_pair(store):
+    p = Pipeline(store)
+    raws = [
+        sample(store, name, threshold) for name, threshold in [("a", "3"), ("c", "1"), ("b", "2")]
+    ]
+    p.register("obs", raws[0]["observation"], "test", "same observation")
+    for i, raw in enumerate(raws):
+        identity = p.interpret(json.dumps(raw))
+        if i < 2:
+            p.review(identity, "test", "checked exact evidence", True, True)
+    claims = p.compare()
+    endpoints = {r["contract_version_id"] for r in raws[:2]}
+    assert {c["scope"] for c in claims if {c["a"], c["b"]} == endpoints} == {
+        "OBSERVED_EVENT",
+        "SETTLEMENT_OUTCOME",
+    }
+    assert len(p.publish()) == 2
+
+
+def test_nonadjacent_settlement_is_emitted_but_observed_edges_stay_sparse(store):
+    p = Pipeline(store)
+    raws = [
+        sample(store, name, threshold) for name, threshold in [("a", "3"), ("b", "2"), ("c", "1")]
+    ]
+    p.register("obs", raws[0]["observation"], "test", "same observation")
+    for raw in raws:
+        p.interpret(json.dumps(raw))
+    claims = p.compare()
+    assert sum(c["scope"] == "OBSERVED_EVENT" for c in claims) == 2
+    assert sum(c["scope"] == "SETTLEMENT_OUTCOME" for c in claims) == 3
+
+
+@pytest.mark.parametrize("rule_kind", ["unknown", "wrong-kind", "stale"])
+def test_referenced_derivation_rule_must_exist_and_be_current(store, rule_kind):
+    p = Pipeline(store)
+    raw = sample(store, "a")
+    rule = p.register("obs", raw["observation"], "test", "reviewed observation")
+    if rule_kind == "unknown":
+        rule = "unknown-rule"
+    elif rule_kind == "wrong-kind":
+        rule = raw["contract_version_id"]
+    else:
+        p.register("obs", raw["observation"], "test", "revised observation")
+    pointer = "/predicate/threshold"
+    spans = raw["field_evidence"][pointer]["source_spans"]
+    raw["field_evidence"][pointer] = {"source_spans": [], "derivation_ref": "derived"}
+    with pytest.raises(ValueError):
+        p.interpret(
+            json.dumps(raw),
+            derivations={
+                "derived": {
+                    "pointer": pointer,
+                    "value": raw["predicate"]["threshold"],
+                    "source_spans": spans,
+                    "reviewed_rule": rule,
+                }
+            },
+        )
+    assert store.list("interpretation") == []
+
+
+def test_unused_derivation_does_not_create_dependency(store):
+    raw = sample(store, "a")
+    identity = Pipeline(store).interpret(
+        json.dumps(raw), derivations={"unused": {"reviewed_rule": "unknown"}}
+    )
+    assert store.get(identity)["current"]
+
+
+def test_derivation_rule_withdrawal_at_commit_rejects_interpretation(store, monkeypatch):
+    p = Pipeline(store)
+    raw = sample(store, "a")
+    rule = p.register("obs", raw["observation"], "test", "reviewed observation")
+    pointer = "/predicate/threshold"
+    spans = raw["field_evidence"][pointer]["source_spans"]
+    raw["field_evidence"][pointer] = {"source_spans": [], "derivation_ref": "derived"}
+    original = store.insert
+
+    def withdraw_before_insert(kind, *args, **kwargs):
+        if kind == "interpretation":
+            store.invalidate(rule, "withdrawn between validation and insertion")
+        return original(kind, *args, **kwargs)
+
+    monkeypatch.setattr(store, "insert", withdraw_before_insert)
+    with pytest.raises(StaleInput):
+        p.interpret(
+            json.dumps(raw),
+            derivations={
+                "derived": {
+                    "pointer": pointer,
+                    "value": raw["predicate"]["threshold"],
+                    "source_spans": spans,
+                    "reviewed_rule": rule,
+                }
+            },
+        )
+    assert store.list("interpretation", True) == []

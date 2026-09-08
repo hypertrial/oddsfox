@@ -111,3 +111,14 @@ def test_settlement_conditions_bound_to_exact_pair(store):
     ]
     keys = {claim_key(x) for x in claims[:2]}
     assert closure(keys, {comparison_key(x) for x in claims}) == keys
+
+
+def test_dense_settlement_candidate_limit_is_explicit(store):
+    from oddsfox.reasoning import candidates
+
+    a, _ = pair(store)
+    batch = [a.model_copy(update={"contract_version_id": str(i)}) for i in range(180)]
+    assert len(candidates(batch[:179], settlement_pairs=True)) == 15931
+    assert len(candidates(batch)) == 179
+    with pytest.raises(ValueError, match="bounded V1 candidate limit"):
+        candidates(batch, settlement_pairs=True)

@@ -218,6 +218,16 @@ class Pipeline:
             contract["data"]["metadata"]["outcome_ids"],
             derivations,
         )
+        rule_dependencies = set()
+        for evidence in ir.field_evidence.values():
+            if evidence.derivation_ref is None:
+                continue
+            rule_id = derivations[evidence.derivation_ref].get("reviewed_rule")
+            if rule_id is not None:
+                rule = self.store.get(rule_id)
+                if rule["kind"] != "registry" or rule["status"] != "REVIEWED":
+                    raise ValueError("derivation rule must be a current reviewed registry version")
+                rule_dependencies.add(rule_id)
         ir_artifact = self.store.put_artifact(ir.canonical())
         assessment = (
             "UNSUPPORTED"
@@ -266,7 +276,10 @@ class Pipeline:
                         len(self.store.list("interpretation", True)) + 1
                     )
             identity = self.store.insert(
-                "interpretation", contract["id"], data, [contract["id"], config_id, *registry]
+                "interpretation",
+                contract["id"],
+                data,
+                [contract["id"], config_id, *registry, *sorted(rule_dependencies)],
             )
             if job_id:
                 self.store.complete_job(job_id, identity, original_response_artifact)
@@ -332,8 +345,20 @@ class Pipeline:
             records = self.store.list("interpretation")
             irs = [SemanticIR.model_validate(r["data"]["ir"]) for r in records]
             by_contract = {r["data"]["ir"]["contract_version_id"]: r for r in records}
+            observed_pairs = {
+                frozenset((a.contract_version_id, b.contract_version_id))
+                for subset in (
+                    irs,
+                    [
+                        SemanticIR.model_validate(r["data"]["ir"])
+                        for r in records
+                        if self._approved(r)
+                    ],
+                )
+                for a, b in candidates(subset)
+            }
             results = []
-            for a, b in candidates(irs):
+            for a, b in candidates(irs, settlement_pairs=True):
                 compatibility = settlement(a, b)
                 for left, right in ((a, b), (b, a)):
                     for relation in RELATIONS:
@@ -346,6 +371,12 @@ class Pipeline:
                         if proof["state"] != "PROVEN_UNDER_PREMISES":
                             continue
                         for scope in ("OBSERVED_EVENT", "SETTLEMENT_OUTCOME"):
+                            if (
+                                scope == "OBSERVED_EVENT"
+                                and frozenset((a.contract_version_id, b.contract_version_id))
+                                not in observed_pairs
+                            ):
+                                continue
                             if scope == "SETTLEMENT_OUTCOME" and compatibility["state"] not in {
                                 "COMPATIBLE",
                                 "CONDITIONAL",

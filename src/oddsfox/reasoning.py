@@ -5,7 +5,7 @@ using the larger real domain is conservative and does not invent such a rule.
 """
 
 from fractions import Fraction
-from itertools import pairwise
+from itertools import combinations, pairwise
 from typing import Literal
 
 import cvc5
@@ -165,8 +165,10 @@ def solver_verify(a: SemanticIR, b: SemanticIR, relation: Relation, timeout_ms: 
     }
 
 
-def candidates(irs: list[SemanticIR]) -> list[tuple[SemanticIR, SemanticIR]]:
-    """Sparse adjacent-threshold edges; consumers can derive implication closure."""
+def candidates(
+    irs: list[SemanticIR], *, settlement_pairs: bool = False
+) -> list[tuple[SemanticIR, SemanticIR]]:
+    """Sparse observed-event edges or explicit pairs for conditional settlement."""
     if len(irs) > 250:
         raise ValueError("V1 comparison batch is limited to 250 interpretations")
     groups: dict[str, list[SemanticIR]] = {}
@@ -191,8 +193,9 @@ def candidates(irs: list[SemanticIR]) -> list[tuple[SemanticIR, SemanticIR]]:
         decreasing = sorted(
             [ir for ir in group if ir.predicate.comparator in {"LT", "LTE"}], key=order
         )
-        result.extend(pairwise(increasing))
-        result.extend(pairwise(decreasing))
+        # Pair-specific settlement conditions do not support transitive closure.
+        result.extend(combinations(increasing, 2) if settlement_pairs else pairwise(increasing))
+        result.extend(combinations(decreasing, 2) if settlement_pairs else pairwise(decreasing))
         # Nontransitive exclusion/complement needs explicit cross-polarity candidates.
         result.extend((a, b) for a in increasing for b in decreasing)
         if len(result) > 16000:

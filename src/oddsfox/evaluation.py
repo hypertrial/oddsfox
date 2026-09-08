@@ -7,7 +7,7 @@ from statistics import median
 from oddsfox.ir import fingerprint
 from oddsfox.reasoning import RELATIONS
 
-METRIC_VERSION = "oddsfox-metrics/2"
+METRIC_VERSION = "oddsfox-metrics/3"
 STAGES = ("ir_fields", "canonical_resolution", "settlement_fields", "settlement_compatibility")
 
 
@@ -168,6 +168,16 @@ def _stages(labels: list[dict], outputs: list[dict]) -> dict:
                 row_correct = True
                 for key, value in expected.items():
                     equal = key in actual and actual[key] == value
+                    if (
+                        stage == "settlement_compatibility"
+                        and key == "conditions"
+                        and key in actual
+                    ):
+                        equal = (
+                            isinstance(value, list)
+                            and isinstance(actual[key], list)
+                            and conditions(actual[key]) == conditions(value)
+                        )
                     total += 1
                     correct += int(equal)
                     fields[key][1] += 1

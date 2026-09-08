@@ -38,6 +38,20 @@ Source excerpts and near-match differences rendered correctly. Withdrawing a
 synthetic approval removed both dependent accepted claims; approving again and
 publishing restored them. These are software checks, not human quality labels.
 
+## Verified audit fixes
+
+The follow-up bug-fix gate passes 108 tests, including a Node built-in test that
+executes the shipped report JavaScript and checks that a loaded draft stays in
+the visible editor and can be saved. No npm dependencies are required.
+
+Regressions cover normalization-rule withdrawal after canonical rebinding,
+unknown/wrong-kind/stale rules and withdrawal during insertion; reviewed endpoint
+comparisons with an unreviewed intermediate; explicit nonadjacent settlement
+pairs and the 16,000-pair ceiling; equivalent versus missing/different benchmark
+conditions; and malformed Kalshi responses that retain failed freshness evidence
+while processing the rest of a batch. Independent semantic, security and metric
+reviews passed. These checks do not supply human product-release evidence.
+
 ## Real capture smoke
 
 The read-only Polymarket Gamma and Kalshi market endpoints returned successful
@@ -92,4 +106,9 @@ technical path, not real-contract accuracy or independent human precision.
 
 Synthetic demo approvals are explicitly labeled as such. Neither the demo nor
 the scorer manufactures independent human evidence. CI configuration is included;
-remote CI results only exist after the implementation is pushed and run.
+the first pushed implementation run passed its 90 tests but failed type checking
+because optional MLX/Outlines imports were unresolved in the core-only environment.
+Optional backends now load through the standard-library module loader only when
+a configured model job executes. The current local
+core-only completion gate passes 109 tests, and Linux-target type checking passes;
+a new remote run of the corrected revision is still required.

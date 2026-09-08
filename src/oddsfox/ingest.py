@@ -22,6 +22,8 @@ def normalize(platform: str, raw: bytes) -> tuple[str, dict, dict[str, str], lis
         raise ValueError("expected a market object")
     if platform == "kalshi":
         market = data.get("market", data)
+        if not isinstance(market, dict):
+            raise ValueError("expected a Kalshi market object")
         native_id = market.get("ticker")
         outcomes = ["no", "yes"] if market.get("market_type") == "binary" else []
         texts = {

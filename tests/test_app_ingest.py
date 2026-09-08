@@ -155,3 +155,30 @@ def test_duplicate_keys_rejected_for_all_json_media_types(store, content_type):
         )
         assert response.status_code == 422
         assert "duplicate" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("malformed", [None, [], "invalid", 42])
+def test_malformed_market_records_failure_and_continues(store, malformed):
+    def response(request):
+        ticker = request.url.path.rsplit("/", 1)[-1]
+        return httpx.Response(
+            200,
+            json={"market": {"ticker": ticker, "market_type": "binary", "rules_primary": "rules"}},
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(response)) as client:
+        fetch(store, "kalshi", ["A"], client)
+
+    def failing_response(request):
+        return (
+            httpx.Response(200, json={"market": malformed})
+            if request.url.path.endswith("/A")
+            else response(request)
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(failing_response)) as client:
+        result = fetch(store, "kalshi", ["A", "B"], client)
+    assert [r["state"] for r in result] == ["failed", "captured"]
+    refreshes = [r for r in store.status()["refreshes"] if r["logical"] == "kalshi:A"]
+    assert refreshes[0]["success"] is False
+    assert refreshes[0]["version_id"] == refreshes[1]["version_id"]

@@ -432,3 +432,31 @@ def test_breakdown_closure_is_storage_independent_and_completion_stage_specific(
         == materialized["breakdowns"]["venue:X"]["relationships"]["selected_recall"]
     )
     assert sparse["coverage"]["completed_per_eligible"]["correct"] == 0
+
+
+def test_unavailable_optional_backend_retains_failed_attempt(store, tmp_path, monkeypatch):
+    from oddsfox import compiler
+
+    contract = sample(store, "missing-backend")["contract_version_id"]
+    settings = {
+        "prompt": compiler.PROMPT_VERSION,
+        "model": {"identity": "test"},
+        "decoding": {
+            "constrained": True,
+            "grammar": compiler.GRAMMAR_VERSION,
+            "empty_payout_evidence": "omit-if-parent-null/1",
+        },
+    }
+    config = Pipeline(store).configure(settings)
+    job = store.enqueue("interpret", [contract, config], settings)
+    monkeypatch.setattr(compiler, "model_manifest", lambda path: settings["model"])
+
+    def unavailable(name):
+        raise ModuleNotFoundError(f"No module named {name}")
+
+    monkeypatch.setattr(compiler, "import_module", unavailable)
+    with pytest.raises(ModuleNotFoundError, match="mlx.core"):
+        compiler.run_compile_job(store, job, tmp_path)
+    assert store.status()["attempts"][0]["state"] == "failed"
+    assert "mlx.core" in store.status()["attempts"][0]["diagnostic"]
+    assert store.list("interpretation", True) == []
