@@ -2,9 +2,9 @@
   "files": {
     ".agents/skills/pad-engineering/SKILL.md": "07b6a8d2255834a6e5c97daffa14781b87977fdd2f6b74fbdab5c56086c5a4b2",
     "AGENTS.md": "8e0e7df28f0df8d847f4981da0978c28c2c9615b0382c3bfc62c6af90a52f6b1",
-    "PROJECT_AGENT.md": "eac75515738f890765e01f51bf8abf93ef05b7df7518fa8687a4077a4abdc3a5",
-    "scripts/verify": "34b7cc380c5fba31b7969272a23ba7921cb6f2d5d177fbea9f95ab4506598426",
-    "scripts/verify-fast": "ddcec6640dad28478e980477449179f889d75fe5af8288ddbcddca11452fdebb"
+    "PROJECT_AGENT.md": "42cbad4d21c60bb75506f418dd077a4289f725e0ae91325bf59458ccfd6a060f",
+    "scripts/verify": "48f9ca35ed6d5b32d23e6ab699b1201eb8ce5ad4342b76f2d7be8a5c52a871df",
+    "scripts/verify-fast": "ff168cf43c861a72c6e6a906989e60dd11724b15efa2e4262acfeea4b9323a6e"
   },
   "repository": "oddsfox",
   "version": "1.0.0",

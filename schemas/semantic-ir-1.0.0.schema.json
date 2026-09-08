@@ -1,0 +1,531 @@
+{
+  "$defs": {
+    "FieldEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "source_spans": {
+          "items": {
+            "$ref": "#/$defs/SourceSpan"
+          },
+          "title": "Source Spans",
+          "type": "array"
+        },
+        "derivation_ref": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Derivation Ref"
+        }
+      },
+      "required": [
+        "source_spans",
+        "derivation_ref"
+      ],
+      "title": "FieldEvidence",
+      "type": "object"
+    },
+    "Observation": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_observation_id": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Canonical Observation Id"
+        },
+        "canonical_observation_version": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Canonical Observation Version"
+        },
+        "quantity": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Quantity"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source"
+        },
+        "instrument_or_series": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Instrument Or Series"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unit"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]*[1-9])?Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "timezone": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timezone"
+        },
+        "measurement_method": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Measurement Method"
+        },
+        "precision": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "pattern": "^(?:0|[1-9][0-9]*|-[1-9][0-9]*|-?(?:0|[1-9][0-9]*)\\.[0-9]*[1-9])$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Precision"
+        },
+        "revision_policy": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Revision Policy"
+        }
+      },
+      "required": [
+        "canonical_observation_id",
+        "canonical_observation_version",
+        "quantity",
+        "source",
+        "instrument_or_series",
+        "unit",
+        "timestamp",
+        "timezone",
+        "measurement_method",
+        "precision",
+        "revision_policy"
+      ],
+      "title": "Observation",
+      "type": "object"
+    },
+    "Payout": {
+      "additionalProperties": false,
+      "properties": {
+        "outcome_id": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Outcome Id",
+          "type": "string"
+        },
+        "if_true": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "pattern": "^(?:0|[1-9][0-9]*|-[1-9][0-9]*|-?(?:0|[1-9][0-9]*)\\.[0-9]*[1-9])$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "If True"
+        },
+        "if_false": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "pattern": "^(?:0|[1-9][0-9]*|-[1-9][0-9]*|-?(?:0|[1-9][0-9]*)\\.[0-9]*[1-9])$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "If False"
+        }
+      },
+      "required": [
+        "outcome_id",
+        "if_true",
+        "if_false"
+      ],
+      "title": "Payout",
+      "type": "object"
+    },
+    "PayoutMapping": {
+      "additionalProperties": false,
+      "properties": {
+        "unit": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unit"
+        },
+        "outcomes": {
+          "items": {
+            "$ref": "#/$defs/Payout"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "title": "Outcomes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "unit",
+        "outcomes"
+      ],
+      "title": "PayoutMapping",
+      "type": "object"
+    },
+    "Predicate": {
+      "additionalProperties": false,
+      "properties": {
+        "observation_ref": {
+          "const": "/observation",
+          "title": "Observation Ref",
+          "type": "string"
+        },
+        "comparator": {
+          "anyOf": [
+            {
+              "enum": [
+                "GT",
+                "GTE",
+                "LT",
+                "LTE"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Comparator"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "pattern": "^(?:0|[1-9][0-9]*|-[1-9][0-9]*|-?(?:0|[1-9][0-9]*)\\.[0-9]*[1-9])$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Threshold"
+        }
+      },
+      "required": [
+        "observation_ref",
+        "comparator",
+        "threshold"
+      ],
+      "title": "Predicate",
+      "type": "object"
+    },
+    "SettlementSemantics": {
+      "additionalProperties": false,
+      "properties": {
+        "payout_mapping": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PayoutMapping"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resolution_source": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Resolution Source"
+        },
+        "cutoff": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]*[1-9])?Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cutoff"
+        },
+        "rounding": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rounding"
+        },
+        "missing_data_policy": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Missing Data Policy"
+        },
+        "cancellation_policy": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cancellation Policy"
+        },
+        "exceptional_outcome_policy": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Exceptional Outcome Policy"
+        },
+        "dispute_policy": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Dispute Policy"
+        },
+        "clarification_policy": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Clarification Policy"
+        }
+      },
+      "required": [
+        "payout_mapping",
+        "resolution_source",
+        "cutoff",
+        "rounding",
+        "missing_data_policy",
+        "cancellation_policy",
+        "exceptional_outcome_policy",
+        "dispute_policy",
+        "clarification_policy"
+      ],
+      "title": "SettlementSemantics",
+      "type": "object"
+    },
+    "SourceSpan": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "start": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "title": "End",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "start",
+        "end"
+      ],
+      "title": "SourceSpan",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "compiler_version": {
+      "maxLength": 20000,
+      "minLength": 1,
+      "title": "Compiler Version",
+      "type": "string"
+    },
+    "contract_version_id": {
+      "maxLength": 20000,
+      "minLength": 1,
+      "title": "Contract Version Id",
+      "type": "string"
+    },
+    "observation": {
+      "$ref": "#/$defs/Observation"
+    },
+    "predicate": {
+      "$ref": "#/$defs/Predicate"
+    },
+    "settlement_semantics": {
+      "$ref": "#/$defs/SettlementSemantics"
+    },
+    "field_evidence": {
+      "additionalProperties": {
+        "$ref": "#/$defs/FieldEvidence"
+      },
+      "title": "Field Evidence",
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "compiler_version",
+    "contract_version_id",
+    "observation",
+    "predicate",
+    "settlement_semantics",
+    "field_evidence"
+  ],
+  "title": "SemanticIR",
+  "type": "object"
+}

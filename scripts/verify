@@ -8,3 +8,8 @@ test -s LICENSE
 test -s product_spec_v1.md
 test -s tech_spec_v1.md
 test -s tech_stack_v1.md
+scripts/verify-fast
+uv run --locked ruff format --check src tests
+uv run --locked ty check src
+uv run --locked python -c 'import json; from pathlib import Path; from oddsfox.ir import SemanticIR; assert json.loads(Path("schemas/semantic-ir-1.0.0.schema.json").read_text()) == SemanticIR.model_json_schema()'
+uv build

@@ -1,0 +1,38 @@
+[project]
+name = "oddsfox"
+version = "0.1.0"
+description = "Local, evidence-backed prediction-market compiler and verifier"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+license = "MIT"
+dependencies = [
+  "cvc5>=1.3.1",
+  "duckdb>=1.4.0",
+  "fastapi>=0.116",
+  "httpx>=0.28",
+  "pydantic>=2.12",
+  "rfc8785>=0.1.4",
+  "uvicorn>=0.35",
+]
+
+[project.optional-dependencies]
+model = ["mlx-lm>=0.28; sys_platform == 'darwin' and platform_machine == 'arm64'", "outlines>=1.2"]
+
+[project.scripts]
+oddsfox = "oddsfox.cli:main"
+
+[dependency-groups]
+dev = ["hypothesis>=6.140", "pytest>=8.4", "ruff>=0.13", "ty>=0.0.1"]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B"]

@@ -2,3 +2,5 @@
 set -eu
 cd "$(dirname "$0")/.."
 git diff --check
+uv run --locked ruff check src tests
+uv run --locked pytest -q
