@@ -55,7 +55,9 @@ Public discovery adapters do not enumerate authenticated, exact-symbol combo loo
 (such as the separate Polymarket US beta interface); expose this coverage limitation.
 Only a completed, error-free scan retires unseen catalog entries. Failed child
 membership retrieval preserves the previous event with stale diagnostics and marks
-the scan partial. Store page, membership and governing-document artifacts so volume
+the scan partial. Failed events are not marked successfully processed; interrupted
+pages replay them and retain their errors before any retirement decision.
+Store page, membership and governing-document artifacts so volume
 and semantic evidence remain reproducible after catalog updates.
 
 Official document fetching uses explicit HTTPS host allowlists, public-address
@@ -63,6 +65,12 @@ validation, pinned connections and redirect revalidation. Preserve raw HTML/PDF,
 extracted text and unavailable-material diagnostics. Chunk long text with original
 artifact character spans. Structured outcomes, timing and combination legs also
 become citable artifacts linked to their original API payloads.
+
+Parent event governing text and combination context are part of each child contract’s
+citable semantic content. Changes invalidate child interpretations, reviews and claims;
+volatile page provenance remains in snapshots and does not change semantic identity.
+Reject child-only recaptures that omit already-known parent context, retaining the
+current complete capture and directing refresh through event discovery.
 
 Local explanations cache by source chunks and versioned model/prompt configuration.
 Matching assesses available explanations and records omitted candidates; newly available

@@ -266,12 +266,33 @@ def complete_markets(client, event, venue, store=None):
     return list(unique.values()), complete, sources
 
 
-def capture_market(store, client, venue, market, shared_documents=(), document_cache=None):
+def capture_market(
+    store,
+    client,
+    venue,
+    market,
+    shared_documents=(),
+    document_cache=None,
+    *,
+    event_context=None,
+    event_page_artifact=None,
+):
     expected = market_id(market, venue)
     _, raw = request_json(client, ENDPOINTS[venue] + quote(expected, safe=""))
     identity, metadata, texts, references = normalize(venue, raw)
     if identity != expected:
         raise ValueError("market detail identity does not match requested child")
+    if event_context is not None:
+        texts["event_rules"] = json.dumps(event_context, sort_keys=True, ensure_ascii=False)
+        metadata["event_page_artifact"] = event_page_artifact
+        if event_context.get("mve_collection_ticker") or event_context.get("mve_selected_legs"):
+            metadata["governing_fields"]["is_combination"] = True
+        shared_documents = set(shared_documents) | set(
+            re.findall(
+                r'https?://[^\s<>"\)]+',
+                "\n".join(value for value in event_context.values() if isinstance(value, str)),
+            )
+        )
     urls = {r["url"] for r in references} | set(shared_documents)
     document_cache = {} if document_cache is None else document_cache
     for index, url in enumerate(sorted(urls)):
@@ -327,8 +348,8 @@ def save_event(store, client, venue, event, run_id, page_artifact, source_url, d
             }
             with store.transaction():
                 store.db.execute(
-                    "UPDATE events SET data=?,seen_run=? WHERE id=?",
-                    [json.dumps(retained), run_id, key],
+                    "UPDATE events SET data=? WHERE id=?",
+                    [json.dumps(retained), key],
                 )
             raise ValueError("Incomplete child membership; last successful event retained")
 
@@ -359,10 +380,33 @@ def save_event(store, client, venue, event, run_id, page_artifact, source_url, d
         series_artifact = None
     if venue == "polymarket_us" and active and qualification == "qualified":
         documents.append("https://polymarketexchange.com/files/legal/latest/rulebook")
+    event_context = {
+        "native_event_id": eid,
+        **{
+            field: event[field]
+            for field in (
+                "title",
+                "description",
+                "resolutionSource",
+                "mve_collection_ticker",
+                "mve_selected_legs",
+            )
+            if field in event
+        },
+    }
     if active and qualification == "qualified":
         for market in active:
             contracts.append(
-                capture_market(store, client, venue, market, documents, document_cache)
+                capture_market(
+                    store,
+                    client,
+                    venue,
+                    market,
+                    documents,
+                    document_cache,
+                    event_context=event_context,
+                    event_page_artifact=page_artifact,
+                )
             )
     semantic = None
     semantic_data = {
@@ -443,7 +487,7 @@ def save_event(store, client, venue, event, run_id, page_artifact, source_url, d
                 amount["amount"],
                 qualification,
                 bool(active),
-                run_id,
+                run_id if complete else "",
                 semantic,
                 json.dumps(data),
                 now(),

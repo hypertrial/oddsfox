@@ -676,3 +676,159 @@ def test_unreadable_pdf_preserves_download_and_blocks_completeness(store, monkey
     assert result["status"] == "inaccessible"
     assert "no extractable text" in result["reason"]
     assert store.artifact(result["raw_artifact"]) == raw
+
+
+def test_parent_rules_invalidate_reviewed_child_claims_but_volume_does_not(store):
+    from oddsfox.demo import load_demo
+    from oddsfox.pipeline import Pipeline
+
+    load_demo(store, approve=True)
+    pipeline = Pipeline(store)
+    original = next(
+        r
+        for r in store.list("interpretation")
+        if store.get(r["logical"])["logical"] == "polymarket:example-high"
+    )
+    market = json.loads(store.artifact(store.get(original["logical"])["data"]["payload_artifact"]))
+    market.update(active=True, closed=False, acceptingOrders=True, volume="120001")
+    event = {
+        "id": "parent",
+        "title": "Parent rules",
+        "description": "Use FIRST published value.",
+        "volume": "120001",
+        "markets": [market],
+    }
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=market))
+    ) as client:
+
+        def capture():
+            save_event(
+                store,
+                client,
+                "polymarket",
+                event,
+                "run",
+                store.put_artifact(json.dumps(event).encode()),
+                "https://gamma-api.polymarket.com/events/keyset",
+            )
+            return store._rows("SELECT data FROM events WHERE id='polymarket:parent'")[0]["data"][
+                "contracts"
+            ][0]
+
+        first = capture()
+        ir = original["data"]["ir"] | {"contract_version_id": first}
+        interpretation = pipeline.interpret(json.dumps(ir))
+        review = pipeline.review(
+            interpretation, "fixture", "Reviewed complete parent and child text.", True, True
+        )
+        pipeline.publish()
+        assert store.list("assertion")
+        from oddsfox.ingest import fetch
+
+        with pytest.raises(ValueError, match="event discovery"):
+            import_capture(store, "polymarket", json.dumps(market).encode())
+        failed = fetch(store, "polymarket", [market["id"]], client=client)
+        assert failed[0]["state"] == "failed"
+        assert store.get(review)["current"]
+        assert store.current("contract", "polymarket:" + market["id"])["id"] == first
+        event["volume"] = "900000"
+        assert capture() == first
+        assert store.get(review)["current"]
+        event["description"] = "Use FINAL revised value, overriding individual market descriptions."
+        assert capture() != first
+        assert not store.get(review)["current"]
+        assert not store.list("assertion")
+
+
+@pytest.mark.parametrize("interruption", ["pause", "crash"])
+def test_partial_page_failure_survives_pause_or_crash(tmp_path, monkeypatch, interruption):
+    import oddsfox.sync as sync_module
+    from oddsfox.catalog import set_sync_state
+
+    path = tmp_path / "partial-restart"
+    store = Store(path)
+    bad = {"id": "bad", "markets": [pm("b", volume=None, status="MARKET_STATUS_OPEN")]}
+    unseen = {"id": "unseen", "markets": [pm("u", volume=None, status="MARKET_STATUS_OPEN")]}
+    tail = {"id": "tail", "markets": [pm("t", volume=None, status="MARKET_STATUS_OPEN")]}
+
+    def factory():
+        return httpx.Client(
+            transport=httpx.MockTransport(
+                lambda r: httpx.Response(200, json={"events": [bad, tail]})
+            )
+        )
+
+    with factory() as client:
+        for event in [bad, unseen]:
+            save_event(
+                store, client, "polymarket_us", event, "old", store.put_artifact(b"{}"), "source"
+            )
+    bad["marketCounts"] = {"total": 2}
+    runner = SyncRunner(store, client_factory=factory)
+    set_sync_state(store, "polymarket_us", last_success="previous-success")
+    real = sync_module.save_event
+    interrupted = False
+
+    def capturing(*args, **kwargs):
+        nonlocal interrupted
+        try:
+            return real(*args, **kwargs)
+        finally:
+            if not interrupted:
+                interrupted = True
+                if interruption == "crash":
+                    raise KeyboardInterrupt("simulate process loss after event transaction")
+                runner.pause(True)
+
+    monkeypatch.setattr(sync_module, "save_event", capturing)
+    job = runner.request("polymarket_us")
+    if interruption == "crash":
+        with pytest.raises(KeyboardInterrupt):
+            runner.run_venue("polymarket_us", job)
+    else:
+        runner.run_venue("polymarket_us", job)
+    runner.close()
+    store.close()
+    reopened = Store(path)
+    runner = SyncRunner(reopened, client_factory=factory)
+    monkeypatch.setattr(sync_module, "save_event", real)
+    try:
+        runner.pause(False)
+        runner.run_venue("polymarket_us", runner.request("polymarket_us"))
+        state = reopened._rows("SELECT data FROM sync_state WHERE venue='polymarket_us'")[0]["data"]
+        assert state["state"] == "partial"
+        assert state["error_count"] >= 1
+        assert state["last_success"] == "previous-success"
+        assert reopened._rows("SELECT active FROM events WHERE id='polymarket_us:unseen'")[0][
+            "active"
+        ]
+    finally:
+        runner.close()
+        reopened.close()
+
+
+def test_exhausted_formal_job_is_not_prepared_forever(store, tmp_path, monkeypatch):
+    from oddsfox.explanations import AnalysisEngine
+
+    contract = import_capture(store, "polymarket", json.dumps(pm()).encode())
+    engine = AnalysisEngine(store, tmp_path, generator=lambda *a: "", manifest={"test": True})
+    job = store.enqueue("interpret", [contract], {"test": True})
+    for _ in range(3):
+        store.claim_job(job)
+        store.fail_job(job, "failed strict evidence validation")
+    calls = []
+
+    def prepare(*args):
+        calls.append(args)
+        return job
+
+    monkeypatch.setattr("oddsfox.compiler.prepare_compile", prepare)
+    event = {"data": {"combination": False, "contracts": [contract]}}
+    explanation = {"data": {"families": ["instantaneous_threshold"]}}
+    engine.compile_step(event, explanation)
+    engine.compile_step(event, explanation)
+    assert len(calls) == 1
+    assert (
+        "failed strict evidence validation" in store.list("compilation_issue")[0]["data"]["reason"]
+    )

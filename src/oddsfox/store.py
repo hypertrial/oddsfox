@@ -47,6 +47,7 @@ def governing(data: dict) -> str:
                     "volume",
                     "volume_basis",
                     "retrieved_at",
+                    "event_page_artifact",
                 }
             },
         }
@@ -305,6 +306,14 @@ class Store:
         logical = f"{platform}:{native_id}"
         with self.transaction():
             current = self.current("contract", logical)
+            if (
+                current
+                and "event_rules" in current["data"]["text_artifacts"]
+                and not texts.get("event_rules")
+            ):
+                raise ValueError(
+                    "Known parent governing material cannot be omitted; refresh through event discovery"
+                )
             digest = governing(data)
             heads = self._rows("SELECT digest FROM semantic_heads WHERE logical=?", [logical])
             if current and heads and heads[0]["digest"] == digest:

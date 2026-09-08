@@ -320,8 +320,12 @@ class AnalysisEngine:
                 continue
             try:
                 job = prepare_compile(self.store, contract, self.model_path)
-                state = self.store._rows("SELECT state FROM jobs WHERE id=?", [job])[0]["state"]
-                if state == "pending":
+                record = self.store._rows("SELECT state,diagnostic FROM jobs WHERE id=?", [job])[0]
+                if record["state"] == "failed":
+                    raise ValueError(
+                        record["diagnostic"] or "formal compilation attempts exhausted"
+                    )
+                if record["state"] == "pending":
                     run_compile_job(self.store, job, self.model_path)
                     return True
             except Exception as exc:

@@ -172,3 +172,16 @@ and suggested matches remain UNREVIEWED; none of these runs accepted a formal cl
 Raw outputs remain in the local validation dataset. A cited span establishes
 provenance, not that its generated paraphrase is correct. Full discovery completeness,
 real-contract explanation quality and the existing human product gates remain open.
+
+
+## Follow-up change review
+
+Adversarial review reproduced and fixed two additional failures: a parent event
+rule revision could leave accepted child claims current, and pausing or crashing
+after a partial-membership event could lose its error and falsely retire unseen
+events after resumption. Regressions now cover both, preserving reviews on event
+volume-only changes. Exhausted formal-compilation jobs also retain a terminal
+diagnostic instead of repeatedly preparing and hashing the same model. These
+software fixes do not alter the open live-completeness or human quality gates.
+Manual child-only capture/import cannot discard previously discovered parent
+evidence; the prior version survives with an actionable discovery-refresh error.

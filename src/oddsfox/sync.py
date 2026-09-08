@@ -111,7 +111,14 @@ class SyncRunner:
                             set_sync_state(
                                 self.store,
                                 venue,
-                                state="paused" if not self.stop_event.is_set() else "interrupted",
+                                **(
+                                    state
+                                    | {
+                                        "state": "paused"
+                                        if not self.stop_event.is_set()
+                                        else "interrupted"
+                                    }
+                                ),
                             )
                             return
                         key = f"{venue}:{native_id(event, venue)}"
@@ -158,7 +165,9 @@ class SyncRunner:
             )
         except Exception as exc:
             self.store.fail_job(identity, str(exc))
-            set_sync_state(self.store, venue, state="failed", diagnostic=str(exc)[:1000])
+            set_sync_state(
+                self.store, venue, **(state | {"state": "failed", "diagnostic": str(exc)[:1000]})
+            )
             with self.store.transaction():
                 self.store.db.execute(
                     "UPDATE sync_state SET due=? WHERE venue=?", [time.time() + 60, venue]

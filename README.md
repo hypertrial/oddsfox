@@ -48,7 +48,7 @@ captured citations and explicit gaps. They are not verified equivalences. No mod
 is downloaded automatically and there is no cloud fallback. Initial processing can
 take hours; source chunks are cached and progress appears as work completes.
 
-Offline discovery is also available with `uv run oddsfox sync`, optionally limited
+One-shot discovery is also available with `uv run oddsfox sync`, optionally limited
 by `--venue kalshi`, `--venue polymarket`, or `--venue polymarket_us`.
 Use one process per dataset; stop the server before invoking offline CLI commands.
 The public venue endpoints require no trading credentials, but network access or
@@ -76,7 +76,10 @@ The review workspace also remains available from the event browser.
    `uv run oddsfox import polymarket market.json` preserves an exact local payload.
    Referenced documents can be supplied with `--documents documents.json`, a list
    of `{ "url": "https://...", "text": "...", "status": "captured" }` records.
-   Missing governing documents prevent approval.
+   Missing governing documents prevent approval. A contract already captured through
+   event discovery must also be refreshed through discovery; a child-only import or
+   capture cannot discard its known parent rules. Existing manual-only captures
+   and imports retain their original workflow.
 2. Register an exact reviewed observation with
    `uv run oddsfox register <stable-name> observation.json --reviewer <name> --rationale <reason>`.
    The observation initially has null canonical IDs. The registry fixes every
