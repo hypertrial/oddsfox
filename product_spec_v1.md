@@ -5,9 +5,9 @@ Repository-wide licensing scope is documented in the [README](README.md#license)
 
 ## Purpose and document ownership
 
-OddsFox helps prediction-market researchers determine which contracts describe
-the same outcome, which logically constrain one another, and which differ in
-settlement rules, with inspectable evidence for every conclusion.
+OddsFox is a local, open-source compiler and verifier for prediction-market
+contracts. It produces traceable formal interpretations and verified relationships
+so researchers can compare outcomes and settlement rules with inspectable evidence.
 
 This document owns the user, workflow, scope, and acceptance criteria.
 [Technical specification](tech_spec_v1.md) owns semantics and system behavior.
@@ -23,8 +23,11 @@ and repeating the review when rules change.
 
 OddsFox should reduce that review effort while making consequential differences
 harder to miss. Developers consuming its structured results are a secondary
-audience. A semantic intermediate representation (IR) is the reusable internal
-asset that supports this workflow.
+audience. The semantic intermediate representation (IR) is a first-class public
+product artifact: the primary compiler output and stable interface between
+interpretation, reasoning, evaluation, and downstream consumers. Its versioned,
+language-independent canonical JSON contract is owned by the
+[technical specification](tech_spec_v1.md#public-v1-semantic-ir).
 
 ## User workflow and deliverable
 
@@ -32,8 +35,8 @@ asset that supports this workflow.
 2. Inspect a local comparison report containing candidate relationships,
    settlement differences, unresolved questions, and source evidence.
 3. Review uncertain interpretations and record corrections or approval.
-4. Export accepted relationships and their explicit assumptions for downstream
-   research, or retrieve them through the local API.
+4. Export versioned semantic IR and accepted relationships with their explicit
+   assumptions for downstream research, or retrieve them through the local API.
 5. Refresh the collection and inspect which prior conclusions were withdrawn or
    replaced following source changes.
 
@@ -70,13 +73,17 @@ family to meet a coverage target. Include near-matches and unsupported contracts
 in evaluation so that abstention and mismatch detection are measured.
 
 V1 provides a local report, adjudication workflow, structured export, and local
-API. It publishes symbolic probability constraints for eligible relationships;
-it does not ingest prices or adjust numerical probability estimates.
+API. It publishes symbolic probability constraints derived from verified semantics;
+these are not market-price estimates. It does not ingest prices or adjust numerical
+probability estimates.
 
 Defer elections as a general domain, categorical partitions, n-ary relationships,
 interval maxima, temporal containment, causal inference, forecasting, trade
 execution, graph visualization, and a hosted multi-user service. Extend scope
 only after the first family's interpretation and revision behavior are validated.
+Global probability coherence, larger logical hypergraphs, categorical partitions,
+temporal containment, and trading applications are possible downstream extensions
+enabled by the IR, not V1 deliverables.
 
 ## Trust promise
 
@@ -98,14 +105,17 @@ preserving their history and evidence.
 
 ## Acceptance criteria
 
-Freeze the benchmark, labeling guide, and evaluation procedure before the release
-evaluation. Report denominators, sample sizes, uncertainty intervals, and results
-by venue and contract template; do not describe targets as achieved without data.
+Freeze the benchmark, labeling guide, evaluation procedure, and versioned automatic
+acceptance policy before the release evaluation. Persist the policy version and
+complete configuration with each run. Report denominators, sample sizes,
+uncertainty intervals, and results by venue and contract template; do not describe
+targets as achieved without data.
 
 | Measure | V1 requirement |
 | --- | --- |
 | Relationship precision | Target at least 99% correctness of automatic proposals selected by a frozen acceptance policy, against independent human labels. Score before case-specific approval, rejection, or correction; count erroneous proposals even if review later catches them. Evaluate the complete claim, including scope and conditions. |
 | Coverage and abstention | Report supported contracts / all sampled contracts, completed interpretations / eligible contracts, relationship recall against labeled relationships, and abstention reasons. Publish these alongside precision; abstaining on everything is not success. |
+| Stage-level evaluation | Report field extraction, canonical resolution, settlement interpretation and compatibility classification, relationship precision/recall, automatic acceptance coverage, and abstention using the [metric definitions](tech_spec_v1.md#benchmark-metric-contract). Component metrics supplement the end-to-end gate and identify error sources. |
 | Misleading similarities | Include distinct sources, units, observation times, strict versus inclusive thresholds, and settlement exceptions. No known false equivalence may remain in the release regression suite. |
 | Review effort | Demonstrate lower median time to a correct comparison against manual review on paired tasks, including correction time. Report task count and remaining errors. |
 | Provenance and revisions | Every accepted assertion has complete evidence. All revision fixtures withdraw affected assertions and prevent stale assertions from appearing as current. |

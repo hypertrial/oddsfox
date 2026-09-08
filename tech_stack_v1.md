@@ -48,8 +48,11 @@ or in-memory graph library. Add one only after a measured workload justifies it.
 
 Use `httpx` for venue adapters, with explicit timeouts, bounded retries, and
 rate-limit handling. Use Pydantic to validate typed semantic objects and generate
-their JSON Schema. Preserve validation failures as processing attempts with
-diagnostics, outside the accepted semantic tables.
+the public versioned IR JSON Schema specified in the
+[technical specification](tech_spec_v1.md#public-v1-semantic-ir). Pydantic is the
+implementation schema; the canonical JSON interface is language-independent.
+Preserve validation failures as processing attempts with diagnostics, outside the
+accepted semantic tables.
 
 ## Local model inference
 
@@ -99,9 +102,11 @@ frontend framework is required. Bind to `127.0.0.1`, reject untrusted host/origi
 requests, and require an application-issued session token for review writes so
 unrelated web pages cannot silently approve interpretations.
 
-Provide structured JSON exports through the application and use Parquet for bulk
-datasets. Model work must not block report access. Temporal, Redis, PostgreSQL,
-object-storage services, and a multi-user deployment are outside this V1 stack.
+Provide canonical IR JSON and structured relationship exports through the
+application; use Parquet for bulk datasets. Preserve the public IR schema version
+across persistence and export. Model work must not block report access. Temporal,
+Redis, PostgreSQL, object-storage services, and a multi-user deployment are outside
+this V1 stack.
 
 ## Implementation readiness checks
 
@@ -110,12 +115,14 @@ operating system, chosen Python version, lockfile, and results for:
 
 1. Clean installation and imports on Apple Silicon.
 2. Model loading, constrained generation, and schema validation on representative
-   supported contracts and malformed output.
+   supported contracts and malformed output; public IR canonical round trips,
+   decimal/null preservation, evidence references, and schema-version transitions.
 3. Rule and SMT agreement on threshold boundaries, plus captured proof artifacts
    and bounded solver failure behavior.
 4. End-to-end ingest, review, export, source revision, and stale-result withdrawal.
 5. Interrupted-run recovery, consistent reads during processing, and restoration
    of the database with its artifacts.
-6. The product benchmark, including memory, latency, and review effort measurements.
+6. The product benchmark and technical-spec stage metrics, including the frozen
+   acceptance-policy version/configuration, memory, latency, and review effort.
 
 These are implementation gates, not checks already performed by this document.

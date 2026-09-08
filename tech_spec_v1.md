@@ -38,22 +38,140 @@ Version referenced material as well as the market payload. A clarification can
 invalidate an interpretation even when the title is unchanged. Store the last
 successful refresh and retrieval failures so consumers can assess freshness.
 
-## Semantic representation and canonical identity
+## Public V1 semantic IR
 
-Represent the supported observation and predicate explicitly:
+The primary output of contract compilation is `SemanticIR`, a public serialized
+contract containing `Observation`, `Predicate`, and `SettlementSemantics`.
+Reasoning, evaluation, and exports consume this versioned boundary rather than
+depending on internal Python objects. Interpretation records wrap the IR with
+assessment states, review history, and processing metadata; an IR export by itself
+does not imply semantic approval or a proof.
 
-| Object | Required meaning |
-| --- | --- |
-| Observation | Quantity/entity, source and series or instrument, unit, instant with timezone, observation method, precision, and revision/vintage policy. |
-| Predicate | Canonical observation ID, comparator (`GT`, `GTE`, `LT`, `LTE`), and exact decimal threshold. |
-| Settlement rule | Outcome-to-payout mapping, resolution source, cutoff, rounding, missing-data behavior, cancellation, exceptional resolution, and dispute/clarification policy. |
-| Interpretation | Contract version, observation, predicate, settlement rule, field-level source spans, unresolved fields, and derivation/review metadata. |
+The exact V1 field inventory follows. Every listed key is required; `T?` means
+`T` or JSON `null`, not an omitted key. `string` means a nonempty string.
+
+```text
+SemanticIR
+  schema_version: "1.0.0"
+  compiler_version: string
+  contract_version_id: string
+  observation: Observation
+  predicate: Predicate
+  settlement_semantics: SettlementSemantics
+  field_evidence: map<JSONPointer, FieldEvidence>
+
+Observation
+  canonical_observation_id: string?
+  canonical_observation_version: string?
+  quantity: string?
+  source: string?
+  instrument_or_series: string?
+  unit: string?
+  timestamp: Instant?
+  timezone: string?
+  measurement_method: string?
+  precision: Decimal?
+  revision_policy: string?
+
+Predicate
+  observation_ref: "/observation"
+  comparator: ("GT" | "GTE" | "LT" | "LTE")?
+  threshold: Decimal?
+
+SettlementSemantics
+  payout_mapping: {unit: string?, outcomes: Payout[]}?
+  resolution_source: string?
+  cutoff: Instant?
+  rounding: string?
+  missing_data_policy: string?
+  cancellation_policy: string?
+  exceptional_outcome_policy: string?
+  dispute_policy: string?
+  clarification_policy: string?
+
+Payout
+  outcome_id: string
+  if_true: Decimal?
+  if_false: Decimal?
+
+FieldEvidence
+  source_spans: SourceSpan[]
+  derivation_ref: string?
+
+SourceSpan
+  artifact_id: string
+  start: integer
+  end: integer
+```
+
+`Decimal` is an exact decimal JSON string, never a binary floating-point number.
+Use plain base-10 notation without exponent, plus sign, redundant leading zeros,
+or trailing fractional zeros; zero is `"0"`, never negative zero. `precision`
+expresses a positive measurement increment in the observation unit. `Instant` is
+a UTC timestamp of the form `YYYY-MM-DDTHH:MM:SS[.fraction]Z`, with redundant
+fractional zeros removed. Preserve the source timezone separately as an IANA name
+or explicit numeric offset; unresolved timezone information must not be guessed.
+
+`payout_mapping` describes the two native outcome IDs and ordinary true/false
+predicate branches in its stated payout unit. A non-null mapping contains exactly
+two rows with distinct IDs matching the captured contract's outcomes. Sort outcomes
+by Unicode-code-point order of those IDs, independently of locale.
+Exceptional branches remain in the separate policy fields. Policy and method
+strings are evidence-backed descriptions, not an executable language: only
+reviewed rules/templates can translate supported meanings into solver premises.
+A known description outside the reasoner's support remains unsupported there.
+
+Use [JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901) keys in `field_evidence`
+to attach provenance to any semantic field or nested payout value. Each source
+span references an immutable UTF-8 text artifact, with zero-based, half-open
+Unicode-code-point offsets satisfying `0 <= start < end <= text length` and
+bounded by `2^53 - 1`. Artifact metadata links to the captured contract/source
+version. A derivation reference identifies the versioned normalization rule or
+review record; it does not replace the underlying source evidence. Sort and
+deduplicate spans by `(artifact_id, start, end)`. Explicitly unknown fields can
+have empty evidence; populated semantic values must have source spans, directly
+or through a resolvable derivation record. Structural references and schema/compiler
+IDs use record-level provenance rather than invented contract quotations.
+
+Finalize payout-array order before assigning evidence pointers. A producer that
+reorders existing rows must remap their pointers in the same transformation and
+validate that each span still supports its target field. Readers reject unsorted
+IR arrays rather than silently sorting them: JCS preserves array order. Evidence
+pointers must resolve within the semantic objects of this IR, never into metadata
+or `field_evidence` itself. For span ordering, compare artifact IDs by Unicode
+code points and offsets numerically.
+
+Canonical JSON export uses UTF-8 [JCS (RFC 8785)](https://www.rfc-editor.org/rfc/rfc8785)
+after the field normalizations above. Reject duplicate keys, unknown fields for
+the declared schema version, invalid values, and dangling references. Persist
+schema and compiler versions with every interpretation. Store the SHA-256 digest
+of the canonical IR bytes in interpretation metadata and reference it from proofs
+and exports; the digest is outside the hashed payload. Publish the corresponding
+JSON Schema; serialized consumers must not require Pydantic or Python.
+
+Schema versions are explicit: incompatible structure or meaning changes require
+a new major version and a documented migration/recompilation transition. Preserve
+old artifacts and invalidate affected approvals and proofs; never reinterpret an
+old payload under a new schema. Consumers reject unsupported schema versions
+rather than silently dropping fields. Conformance fixtures must cover canonical
+round trips, exact decimals, explicit nulls, evidence references, and transitions.
+Include reordered payout rows with remapped evidence, non-ASCII IDs, duplicate
+outcome IDs, and evidence pointers that resolve to the wrong field.
+
+## Semantic invariants and canonical identity
 
 Observation time and resolution cutoff are distinct fields. V1 has no implicit
 aggregation: an interval maximum is unsupported. Unknown fields remain unknown;
 do not supply convenient defaults for dates, sources, or exceptional outcomes.
 Raw model responses may be stored as attempts, but only schema-valid objects can
 become interpretations.
+
+V1 carries exactly one observation and one threshold predicate, with no intervals,
+categorical partitions, or multi-market expressions. The local observation
+reference remains valid before canonical resolution; canonical ID and version are
+both null until resolved, then identify the exact registry definition. Partial IR
+can be serialized for review, but unresolved required semantics cannot pass the
+existing interpretation or publication gates.
 
 Canonical observation IDs are stable and their definitions versioned. Match with
 exact identifiers and reviewed aliases first. Model suggestions cannot silently
@@ -138,6 +256,9 @@ must use `P(A | C)` and `P(B | C)` with the same explicit C and `P(C) > 0`.
 Apply the same zero-to-one bounds to conditional probabilities. Include these
 bounds in feasibility checks, not only the derived relationship inequalities.
 These are constraints on event probabilities, not on quoted market prices.
+They are derived outputs of contract compilation and verification. Global
+probability coherence and larger constraint graphs are downstream applications;
+V1's bounded consistency checks do not promise either capability.
 
 Export scope and premises with each constraint. Do not mix differently
 conditioned claims or silently drop settlement exceptions. Check the combined
@@ -164,13 +285,14 @@ output. At publication commit, recheck that every dependency version and review
 approval is still current in the same transaction. A job that finishes after a
 revision or approval withdrawal may retain historical output but cannot restore
 the obsolete assertion to accepted status. Recover interrupted jobs on restart.
-Refresh failure preserves historical
-evidence but must surface stale freshness rather than claim a successful refresh.
+Refresh failure preserves historical evidence but must surface stale freshness
+rather than claim a successful refresh.
 
 ## Consumer contract
 
-The local report and API expose contract versions, interpretations, comparisons,
-review decisions, accepted assertions, symbolic constraints, and revision history.
+The local report and API expose contract versions, interpretations containing
+versioned semantic IR, comparisons, review decisions, accepted assertions,
+symbolic constraints, and revision history.
 Review actions are explicit writes; querying or exporting never implies approval.
 Treat imported contract text and model output as untrusted data. Escape them in
 HTML reports, allow only safe external-link schemes, and never interpret their
@@ -181,6 +303,7 @@ database snapshot. Historical and provisional results require explicit selection
 Every result includes scope, conditions, assessment states, provenance references,
 source freshness, and reasons for abstention or withdrawal. Exports carry a schema
 version and a manifest identifying the exact source and processing versions.
+The IR's own schema version is independent of the export envelope version.
 
 ## Evaluation and observability
 
@@ -189,12 +312,58 @@ relations, hard negatives, ambiguity, and unsupported cases. Keep held-out contr
 templates or event groups separate from development examples to reduce leakage.
 Record independent labels and disagreement resolution. Score automatic proposals
 before case-specific review so adjudication cannot inflate automatic precision.
+Evaluate both the full pipeline and each stage with gold upstream inputs to
+distinguish propagated errors from errors introduced by that stage. Keep these
+results separate; component scores cannot replace the end-to-end release gate.
+
+### Benchmark metric contract
+
+Freeze the eligible corpus, field labels, observation identities, candidate
+comparisons (including hard negatives), and reference relationships before scoring.
+Identify each claim by its contract-version operands, relation type, direction,
+scope, and conditions normalized under the frozen labeling guide. Deduplicate
+claims before calculating precision, recall, or acceptance coverage; repeated
+jobs, proofs, and derivation paths do not create additional observations. Use a
+canonical operand order for symmetric relations and preserve implication direction.
+Score both precision and recall over the same fixed comparison set and closure
+rules, within a common scope and conditioning context, so storage choices do not
+change either score. Compute closure separately
+for all proposals and policy-selected proposals; do not credit the selected set
+with paths that use unselected claims. Only equivalence and implication are
+transitive; exclusion and complement must not be transitively chained. Report
+outputs outside the scoring set separately as unscored. Missing predictions on
+known labels
+are errors or false negatives, not removals from the denominator. Report a zero
+denominator as not applicable with its count, never as perfect accuracy.
+
+| Metric | Definition and required breakdown |
+| --- | --- |
+| IR field extraction accuracy | Correct observation/predicate field values divided by labeled fields, after frozen field-specific normalization. Report per-field and whole-record accuracy, including explicit unknown labels; score canonical IDs separately below. |
+| Canonical observation resolution accuracy | Correct canonical ID/version assignments or correctly unresolved decisions divided by labeled observations. Also report precision among resolved assignments and resolution coverage to expose false merges and excessive abstention. |
+| Settlement-semantics interpretation accuracy | Correct payout and policy meanings divided by labeled settlement fields under the frozen labeling guide, not literal wording equality; report each field and whole-record accuracy, including missing-data, cancellation, and exceptional policies. |
+| Settlement-compatibility classification accuracy | Correct compatibility class and required conditions divided by labeled comparisons. Report a confusion matrix across `COMPATIBLE`, `CONDITIONAL`, `DIFFERENT`, and `UNKNOWN`. |
+| Relationship precision | Correct complete claims divided by emitted claims; report both all proposals and the subset selected by the frozen automatic acceptance policy. The existing at-least-99% end-to-end target applies to the selected subset before case-specific human intervention. |
+| Relationship recall | Correct claims recovered divided by gold positive claims in the fixed comparison set; report both all-proposal and acceptance-selected recall, including missed candidates. |
+| Automatic acceptance coverage | Fixed candidate comparisons with at least one policy-selected claim divided by all fixed candidate comparisons; also report selected claims / emitted claims. Count incorrect selections in coverage and as errors in precision. |
+| Abstention rate and reasons | Explicit abstentions divided by eligible inputs at each stage, split by reason and venue/template. Report failures, missing outputs, and unsupported inputs separately; they remain in applicable accuracy/recall denominators. |
+
+Persist benchmark ID/revision, label and metric-definition versions, full pipeline
+configuration, and `acceptance_policy_version` plus its complete configuration/hash
+with every run. Freeze policy filters and thresholds before held-out evaluation;
+changing them creates a distinct run, never an overwrite. This evaluation selector
+does not bypass the semantic-review requirement for actual accepted publication.
+Retain raw proposals, policy selections, stage outcomes, and later review decisions
+so corrections cannot retrospectively improve the automatic score. Apply the
+product specification's counts, uncertainty intervals, and venue/template
+breakdowns to these metrics as well as to the end-to-end results.
 
 Regression cases include threshold equality boundaries, unit conversion, different
 sources/times/vintages, missing rules, exceptional payouts, inconsistent premises,
 solver timeouts, source/template revisions, interrupted jobs, and idempotent replay.
 Include a job completing after its input or approval was invalidated, probability
 constraints feasible only without zero-to-one bounds, and markup in source text.
+Benchmark fixtures must show that duplicate claims leave metrics unchanged and
+unselected or non-transitive relation paths cannot inflate selected-set recall.
 Compare incremental output with a full rebuild under the same stored inputs and
 configuration. Report syntax and semantic accuracy separately from relation quality.
 

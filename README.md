@@ -3,8 +3,13 @@
 OddsFox is free and open-source software (FOSS), released under the
 [MIT License](LICENSE).
 
-The project helps prediction-market researchers compare contract meanings,
-identify logical relationships, and inspect settlement differences with evidence.
+OddsFox is a local compiler and verifier for prediction-market contracts. It
+produces traceable formal interpretations and verified relationships, helping
+researchers compare contract meanings and inspect settlement differences.
+Its primary compiler output is a public, versioned semantic IR exported as
+canonical JSON; see the [IR contract](tech_spec_v1.md#public-v1-semantic-ir).
+Symbolic probability constraints are derived outputs of verified semantics.
+Global probability coherence and larger constraint graphs are downstream extensions.
 The repository currently contains V1 specifications; they describe planned
 behavior, not a completed implementation.
 
