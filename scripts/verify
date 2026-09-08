@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+cd "$(dirname "$0")/.."
+git diff --check
+git diff --cached --check
+test -s README.md
+test -s LICENSE
+test -s product_spec_v1.md
+test -s tech_spec_v1.md
+test -s tech_stack_v1.md

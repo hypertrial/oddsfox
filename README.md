@@ -19,6 +19,12 @@ behavior, not a completed implementation.
 - [Technical specification](tech_spec_v1.md): semantics, verification, and system behavior.
 - [Technology stack](tech_stack_v1.md): local implementation and deployment choices.
 
+## Development workflow
+
+This repository uses Universal Pad for engineering work. Agent workflow and
+repository-specific verification are documented in [AGENTS.md](AGENTS.md) and
+[PROJECT_AGENT.md](PROJECT_AGENT.md).
+
 ## License
 
 Original OddsFox source code and documentation in this repository are licensed
