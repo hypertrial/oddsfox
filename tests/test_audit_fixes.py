@@ -1,4 +1,4 @@
-"""Observable regressions for the six defects verified in the repository audit."""
+"""Catalog, restore, and compiler regression coverage."""
 
 import hashlib
 import json

@@ -472,9 +472,6 @@ class Pipeline:
                 contexts[key] = {"signature": signature, "records": records}
             return contexts
 
-    def comparison_signature(self):
-        return fingerprint({k: v["signature"] for k, v in self.comparison_contexts().items()})
-
     def cached_comparisons(self):
         contexts = self.comparison_contexts()
         states = []

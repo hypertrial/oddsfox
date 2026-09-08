@@ -17,7 +17,6 @@
 :root {
   color-scheme: dark;
   --brand: #ff5722;
-  --brand-deep: #e64a19;
   --brand-accent: #00e5ff;
   --surface-app: #0b1120;
   --surface-panel: #151e32;
@@ -34,7 +33,6 @@
   --radius-sm: 8px;
   --radius-pill: 9999px;
   --shadow-brand: 0 0 15px -3px rgb(255 87 34 / 0.3);
-  --shadow-accent: 0 0 15px -3px rgb(0 229 255 / 0.3);
 }
 
 *,
