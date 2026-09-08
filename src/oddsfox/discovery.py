@@ -11,7 +11,7 @@ import httpx
 from oddsfox.documents import capture_document
 from oddsfox.ingest import ENDPOINTS, normalize
 from oddsfox.ir import fingerprint
-from oddsfox.store import now
+from oddsfox.store import now, volume_order_key
 
 VENUES = {
     "kalshi": "Kalshi",
@@ -484,7 +484,7 @@ def save_event(store, client, venue, event, run_id, page_artifact, source_url, d
                 eid,
                 str(event.get("title", eid)),
                 str(event.get("category", "Other")),
-                amount["amount"],
+                volume_order_key(amount["amount"]),
                 qualification,
                 bool(active),
                 run_id if complete else "",

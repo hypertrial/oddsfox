@@ -46,7 +46,7 @@ def event_list(
             args + [limit, offset],
         )
     for row in rows:
-        row["volume"] = str(row["volume"]) if row["volume"] is not None else None
+        row["volume"] = row["data"]["volume"]["amount"]
         row["analysis_status"] = (
             "ready" if row["explanation_id"] else "pending" if row["semantic_id"] else "not_queued"
         )
@@ -66,7 +66,7 @@ def event_detail(store, identity):
         if not rows:
             raise ValueError("unknown event")
         row = rows[0]
-        row["volume"] = str(row["volume"]) if row["volume"] is not None else None
+        row["volume"] = row["data"]["volume"]["amount"]
         semantic = row["semantic_id"]
         row["explanation"] = store.current("explanation", semantic) if semantic else None
         row["suggestions"] = store.current("suggestions", semantic) if semantic else None

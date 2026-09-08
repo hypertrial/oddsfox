@@ -119,18 +119,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         if args.command == "restore":
-            if args.data.exists():
-                raise ValueError("restore destination must not exist")
-            if (
-                not (args.backup / "oddsfox.duckdb").is_file()
-                or not (args.backup / "artifacts").is_dir()
-            ):
-                raise ValueError("backup dataset does not exist or is incomplete")
-            source = Store(args.backup)
-            try:
-                source.backup(args.data)
-            finally:
-                source.close()
+            Store.restore(args.backup, args.data)
             restored = Store(args.data)
             try:
                 for file in restored.artifacts.iterdir():

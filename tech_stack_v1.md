@@ -133,7 +133,9 @@ These are implementation gates, not checks already performed by this document.
 ## Discovery runtime additions
 
 Use additive transactional DuckDB version-2 migration for catalogs, retrieval
-snapshots, semantic-head indices, sync state and comparison progress. Existing nodes
+snapshots, semantic-head indices, sync state and comparison progress. Version 3
+atomically replaces the catalog table to store exact decimal ordering keys, using
+preserved volume evidence to recover precision. Existing nodes
 and dependency IDs remain immutable. Backup/restore integrity checks cover the new
 artifact and node references. Keep network clients bounded and model inference
 serialized through the existing MLX lock.

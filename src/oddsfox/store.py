@@ -9,14 +9,20 @@ import re
 import shutil
 import tempfile
 import threading
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
 import duckdb
 
 from oddsfox.ir import fingerprint
+
+EVENT_COLUMNS = """id VARCHAR PRIMARY KEY, venue VARCHAR NOT NULL, native_id VARCHAR NOT NULL,
+    title VARCHAR NOT NULL, category VARCHAR NOT NULL, volume VARCHAR,
+    qualification VARCHAR NOT NULL, active BOOLEAN NOT NULL, seen_run VARCHAR NOT NULL,
+    semantic_id VARCHAR, data JSON NOT NULL, updated VARCHAR NOT NULL"""
 
 
 def now() -> str:
@@ -25,6 +31,21 @@ def now() -> str:
 
 class StaleInput(ValueError):
     pass
+
+
+def volume_order_key(amount: str | None) -> str | None:
+    """Internal exact numeric ordering for nonnegative event totals below 1e26."""
+    if amount is None:
+        return None
+    try:
+        number = Decimal(amount)
+    except InvalidOperation as exc:
+        raise ValueError("invalid event volume") from exc
+    if not number.is_finite() or number < 0 or number >= Decimal("1e26"):
+        raise ValueError("invalid event volume")
+    # Fixed-point formatting is exact, independent of the active decimal context.
+    whole, _, fraction = format(number if number else Decimal(0), "f").partition(".")
+    return whole.zfill(26) + "." + fraction.rstrip("0")
 
 
 def governing(data: dict) -> str:
@@ -67,74 +88,85 @@ class Store:
         except BlockingIOError as exc:
             self._process_lock.close()
             raise RuntimeError("OddsFox is already running for this dataset; use its API") from exc
-        self.db = duckdb.connect(str(self.directory / "oddsfox.duckdb"))
-        self.db.execute("CREATE TABLE IF NOT EXISTS metadata (version INTEGER PRIMARY KEY)")
-        versions = self.db.execute("SELECT version FROM metadata").fetchall()
-        if versions and versions not in ([(1,)], [(2,)]):
-            self.close()
-            raise ValueError(
-                "unsupported database version; preserve dataset and migrate explicitly"
-            )
-        if not versions:
-            self.db.execute("INSERT INTO metadata VALUES (1)")
-        self.db.execute("""CREATE TABLE IF NOT EXISTS nodes (
-            id VARCHAR PRIMARY KEY, kind VARCHAR NOT NULL, logical VARCHAR NOT NULL,
-            data JSON NOT NULL, current BOOLEAN NOT NULL, status VARCHAR NOT NULL,
-            created VARCHAR NOT NULL, reason VARCHAR NOT NULL)""")
-        self.db.execute("""CREATE TABLE IF NOT EXISTS dependencies (
-            child VARCHAR NOT NULL, parent VARCHAR NOT NULL, PRIMARY KEY(child,parent))""")
-        self.db.execute("""CREATE TABLE IF NOT EXISTS refreshes (
-            logical VARCHAR NOT NULL, version_id VARCHAR, retrieved VARCHAR NOT NULL,
-            success BOOLEAN NOT NULL, diagnostic VARCHAR NOT NULL)""")
-        self.db.execute("""CREATE TABLE IF NOT EXISTS jobs (
-            id VARCHAR PRIMARY KEY, stage VARCHAR NOT NULL, inputs JSON NOT NULL,
-            config JSON NOT NULL, state VARCHAR NOT NULL, attempts INTEGER NOT NULL,
-            output VARCHAR, diagnostic VARCHAR NOT NULL, updated VARCHAR NOT NULL)""")
-        self.db.execute("""CREATE TABLE IF NOT EXISTS attempts (
-            job_id VARCHAR NOT NULL, number INTEGER NOT NULL, state VARCHAR NOT NULL,
-            diagnostic VARCHAR NOT NULL, artifact VARCHAR, created VARCHAR NOT NULL)""")
-        # Additive, atomic migration: old immutable nodes and dependencies are untouched.
-        with self.transaction():
-            self.db.execute("""CREATE TABLE IF NOT EXISTS snapshots (
-                logical VARCHAR NOT NULL, version_id VARCHAR NOT NULL,
-                artifact VARCHAR NOT NULL, data JSON NOT NULL, retrieved VARCHAR NOT NULL)""")
-            self.db.execute("""CREATE TABLE IF NOT EXISTS semantic_heads (
-                logical VARCHAR PRIMARY KEY, digest VARCHAR NOT NULL, version_id VARCHAR NOT NULL)""")
-            self.db.execute("""CREATE TABLE IF NOT EXISTS events (
-                id VARCHAR PRIMARY KEY, venue VARCHAR NOT NULL, native_id VARCHAR NOT NULL,
-                title VARCHAR NOT NULL, category VARCHAR NOT NULL, volume DECIMAL(38,12),
-                qualification VARCHAR NOT NULL, active BOOLEAN NOT NULL, seen_run VARCHAR NOT NULL,
-                semantic_id VARCHAR, data JSON NOT NULL, updated VARCHAR NOT NULL)""")
-            self.db.execute("""CREATE TABLE IF NOT EXISTS event_terms (
-                term VARCHAR NOT NULL, event_id VARCHAR NOT NULL, PRIMARY KEY(term,event_id))""")
-            self.db.execute("CREATE INDEX IF NOT EXISTS event_term_lookup ON event_terms(term)")
-            self.db.execute("CREATE INDEX IF NOT EXISTS event_catalog_order ON events(volume)")
-            self.db.execute("""CREATE TABLE IF NOT EXISTS sync_state (
-                venue VARCHAR PRIMARY KEY, job_id VARCHAR, due DOUBLE NOT NULL,
-                paused BOOLEAN NOT NULL, data JSON NOT NULL)""")
-            self.db.execute(
-                "CREATE TABLE IF NOT EXISTS comparison_rows (signature VARCHAR, id VARCHAR, data JSON, PRIMARY KEY(signature,id))"
-            )
-            self.db.execute(
-                "CREATE TABLE IF NOT EXISTS comparison_groups (group_id VARCHAR PRIMARY KEY, signature VARCHAR, state VARCHAR, processed INTEGER, pair_cursor INTEGER, updated DOUBLE)"
-            )
-            self.db.execute(
-                "CREATE TABLE IF NOT EXISTS lane_state (lane VARCHAR PRIMARY KEY, state VARCHAR, diagnostic VARCHAR, retry_at DOUBLE)"
-            )
-            for row in self.list("contract"):
-                self.db.execute(
-                    "INSERT INTO semantic_heads VALUES (?,?,?) ON CONFLICT DO NOTHING",
-                    [row["logical"], governing(row["data"]), row["id"]],
+        try:
+            self.db = duckdb.connect(str(self.directory / "oddsfox.duckdb"))
+            self.db.execute("CREATE TABLE IF NOT EXISTS metadata (version INTEGER PRIMARY KEY)")
+            versions = self.db.execute("SELECT version FROM metadata").fetchall()
+            if versions and versions not in ([(1,)], [(2,)], [(3,)]):
+                raise ValueError(
+                    "unsupported database version; preserve dataset and migrate explicitly"
                 )
-            self.db.execute("UPDATE metadata SET version=2 WHERE version=1")
-        with self.transaction():
-            self.db.execute(
-                "INSERT INTO attempts SELECT id,attempts,'interrupted','process stopped before completion',NULL,? FROM jobs WHERE state='running'",
-                [now()],
-            )
-            self.db.execute(
-                "UPDATE jobs SET state=CASE WHEN attempts>=3 THEN 'failed' ELSE 'pending' END, diagnostic='interrupted; recovered on restart' WHERE state='running'"
-            )
+            if not versions:
+                self.db.execute("INSERT INTO metadata VALUES (1)")
+            self.db.execute("""CREATE TABLE IF NOT EXISTS nodes (
+                id VARCHAR PRIMARY KEY, kind VARCHAR NOT NULL, logical VARCHAR NOT NULL,
+                data JSON NOT NULL, current BOOLEAN NOT NULL, status VARCHAR NOT NULL,
+                created VARCHAR NOT NULL, reason VARCHAR NOT NULL)""")
+            self.db.execute("""CREATE TABLE IF NOT EXISTS dependencies (
+                child VARCHAR NOT NULL, parent VARCHAR NOT NULL, PRIMARY KEY(child,parent))""")
+            self.db.execute("""CREATE TABLE IF NOT EXISTS refreshes (
+                logical VARCHAR NOT NULL, version_id VARCHAR, retrieved VARCHAR NOT NULL,
+                success BOOLEAN NOT NULL, diagnostic VARCHAR NOT NULL)""")
+            self.db.execute("""CREATE TABLE IF NOT EXISTS jobs (
+                id VARCHAR PRIMARY KEY, stage VARCHAR NOT NULL, inputs JSON NOT NULL,
+                config JSON NOT NULL, state VARCHAR NOT NULL, attempts INTEGER NOT NULL,
+                output VARCHAR, diagnostic VARCHAR NOT NULL, updated VARCHAR NOT NULL)""")
+            self.db.execute("""CREATE TABLE IF NOT EXISTS attempts (
+                job_id VARCHAR NOT NULL, number INTEGER NOT NULL, state VARCHAR NOT NULL,
+                diagnostic VARCHAR NOT NULL, artifact VARCHAR, created VARCHAR NOT NULL)""")
+            # Additive, atomic migration: old immutable nodes and dependencies are untouched.
+            with self.transaction():
+                self.db.execute("""CREATE TABLE IF NOT EXISTS snapshots (
+                    logical VARCHAR NOT NULL, version_id VARCHAR NOT NULL,
+                    artifact VARCHAR NOT NULL, data JSON NOT NULL, retrieved VARCHAR NOT NULL)""")
+                self.db.execute("""CREATE TABLE IF NOT EXISTS semantic_heads (
+                    logical VARCHAR PRIMARY KEY, digest VARCHAR NOT NULL, version_id VARCHAR NOT NULL)""")
+                self.db.execute(f"CREATE TABLE IF NOT EXISTS events ({EVENT_COLUMNS})")
+                self.db.execute("""CREATE TABLE IF NOT EXISTS event_terms (
+                    term VARCHAR NOT NULL, event_id VARCHAR NOT NULL, PRIMARY KEY(term,event_id))""")
+                self.db.execute("CREATE INDEX IF NOT EXISTS event_term_lookup ON event_terms(term)")
+                self.db.execute("""CREATE TABLE IF NOT EXISTS sync_state (
+                    venue VARCHAR PRIMARY KEY, job_id VARCHAR, due DOUBLE NOT NULL,
+                    paused BOOLEAN NOT NULL, data JSON NOT NULL)""")
+                self.db.execute(
+                    "CREATE TABLE IF NOT EXISTS comparison_rows (signature VARCHAR, id VARCHAR, data JSON, PRIMARY KEY(signature,id))"
+                )
+                self.db.execute(
+                    "CREATE TABLE IF NOT EXISTS comparison_groups (group_id VARCHAR PRIMARY KEY, signature VARCHAR, state VARCHAR, processed INTEGER, pair_cursor INTEGER, updated DOUBLE)"
+                )
+                self.db.execute(
+                    "CREATE TABLE IF NOT EXISTS lane_state (lane VARCHAR PRIMARY KEY, state VARCHAR, diagnostic VARCHAR, retry_at DOUBLE)"
+                )
+                for row in self.list("contract"):
+                    self.db.execute(
+                        "INSERT INTO semantic_heads VALUES (?,?,?) ON CONFLICT DO NOTHING",
+                        [row["logical"], governing(row["data"]), row["id"]],
+                    )
+                if versions != [(3,)]:
+                    # DuckDB cannot alter an indexed type after DROP INDEX in one
+                    # transaction. Replace the table atomically, retaining its keys.
+                    self.db.execute(f"CREATE TABLE events_v3 ({EVENT_COLUMNS})")
+                    self.db.execute("INSERT INTO events_v3 SELECT * FROM events")
+                    for row in self._rows("SELECT id,data FROM events"):
+                        self.db.execute(
+                            "UPDATE events_v3 SET volume=? WHERE id=?",
+                            [volume_order_key(row["data"]["volume"]["amount"]), row["id"]],
+                        )
+                    self.db.execute("DROP TABLE events")
+                    self.db.execute("ALTER TABLE events_v3 RENAME TO events")
+                    self.db.execute("UPDATE metadata SET version=3")
+                self.db.execute("CREATE INDEX IF NOT EXISTS event_catalog_order ON events(volume)")
+            with self.transaction():
+                self.db.execute(
+                    "INSERT INTO attempts SELECT id,attempts,'interrupted','process stopped before completion',NULL,? FROM jobs WHERE state='running'",
+                    [now()],
+                )
+                self.db.execute(
+                    "UPDATE jobs SET state=CASE WHEN attempts>=3 THEN 'failed' ELSE 'pending' END, diagnostic='interrupted; recovered on restart' WHERE state='running'"
+                )
+        except BaseException:
+            self.close()
+            raise
 
     def close(self):
         with self.lock:
@@ -475,6 +507,51 @@ class Store:
                     copied.verify_integrity()
                 finally:
                     copied.close()
+                staging.rename(destination)
+            finally:
+                if staging.exists():
+                    shutil.rmtree(staging)
+
+    @classmethod
+    def restore(cls, source: Path, destination: Path):
+        """Verify and migrate a private copy; never open the backup for writing."""
+        source, destination = source.resolve(), destination.resolve()
+        if destination.exists() or destination.is_relative_to(source):
+            raise ValueError("restore needs a new directory outside the backup")
+        if not (source / "oddsfox.duckdb").is_file() or not (source / "artifacts").is_dir():
+            raise ValueError("backup dataset does not exist or is incomplete")
+        with ExitStack() as locks:
+            if (source / "writer.lock").exists():
+                lock = locks.enter_context((source / "writer.lock").open("rb"))
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError as exc:
+                    raise RuntimeError("stop the source application before restoring") from exc
+            else:
+                # Legacy/manual copies may omit the process lock. DuckDB's read-only
+                # connection prevents a concurrent writer without creating that file.
+                try:
+                    connection = duckdb.connect(str(source / "oddsfox.duckdb"), read_only=True)
+                except duckdb.Error as exc:
+                    raise ValueError("backup must be stopped and readable before restore") from exc
+                locks.callback(connection.close)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            staging = Path(tempfile.mkdtemp(prefix=".oddsfox-restore-", dir=destination.parent))
+            try:
+                for name in ("oddsfox.duckdb", "oddsfox.duckdb.wal"):
+                    if (source / name).exists():
+                        shutil.copy2(source / name, staging / name)
+                shutil.copytree(source / "artifacts", staging / "artifacts")
+                copied = cls(staging)
+                try:
+                    copied.verify_integrity()
+                    for file in copied.artifacts.iterdir():
+                        if not file.name.startswith(".stage-"):
+                            copied.artifact(file.name)
+                finally:
+                    copied.close()
+                if destination.exists():
+                    raise ValueError("restore destination already exists")
                 staging.rename(destination)
             finally:
                 if staging.exists():

@@ -195,10 +195,14 @@ licenses and terms; this repository's MIT license does not relicense them.
 
 ## Dataset upgrades
 
-Database version 2 adds event catalogs, snapshots, semantic fingerprints and
-processing progress transactionally. Existing immutable records and review history
+Database version 2 added event catalogs, snapshots, semantic fingerprints and
+processing progress. Version 3 transactionally replaces rounded catalog volume
+storage with exact decimal ordering, recovering totals from preserved evidence.
+Existing immutable records and review history
 are retained. Back up the complete dataset before upgrading; older application
 versions refuse a newer database. Restore the pre-upgrade backup for rollback.
+Restore validates and migrates a temporary copy, leaving the original backup
+unchanged; it rejects live sources and publishes only a verified destination.
 A code/model/configuration upgrade can still invalidate current conclusions under
 the existing reproducibility policy. Subsequent volume/status-only refreshes do
 not invalidate unchanged governing interpretations. Source artifact history is

@@ -316,8 +316,14 @@ class AnalysisEngine:
             if current:
                 continue
             issue_key = fingerprint({"contract": contract, "config": self.config_id})
-            if self.store.current("compilation_issue", issue_key):
-                continue
+            issue = self.store.current("compilation_issue", issue_key)
+            if issue:
+                if issue["data"].get("terminal"):
+                    continue
+                # Earlier versions also recorded retryable errors as permanent issues.
+                with self.store.transaction():
+                    self.store.invalidate(issue["id"], "reassess legacy compilation failure")
+            job = None
             try:
                 job = prepare_compile(self.store, contract, self.model_path)
                 record = self.store._rows("SELECT state,diagnostic FROM jobs WHERE id=?", [job])[0]
@@ -329,11 +335,15 @@ class AnalysisEngine:
                     run_compile_job(self.store, job, self.model_path)
                     return True
             except Exception as exc:
+                if job is not None and self.store._rows("SELECT state FROM jobs WHERE id=?", [job])[
+                    0
+                ]["state"] in {"pending", "running"}:
+                    return True
                 with self.store.transaction():
                     self.store.insert(
                         "compilation_issue",
                         issue_key,
-                        {"reason": str(exc)[:1500], "contract": contract},
+                        {"reason": str(exc)[:1500], "contract": contract, "terminal": True},
                         [contract, self.config_id],
                         "NEEDS_REVIEW",
                     )

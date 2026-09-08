@@ -122,7 +122,7 @@ def test_over_250_and_migration_backup_integrity(store, tmp_path):
     restored = Store(backup)
     try:
         assert restored.get(first)["id"] == first
-        assert restored.db.execute("SELECT version FROM metadata").fetchall() == [(2,)]
+        assert restored.db.execute("SELECT version FROM metadata").fetchall() == [(3,)]
         restored.verify_integrity()
     finally:
         restored.close()

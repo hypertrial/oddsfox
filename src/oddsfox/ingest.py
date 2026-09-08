@@ -29,7 +29,14 @@ def normalize(platform: str, raw: bytes) -> tuple[str, dict, dict[str, str], lis
         outcomes = ["no", "yes"] if market.get("market_type") == "binary" else []
         texts = {
             key: market[key]
-            for key in ("title", "subtitle", "rules_primary", "rules_secondary")
+            for key in (
+                "title",
+                "subtitle",
+                "yes_sub_title",
+                "no_sub_title",
+                "rules_primary",
+                "rules_secondary",
+            )
             if isinstance(market.get(key), str)
         }
         metadata = {

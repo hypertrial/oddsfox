@@ -21,6 +21,7 @@ envelope, outside the hashed payload. An IR artifact alone carries no semantic
 approval. Current acceptance additionally requires reviewed definitions, explicit
 interpretation approval, formal verification and current dependency versions.
 
-The implementation rejects other schema major versions. There is no existing old
-production dataset to migrate; a future migration must preserve artifacts and
-invalidate old approvals before recompilation.
+The implementation rejects other schema major versions. Persistence has its own
+schema version, independent of Semantic IR 1.0.0.
+Dataset migrations preserve artifacts and review history; governing or compiler
+changes invalidate dependent approvals before recompilation.

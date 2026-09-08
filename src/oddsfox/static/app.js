@@ -32,7 +32,7 @@ async function refresh(){
       const actions=node("div",undefined,"actions");for(const approve of [true,false])actions.append(action(approve?"Approve interpretation":"Reject / withdraw approval",()=>api(`/api/reviews/${interpretation.id}`,{reviewer:$("reviewer").value,rationale:rationale.value,approve,governing_material_complete:attestation.checked})));reviewBox.append(actions);el.append(reviewBox);
     }else el.append(node("p","No interpretation yet. Start a candidate or run your configured local model.","muted"));
     const edit=node("details");edit.append(node("summary",interpretation?"Correct interpretation":"Create interpretation candidate"));const input=node("textarea");input.rows=12;input.setAttribute("aria-label","Semantic IR JSON");input.value=interpretation?pretty(interpretation.data.ir):"";edit.append(input);
-    edit.append(action("Load empty schema",async()=>{input.value=pretty(await api(`/api/contracts/${c.id}/draft`));},false),action("Save candidate",()=>api("/api/interpret",{ir:JSON.parse(input.value)})));el.append(edit);
+    edit.append(action("Load empty schema",async()=>{input.value=pretty(await api(`/api/contracts/${c.id}/draft`));},false),action("Save candidate",()=>api("/api/interpret",{ir:JSON.parse(input.value),derivations:interpretation?.data.derivations||{}})));el.append(edit);
     for(const model of data.models)el.append(action(`Compile with ${model}`,()=>api("/api/compile",{contract_version_id:c.id,model_name:model})));
     $("contract-list").append(el);
   }

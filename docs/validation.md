@@ -185,3 +185,16 @@ diagnostic instead of repeatedly preparing and hashing the same model. These
 software fixes do not alter the open live-completeness or human quality gates.
 Manual child-only capture/import cannot discard previously discovered parent
 evidence; the prior version survives with an actionable discovery-refresh error.
+
+
+## Subsequent audit regression coverage
+
+Regression tests cover Kalshi outcome-subtitle revision invalidation, source-preserving
+legacy/WAL restore, exact catalog volume serialization and ordering, transactional
+indexed migration and rollback, bounded transient compilation retries (including
+legacy failure records), normalized-candidate editor corrections, and selected event
+detail refresh after claim withdrawal. Background updates preserve open evidence
+and keyboard focus, and identical detail payloads leave the DOM intact. Retry
+coverage reopens a dataset after its first failed attempt. Negative controls retain invalid-derivation
+rejection, exhausted-job limits, live-source exclusion and closed-detail behavior.
+These are software checks; the live-discovery and human quality gates remain open.

@@ -49,6 +49,8 @@ native child IDs are deduplicated before volume aggregation. Parse volume as exa
 decimals; missing fields are unknown. Prefer documented lifetime event totals,
 otherwise require complete current/historical child membership. Kalshi contract
 counts are multiplied by face value. Never substitute session stats or open interest.
+Catalog APIs preserve those exact amounts. Indexed ordering must remain numerically
+correct even when totals differ beyond twelve fractional digits.
 
 Cursor/offset pagination preserves resume checkpoints and detects repeated pages.
 Public discovery adapters do not enumerate authenticated, exact-symbol combo lookups
@@ -338,6 +340,9 @@ output. At publication commit, recheck that every dependency version and review
 approval is still current in the same transaction. A job that finishes after a
 revision or approval withdrawal may retain historical output but cannot restore
 the obsolete assertion to accepted status. Recover interrupted jobs on restart.
+Pending compilation attempts remain retryable; only exhausted or unrecoverable
+preparation failures suppress further automatic work. Legacy failure records are
+reassessed without resetting attempt counts.
 Refresh failure preserves historical evidence but must surface stale freshness
 rather than claim a successful refresh.
 
