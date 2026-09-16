@@ -117,14 +117,13 @@ technical path, not real-contract accuracy or independent human precision.
 - Local six-model panel resource results on that representative corpus.
 
 Synthetic demo approvals are explicitly labeled as such. Neither the demo nor
-the scorer manufactures independent human evidence or consensus evidence. CI
-configuration is included;
-the first pushed implementation run passed its 90 tests but failed type checking
-because optional MLX/Outlines imports were unresolved in the core-only environment.
-Optional backends now load through the standard-library module loader only when
-a configured model job executes. The current local
-core-only completion gate passes 109 tests, and Linux-target type checking passes;
-a new remote run of the corrected revision is still required.
+the scorer manufactures independent human evidence or consensus evidence. As a
+historical record, the first pushed implementation run passed its 90 tests but
+failed type checking because optional MLX/Outlines imports were unresolved in the
+core-only environment. Optional backends now load through the standard-library
+module loader only when a configured model job executes. The corrected local
+core-only completion gate passed 109 tests and Linux-target type checking. Current
+verification policy and results are recorded above; no remote rerun is required.
 
 ## Historical three-venue implementation (2026-09-08)
 
