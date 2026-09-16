@@ -9,6 +9,7 @@ from oddsfox.reasoning import RELATIONS
 
 METRIC_VERSION = "oddsfox-metrics/3"
 METRIC_V4 = "oddsfox-metrics/4"
+CONSENSUS_AGREEMENT = "consensus-agreement/1"
 STAGES = ("ir_fields", "canonical_resolution", "settlement_fields", "settlement_compatibility")
 
 
@@ -95,6 +96,10 @@ def selected(claim: dict, policy: dict) -> bool:
         policy["require_resolved"], bool
     ):
         raise ValueError("unsupported acceptance policy")
+    if policy["version"] == CONSENSUS_AGREEMENT:
+        if policy["require_resolved"] is not False:
+            raise ValueError("consensus agreement cannot require solver resolution")
+        return claim["scope"] in policy["allowed_scopes"]
     return (
         claim.get("proof", {}).get("state") == "PROVEN_UNDER_PREMISES"
         and claim["scope"] in policy["allowed_scopes"]
@@ -398,6 +403,7 @@ def evaluate(benchmark: dict, run: dict) -> dict:
         coverage = labeled / sampled if sampled else None
         wilson_lower = selected_interval[0] if selected_interval else None
         venues = {c["venue"] for c in benchmark["contracts"]}
+        by_id = {c["id"]: c["venue"] for c in benchmark["contracts"]}
         report["label_source"] = "local_unanimous_consensus"
         report["consensus"] = {
             "protocol": benchmark.get("label_version"),
@@ -414,9 +420,10 @@ def evaluate(benchmark: dict, run: dict) -> dict:
             "selected_agreement_target": selected_precision is not None
             and selected_precision >= 0.99,
             "selected_agreement_wilson_lower": wilson_lower is not None and wilson_lower >= 0.95,
-            "unanimous_cross_venue_relationship": run.get("unanimous_cross_venue_relationship")
-            is True,
-            "unanimous_near_match_rejection": run.get("unanimous_near_match_rejection") is True,
+            "unanimous_cross_venue_relationship": any(
+                by_id.get(c["a"]) != by_id.get(c["b"]) for c in benchmark["gold_claims"]
+            ),
+            "unanimous_near_match_rejection": bool(benchmark.get("near_match_rejections")),
             "zero_accepted_known_false_equivalences": run.get(
                 "zero_accepted_known_false_equivalences"
             )

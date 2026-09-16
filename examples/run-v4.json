@@ -1,5 +1,5 @@
 {
-  "benchmark_hash": "ce86cced39c60e13f01f011045a71ac9bde78ca60f90591c306336faaeeb3a2f",
+  "benchmark_hash": "3c6d5b34f2ff6f1ba8f23990d02aa86db10b7f563c82c619448f389bc3069f0f",
   "scored_before_case_review": true,
   "pipeline_configuration": {
     "compiler": "test",

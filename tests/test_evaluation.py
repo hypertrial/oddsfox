@@ -205,3 +205,27 @@ def test_compatibility_conditions_use_frozen_normalization(actual, correct):
     for metrics in [result, *result["breakdowns"].values()]:
         score = metrics["stages"]["settlement_compatibility/pipeline"]
         assert score["whole_record"]["correct"] == correct
+
+
+def test_consensus_agreement_selects_pair_claims_without_solver_proofs():
+    from oddsfox.evaluation import CONSENSUS_AGREEMENT, selected
+
+    policy = {
+        "version": CONSENSUS_AGREEMENT,
+        "allowed_scopes": ["OBSERVED_EVENT"],
+        "allowed_settlement_states": ["CONDITIONAL", "COMPATIBLE"],
+        "require_resolved": False,
+        "normalization": "exact-string-set/1",
+    }
+    claim = {"a": "a", "b": "b", "relation": "IMPLIES", "scope": "OBSERVED_EVENT", "conditions": []}
+    assert selected(claim, policy) is True
+    with pytest.raises(ValueError, match="solver resolution"):
+        selected(claim, policy | {"require_resolved": True})
+    bench, run = benchmark_run()
+    run["acceptance_policy"] = policy
+    run["proposals"] = [
+        {"a": "a", "b": "b", "relation": "IMPLIES", "scope": "OBSERVED_EVENT", "conditions": []}
+    ]
+    report = evaluate(bench, run)
+    assert report["relationships"]["selected_precision"]["value"] == 1
+    assert report["relationships"]["selected_recall"]["correct"] == 1

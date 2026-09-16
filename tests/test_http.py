@@ -23,6 +23,30 @@ def test_rejects_loopback_and_mapped_addresses():
     assert not is_public_ip("169.254.1.1")
     assert not is_public_ip("fc00::1")
     assert is_public_ip("::ffff:8.8.8.8")
+    assert not is_public_ip("64:ff9b::7f00:1")
+    assert not is_public_ip("64:ff9b:1::7f00:1")
+    assert is_public_ip("64:ff9b::808:808")
+
+
+def test_stream_get_rejects_hosts_outside_the_allowlist():
+    import inspect
+
+    parameter = inspect.signature(stream_get).parameters["allowed_hosts"]
+    assert parameter.default is inspect.Parameter.empty
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+
+    def handler(request):
+        raise AssertionError(f"non-allowlisted request reached transport: {request.url}")
+
+    with httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=False) as client:
+        with pytest.raises(ValueError, match="approved official"):
+            stream_get(
+                client,
+                "https://example.org/markets",
+                allowed_hosts=VENUE_HOSTS,
+                follow_redirects=False,
+                max_bytes=1024,
+            )
 
 
 def test_venue_redirect_is_fail_closed():
@@ -212,6 +236,10 @@ def test_model_manifest_rejects_loaders_python_and_symlinks(tmp_path, monkeypatc
     with pytest.raises(ValueError, match="Python"):
         model_manifest(path)
     (path / "hook.py").unlink()
+    (path / "hook.PY").write_text("print('no')\n")
+    with pytest.raises(ValueError, match="Python"):
+        model_manifest(path)
+    (path / "hook.PY").unlink()
     (path / "escape").symlink_to("/etc/passwd")
     with pytest.raises(ValueError, match="symbolic links"):
         model_manifest(path)

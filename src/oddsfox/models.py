@@ -54,7 +54,7 @@ def model_manifest(path: Path) -> dict:
         resolved = file.resolve()
         if not resolved.is_relative_to(root):
             raise ValueError("model files must stay inside the model directory")
-        if file.suffix == ".py":
+        if file.suffix.casefold() in {".py", ".pyc", ".pyw"}:
             raise ValueError("model directory must not contain Python files")
     relevant = [
         p for p in files if p.suffix in {".safetensors", ".json", ".model", ".txt", ".jinja"}

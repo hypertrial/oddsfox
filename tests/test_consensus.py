@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -159,7 +160,7 @@ def test_unanimous_and_dissent_and_timeout(store, tmp_path):
     )
     assert result["abstention"] == "timeout"
     frozen = store.current("consensus_label_set", f"timeout:{config_id}")["id"]
-    collect_unanimous(
+    retried = collect_unanimous(
         store,
         kind="contract",
         subject="s3",
@@ -171,7 +172,14 @@ def test_unanimous_and_dissent_and_timeout(store, tmp_path):
         generator=agreeing,
         manifests=EVALUATORS,
     )
+    node = store.get(frozen)
     assert store.current("consensus_label_set", f"timeout:{config_id}")["id"] == frozen
+    assert retried["id"] == frozen
+    assert retried["label"] is None
+    assert retried["abstention"] == "timeout"
+    assert retried["ballots"] == node["data"]["ballots"]
+    assert node["data"]["label"] is None
+    assert node["data"]["abstention"] == "timeout"
 
 
 def test_malformed_ballot_abstains(store, tmp_path):
@@ -289,7 +297,14 @@ def test_metrics_v4_rejects_human_flags_and_reports_agreement():
     report = evaluate(bench, run)
     assert report["metric_definition_version"] == "oddsfox-metrics/4"
     assert report["release_gates"]["independent_human_labels"] is False
-    assert "selected_agreement_target" in report["release_gates"]
+    assert report["release_gates"]["unanimous_cross_venue_relationship"] is True
+    assert report["release_gates"]["unanimous_near_match_rejection"] is False
+    same_venue = dict(bench)
+    same_venue["gold_claims"] = [{**bench["gold_claims"][0], "a": "b", "b": "c"}]
+    same_venue["near_match_rejections"] = [{"a": "b", "b": "c", "differences": ["source"]}]
+    same_report = evaluate(same_venue, run | {"benchmark_hash": fingerprint(same_venue)})
+    assert same_report["release_gates"]["unanimous_cross_venue_relationship"] is False
+    assert same_report["release_gates"]["unanimous_near_match_rejection"] is True
     with pytest.raises(ValueError, match="human-validation"):
         evaluate(bench, run | {"cross_venue_human_validation": True})
     human = dict(bench)
@@ -304,6 +319,21 @@ def test_metrics_v4_rejects_human_flags_and_reports_agreement():
     del missing_source["label_source"]
     with pytest.raises(ValueError, match="label_source"):
         evaluate(missing_source, run | {"benchmark_hash": fingerprint(missing_source)})
+
+
+def test_v4_example_corpus_gates_ignore_run_flags():
+    root = Path(__file__).resolve().parents[1]
+    bench = json.loads((root / "examples/benchmark-v4.json").read_text())
+    run = json.loads((root / "examples/run-v4.json").read_text())
+    report = evaluate(bench, run)
+    assert report["release_gates"]["unanimous_cross_venue_relationship"] is True
+    assert report["release_gates"]["unanimous_near_match_rejection"] is True
+    lying = dict(run)
+    lying["unanimous_cross_venue_relationship"] = False
+    lying["unanimous_near_match_rejection"] = False
+    still = evaluate(bench, lying)
+    assert still["release_gates"]["unanimous_cross_venue_relationship"] is True
+    assert still["release_gates"]["unanimous_near_match_rejection"] is True
 
 
 def test_incomplete_scan_cannot_freeze(store):
@@ -395,6 +425,7 @@ def test_consensus_can_publish_when_enabled(store, tmp_path):
     assert published
     export = Pipeline(store).export()
     assert export["assertions"][0]["data"]["acceptance_basis"] == LOCAL_MODEL_CONSENSUS
+    assert "REVIEWED" not in export["assertions"][0]["data"]["interpretation_assessments"]
     assert export["consensus_approvals"]
     assert Pipeline(store, allow_consensus=False).publish() == []
 
@@ -436,9 +467,12 @@ def test_completed_ballots_resume_without_regenerating(store, tmp_path):
         generator=agreeing,
         manifests=EVALUATORS,
     )
+    frozen = store.get(first["id"])
     assert len(calls) == 3
-    assert second["label"] == first["label"]
-    assert second["ballots"] == first["ballots"]
+    assert second["id"] == first["id"] == frozen["id"]
+    assert second["label"] == first["label"] == frozen["data"]["label"]
+    assert second["ballots"] == first["ballots"] == frozen["data"]["ballots"]
+    assert second["abstention"] == frozen["data"]["abstention"]
 
 
 def test_partial_or_error_scans_cannot_freeze(store):
@@ -708,3 +742,52 @@ def test_human_review_still_publishes_and_outranks_consensus(store, tmp_path):
         assert {row["data"]["acceptance_basis"] for row in export["assertions"]} == {HUMAN_REVIEW}
     finally:
         dataset.close()
+
+
+def test_consensus_approve_cli_exists_and_does_not_insert_review(tmp_path, monkeypatch, capsys):
+    from oddsfox.cli import main, parser
+    from oddsfox.store import Store
+
+    parsed = parser().parse_args(
+        ["consensus-approve", "interp", "--producer-model", str(tmp_path / "p0")]
+    )
+    assert parsed.command == "consensus-approve"
+    assert parsed.interpretation_id == "interp"
+
+    dataset_path = tmp_path / "cli-dataset"
+    store = Store(dataset_path)
+    interpretation_id = load_demo(store)["interpretations"][0]
+    assert store.list("review") == []
+    store.close()
+
+    seen = []
+
+    def stub(store, interpretation_id, producer_paths, **kwargs):
+        seen.append((interpretation_id, [str(path) for path in producer_paths], kwargs))
+        return "consensus-approval-id"
+
+    monkeypatch.setattr("oddsfox.consensus.approve_interpretation", stub)
+    producer = tmp_path / "p0"
+    assert (
+        main(
+            [
+                "--data",
+                str(dataset_path),
+                "consensus-approve",
+                interpretation_id,
+                "--producer-model",
+                str(producer),
+            ]
+        )
+        == 0
+    )
+    assert seen == [(interpretation_id, [str(producer)], {})]
+    assert json.loads(capsys.readouterr().out) == {"id": "consensus-approval-id"}
+
+    store = Store(dataset_path)
+    try:
+        assert store.list("review") == []
+        assert store._rows("SELECT id FROM nodes WHERE kind=?", ["review"]) == []
+        assert store.current("review", interpretation_id) is None
+    finally:
+        store.close()

@@ -37,12 +37,14 @@ async function refresh(){
       const review=data.reviews.find(r=>r.logical===interpretation.id);
       const consensus=(data.consensus_approvals||[]).find(r=>r.logical===interpretation.id);
       const rejected=Boolean(review&&!review.data.approved);
+      const consensusAccepted=Boolean(consensus&&data.allow_consensus===true&&!rejected);
       let status=interpretation.data.assessment, statusClass="badge";
       if(review&&review.data.approved){status="REVIEWED";statusClass="badge success";}
       else if(rejected){status="REJECTED / WITHDRAWN";statusClass="badge warning";}
-      else if(consensus){status="LOCAL MODEL CONSENSUS";statusClass="badge success";}
+      else if(consensusAccepted){status="LOCAL MODEL CONSENSUS";statusClass="badge success";}
       el.append(node("p",status,statusClass),details("Semantic interpretation & evidence",interpretation.data.ir),link("Canonical IR JSON",`/api/interpretations/${interpretation.id}/ir`));
-      if(consensus&&!rejected)el.append(node("p","Acceptance basis: LOCAL MODEL CONSENSUS. A current human rejection vetoes this.","small muted"));
+      if(consensusAccepted)el.append(node("p","Acceptance basis: LOCAL MODEL CONSENSUS. A current human rejection vetoes this.","small muted"));
+      else if(consensus&&!rejected)el.append(node("p","Producer-panel record recorded. Consensus publication is off.","small muted"));
       const quotes=node("details");quotes.append(node("summary","Source excerpts for each semantic field"));quotes.addEventListener("toggle",async()=>{if(!quotes.open || quotes.dataset.loaded)return;try{const rows=await api(`/api/interpretations/${interpretation.id}/evidence`);for(const row of rows){quotes.append(node("p",`${row.field}: ${pretty(row.value)}`,"small"));for(const source of row.sources)quotes.append(node("blockquote",source.text));}quotes.dataset.loaded="true";}catch(e){notice(e.message,true);}});el.append(quotes);
       const reviewBox=node("details");reviewBox.append(node("summary","Review this exact interpretation"),node("p","Check each populated field against its quotation. Approval covers this IR and its exact dependencies; solver results do not establish language accuracy."));
       const rationale=node("input");rationale.placeholder="Rationale and unresolved issues";const label=node("label","Review rationale");label.append(rationale);reviewBox.append(label);

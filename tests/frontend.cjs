@@ -564,6 +564,7 @@ test('consensus status is not REVIEWED and human review remains available', asyn
     reviews:[],
     consensus_approvals:[{logical:'i',data:{acceptance_basis:'LOCAL_MODEL_CONSENSUS'}}],
     freshness:[],comparisons:[],near_matches:[],models:[],status:{pending_review:1},
+    allow_consensus:true,
   };
   const run=async extra=>{
     const elements={};
@@ -585,6 +586,10 @@ test('consensus status is not REVIEWED and human review remains available', asyn
   assert.ok(!vetoed.some(e=>e.textContent==='LOCAL MODEL CONSENSUS'));
   assert.ok(!vetoed.some(e=>String(e.textContent||'').includes('LOCAL MODEL CONSENSUS')));
   assert.ok(!vetoed.some(e=>e.textContent==='REVIEWED'));
+  const unpublished=await run({allow_consensus:false});
+  assert.ok(!unpublished.some(e=>e.textContent==='LOCAL MODEL CONSENSUS'));
+  assert.ok(!unpublished.some(e=>String(e.textContent||'').includes('Acceptance basis: LOCAL MODEL CONSENSUS')));
+  assert.ok(unpublished.some(e=>String(e.textContent||'').includes('Consensus publication is off')));
 });
 
 test('suggested matches stay UNREVIEWED and never look accepted', async () => {

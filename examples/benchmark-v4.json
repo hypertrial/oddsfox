@@ -94,5 +94,12 @@
   ],
   "label_source": "local_unanimous_consensus",
   "metric_definition_version": "oddsfox-metrics/4",
-  "label_abstentions": []
+  "label_abstentions": [],
+  "near_match_rejections": [
+    {
+      "a": "a",
+      "b": "c",
+      "differences": ["source"]
+    }
+  ]
 }

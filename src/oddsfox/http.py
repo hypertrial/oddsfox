@@ -25,12 +25,21 @@ VENUE_HOSTS = frozenset(
         "gamma-api.polymarket.com",
     }
 )
+NAT64_PREFIXES = (
+    ipaddress.ip_network("64:ff9b::/96"),
+    ipaddress.ip_network("64:ff9b:1::/96"),
+)
 
 
 def is_public_ip(address: str) -> bool:
     ip = ipaddress.ip_address(address)
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            ip = ip.ipv4_mapped
+        else:
+            for prefix in NAT64_PREFIXES:
+                if ip in prefix:
+                    return is_public_ip(str(ipaddress.IPv4Address(ip.packed[-4:])))
     return bool(ip.is_global) and not ip.is_multicast and not ip.is_unspecified
 
 

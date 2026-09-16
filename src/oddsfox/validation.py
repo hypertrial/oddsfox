@@ -6,7 +6,7 @@ from pathlib import Path
 
 from oddsfox.catalog import candidates_for, sync_status
 from oddsfox.discovery import VENUES
-from oddsfox.evaluation import comparison_key, evaluate
+from oddsfox.evaluation import CONSENSUS_AGREEMENT, comparison_key, evaluate
 from oddsfox.ir import fingerprint
 from oddsfox.judge import (
     ContractBallot,
@@ -281,6 +281,7 @@ def producer_run(
 ) -> dict:
     manifests = manifests or [model_manifest(path) for path in producer_paths]
     disjoint_panels(manifests, store.get(corpus["evaluator_panel"])["data"]["models"])
+    scans_complete(store)
     config_id = persist_config(store, "producer-panel", panel_config("producer", manifests))
     proposals = []
     outcomes = []
@@ -355,10 +356,10 @@ def producer_run(
             "schema": "1.0.0",
         },
         "acceptance_policy": {
-            "version": "consensus-selector/1",
+            "version": CONSENSUS_AGREEMENT,
             "allowed_scopes": ["OBSERVED_EVENT"],
             "allowed_settlement_states": ["CONDITIONAL", "COMPATIBLE"],
-            "require_resolved": True,
+            "require_resolved": False,
             "normalization": "exact-string-set/1",
         },
         "proposals": proposals,

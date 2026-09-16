@@ -100,8 +100,8 @@ technical path, not real-contract accuracy or independent human precision.
 - Frozen real corpus with local unanimous evaluator-panel labels, held-out
   templates and a measured acceptance policy meeting the documented agreement
   target, Wilson bound, coverage, and provenance gates.
-- Unanimous cross-venue relationship and unanimous near-match rejection in that
-  frozen corpus.
+- Unanimous evaluator-panel cross-venue relationship and unanimous evaluator-panel
+  near-match rejection in that frozen corpus (not producer self-report).
 - Complete zero-error two-venue scans before freeze; insufficient inventory leaves
   the gate unmet.
 - Local six-model panel resource results on that representative corpus.

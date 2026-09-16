@@ -351,6 +351,8 @@ class Pipeline:
         ]
 
     def iter_comparisons(self, *, pair_start=0, pair_limit=None, on_pair=None, records=None):
+        from oddsfox.consensus import human_approved
+
         with self.store.lock:
             records = self.store.list("interpretation") if records is None else records
             approved_ids = {r["id"] for r in records if self._approved(r)}
@@ -416,7 +418,9 @@ class Pipeline:
                             "interpretations": [r["id"] for r in operands],
                             "ir_digests": [left.digest(), right.digest()],
                             "interpretation_assessments": [
-                                "REVIEWED" if r["id"] in approved_ids else r["data"]["assessment"]
+                                "REVIEWED"
+                                if human_approved(self.store, r)
+                                else r["data"]["assessment"]
                                 for r in operands
                             ],
                             "settlement": compatibility,

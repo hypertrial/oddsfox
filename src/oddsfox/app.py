@@ -268,6 +268,7 @@ def create_app(
             }
             data["status"] = store.status()
             data["models"] = sorted(models)
+            data["allow_consensus"] = allow_consensus
             return data
 
     @app.get("/api/export")

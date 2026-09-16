@@ -70,8 +70,11 @@ original automatic output. Store `proposals`, `stage_outputs`, and `outcomes`.
 
 The complete acceptance policy contains `version`, `allowed_scopes`,
 `allowed_settlement_states`, `require_resolved`, and `normalization`.
-Selection also requires a proven result and two supported interpretation
-assessments. This benchmark selector never grants semantic approval in the product.
+The v3 solver selector also requires a proven result and two supported
+interpretation assessments. Metrics v4 producer runs use
+`consensus-agreement/1` with `require_resolved: false`: selected agreement is
+in-universe producer pair claims versus evaluator labels, not fabricated solver
+proofs. This benchmark selector never grants semantic approval in the product.
 
 Stage outputs use the label's `id`, `stage`, and `mode` with a `values` map.
 Outcomes record contract `id`, stage (`interpret`, `resolve`, `compare`), `state`
@@ -104,9 +107,11 @@ Metric definition `oddsfox-metrics/4` adds evaluator-label coverage, label
 abstentions, panel/protocol provenance, and machine-verifiable consensus gates:
 complete zero-error scans, sample size, both-venue representation, label coverage
 at least 0.80, selected agreement at least 0.99 with Wilson lower bound at least
-0.95, one unanimous cross-venue relationship, one unanimous near-match rejection,
-zero accepted known false equivalences, and passing provenance/invalidation
-checks. Automation diagnostics replace review-time claims.
+0.95, one unanimous evaluator-panel cross-venue relationship, one unanimous
+evaluator-panel near-match rejection, zero accepted known false equivalences, and
+passing provenance/invalidation checks. The two relationship gates are frozen
+corpus evidence, not producer self-report. Automation diagnostics replace
+review-time claims.
 
 For paired review experiments, record `paired_review_tasks` with `manual_seconds`,
 `assisted_seconds`, `manual_correct`, and `assisted_correct`; times must include
