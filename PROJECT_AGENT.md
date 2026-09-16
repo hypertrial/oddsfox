@@ -40,9 +40,10 @@ the repository. There is one writer per dataset; server users use its API.
 
 Wrappers work from any directory. For OddsFox, a fresh local `scripts/verify` run is
 the authoritative completion gate. GitHub Actions is not used because hosted
-Actions are unavailable to the free organization. Model smokes and local six-model
-panel evaluation run locally; record their actual outcomes in Pad and never
-substitute synthetic fixtures for consensus evidence.
+Actions are unavailable to the free organization. The latest verified baseline is
+235 passing tests with two upstream dependency deprecation warnings. Model smokes
+and local six-model panel evaluation run locally; record their actual outcomes in
+Pad and never substitute synthetic fixtures for consensus evidence.
 Update wrappers, these notes and canonical Universal Pad configuration together
 when changing required verification. See `docs/validation.md` for executed checks
 and `docs/benchmark.md` for the frozen evaluation interface.

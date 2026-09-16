@@ -15,8 +15,9 @@ core and Outlines imports passed. Model inference is a separate check.
 GitHub Actions is not used because hosted Actions are unavailable to the free
 organization. The failed run for commit `e7f66dc` did not start a runner or execute
 repository checks. A fresh local `scripts/verify` run is the authoritative software
-completion gate. At `e7f66dc` it passed Ruff, formatting, ty, public-schema drift,
-the package build and 235 tests, with two upstream dependency deprecation warnings.
+completion gate. The latest verified baseline passed Ruff, formatting, ty,
+public-schema drift, the package build and 235 tests, with two upstream dependency
+deprecation warnings.
 Historical CI results below remain execution records for their exact revisions;
 they are not the current completion mechanism.
 
@@ -27,10 +28,10 @@ evidence, unsupported schemas, strict/inclusive threshold boundaries, differenti
 cvc5 checks, review gates, dependency revisions, stale jobs, crash recovery,
 backup restoration, local API security, captured markup, exports and benchmark
 deduplication/closure. The completion wrapper also runs lint, formatting, type
-checks, schema drift validation and a package build.
-The final local completion gate passed with 90 tests. Two upstream test-client
-deprecation warnings remain. Independent architecture, security/recovery and
-final verification reviews passed after their findings were fixed.
+checks, schema drift validation and a package build. In an earlier historical
+validation pass, the local completion gate passed with 90 tests and two upstream
+test-client deprecation warnings. Independent architecture, security/recovery and
+final verification reviews for that revision passed after their findings were fixed.
 
 Independent reviews exposed and prompted regression coverage for incorrect job
 operand binding, configuration rollback, mixed-comparator candidate selection,
@@ -285,8 +286,9 @@ and human-rejection veto. Event details deep-link to
 truth, independent human review, or proven natural-language correctness.
 
 Executed verification: `scripts/verify-fast` and `scripts/verify` passed with
-231 tests, Ruff, ty, public schema drift, and the package build. CI remains
-weight-free. **Local six-model panel evaluation and complete two-venue scans were
-not run in this session**; those remain unmet product gates, not a CI substitute.
+231 tests, Ruff, ty, public schema drift, and the package build. The historical
+hosted run remained weight-free. **Local six-model panel evaluation and complete
+two-venue scans were not run in this session**; those remain unmet product gates,
+not a software-gate substitute.
 Do not enable `--enable-consensus-publication` until a complete v4 local evidence
 bundle satisfies every frozen machine gate.
