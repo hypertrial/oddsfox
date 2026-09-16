@@ -155,14 +155,20 @@ uv run oddsfox validate --output /path/to/new-bundle \
   --evaluator-model /path/to/evaluator-a --evaluator-model /path/to/evaluator-b --evaluator-model /path/to/evaluator-c
 ```
 
-Pass a single `--model` for explanations. Producer and evaluator panels must each
-contain at least three distinct families with no overlap. `validate` writes a
-create-only hashed evidence bundle. Consensus publication stays off until
+Pass a single `--model` for explanations. Every panel model directory must have an
+adjacent operator-controlled `<directory>.oddsfox-lineage.json` that binds its
+declared architecture and lineage to a weights-only content digest. Keeping the
+approval outside the downloaded model package prevents model files from
+self-attesting review. Producer and evaluator panels must
+each contain at least three distinct lineages and weight sets with no overlap.
+`validate` stages, verifies, and atomically publishes a create-only hashed evidence
+bundle. Consensus publication stays off until
 `oddsfox publish --allow-consensus`.
 
 Model weights are separate downloads. OddsFox hashes their files and records
-quantization, family, chat-template hash, runtime, prompt, schema and decoding
-settings for each job. Initial
+quantization, reviewed lineage, architecture, weights-only and full-directory
+digests, chat-template hash, runtime, prompt, schema and decoding settings for
+each job. Initial
 generation is serialized, with an 8 GiB MLX allocation limit and at most 8,192
 generated tokens. A 300-second budget is checked between prefill/decode steps;
 it is not a hard deadline for model loading or a stalled native backend.
@@ -171,7 +177,8 @@ field names, and captured source-line spans (at most 256 lines). Large string an
 array size limits are enforced by the complete public IR validator afterward,
 avoiding excessive decoder automaton expansion. The explicit
 `--unconstrained` option creates a different recorded configuration. Invalid model
-outputs remain failed attempts with raw evidence. There is no external inference
+outputs or invalid citations remain failed attempts with raw evidence. Citation
+artifact IDs and Unicode offsets are checked against the captured source. There is no external inference
 fallback or automatic approval. `replay` revalidates a stored response without
 running inference. Inspect `status` for failures, pending work and measurements.
 The selected local model passed a synthetic compilation smoke with 26 evidence
@@ -210,7 +217,7 @@ Run `scripts/verify-fast` during development and `scripts/verify` before complet
 work. The latter runs lint, formatting, type checks, tests, schema drift checks and
 a package build. A fresh local `scripts/verify` run is the authoritative completion
 gate. GitHub Actions is not used because hosted Actions are unavailable to the free
-organization. The latest verified baseline is 235 passing tests with two upstream
+organization. The latest verified baseline is 269 passing tests with two upstream
 dependency deprecation warnings; model and product benchmarks also remain local.
 
 ## License

@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import httpx
@@ -10,6 +11,22 @@ from oddsfox.http import (
     stream_get,
     validate_https_url,
 )
+from oddsfox.ir import fingerprint
+
+
+def write_lineage(path, *, weights=b"weights", lineage="qwen2", architecture="qwen2"):
+    revision = fingerprint([hashlib.sha256(weights).hexdigest()])
+    path.with_name(f"{path.name}.oddsfox-lineage.json").write_text(
+        json.dumps(
+            {
+                "schema": "oddsfox-model-lineage/1",
+                "architecture": architecture,
+                "lineage": lineage,
+                "weights_revision": revision,
+                "operator_reviewed": True,
+            }
+        )
+    )
 
 
 def test_rejects_loopback_and_mapped_addresses():
@@ -142,6 +159,35 @@ def test_mixed_public_and_mapped_loopback_dns_is_rejected(monkeypatch):
         resolve_public("docs.polymarket.com")
 
 
+def test_pinned_request_preserves_host_and_sni(monkeypatch):
+    seen = {}
+
+    class CaptureTransport(httpx.BaseTransport):
+        def handle_request(self, request):
+            seen["url"] = str(request.url)
+            seen["host"] = request.headers["host"]
+            seen["sni"] = request.extensions["sni_hostname"]
+            return httpx.Response(200, content=b"ok", request=request)
+
+    monkeypatch.setattr("oddsfox.http.resolve_public", lambda host: (host, "8.8.8.8"))
+    with httpx.Client(transport=CaptureTransport()) as client:
+        assert (
+            stream_get(
+                client,
+                "https://gamma-api.polymarket.com/markets",
+                allowed_hosts=VENUE_HOSTS,
+                follow_redirects=False,
+                max_bytes=1024,
+            )
+            == b"ok"
+        )
+    assert seen == {
+        "url": "https://8.8.8.8/markets",
+        "host": "gamma-api.polymarket.com",
+        "sni": "gamma-api.polymarket.com",
+    }
+
+
 def test_validate_https_url_rejects_credentials_and_ports():
     with pytest.raises(ValueError):
         validate_https_url("http://docs.polymarket.com/x", DOCUMENT_HOSTS)
@@ -170,8 +216,10 @@ def test_extractor_rss_kill(monkeypatch):
 
     monkeypatch.setattr("oddsfox.documents.sys.platform", "darwin")
     monkeypatch.setattr("oddsfox.documents.child_rss_bytes", lambda pid: 2 * 1024**3)
+    proc = Proc()
     with pytest.raises(ValueError, match="memory budget"):
-        supervise_extractor(Proc(), wall_seconds=5)
+        supervise_extractor(proc, wall_seconds=5)
+    assert proc.killed is True
 
 
 def test_chat_template_pin(tmp_path, monkeypatch):
@@ -185,6 +233,7 @@ def test_chat_template_pin(tmp_path, monkeypatch):
     )
     (path / "tokenizer_config.json").write_text(json.dumps({"chat_template": "{{ bos }}"}))
     (path / "weights.safetensors").write_bytes(b"weights")
+    write_lineage(path)
     text = chat_template_text(path)
     manifest = model_manifest(path)
     assert text == "{{ bos }}"
@@ -192,6 +241,10 @@ def test_chat_template_pin(tmp_path, monkeypatch):
     assert manifest["chat_template_sha256"]
     (path / "tokenizer_config.json").write_text("{}")
     with pytest.raises(ValueError, match="chat template"):
+        model_manifest(path)
+    (path / "tokenizer_config.json").write_text(json.dumps({"chat_template": "{{ bos }}"}))
+    write_lineage(path, architecture="unrelated")
+    with pytest.raises(ValueError, match="does not match"):
         model_manifest(path)
 
 
@@ -208,6 +261,7 @@ def test_loaded_chat_template_must_match_pinned_manifest(tmp_path, monkeypatch):
     )
     (path / "tokenizer_config.json").write_text(json.dumps({"chat_template": "{{ bos }}"}))
     (path / "weights.safetensors").write_bytes(b"weights")
+    write_lineage(path)
     pinned = model_manifest(path)
     verify_loaded_template(SimpleNamespace(chat_template="{{ bos }}"), pinned)
     with pytest.raises(ValueError, match="does not match"):

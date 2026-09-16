@@ -1,5 +1,7 @@
 """Immutable local-judge ballots. Consensus is unanimous agreement, never human truth."""
 
+import time
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
@@ -10,7 +12,7 @@ from oddsfox.models import MODEL_LOCK, generate_constrained, model_manifest
 from oddsfox.store import Store
 
 PROTOCOL = "local-unanimous-consensus/1"
-PROMPT_VERSION = "judge-ballots/1"
+PROMPT_VERSION = "judge-ballots/2"
 MIN_PANEL = 3
 ABSTAINED = "ABSTAINED"
 
@@ -128,20 +130,84 @@ def parse_ballot(kind: str, raw: str | bytes):
     raise ValueError("unknown ballot kind")
 
 
+def validate_citations(
+    kind: str,
+    payload: dict,
+    artifacts: dict[str, str],
+    artifact_groups: list[set[str]] | None = None,
+) -> None:
+    citations = payload.get("citations", [])
+    keys = [(row["artifact_id"], row["start"], row["end"]) for row in citations]
+    if len(keys) != len(set(keys)):
+        raise ValueError("ballot citations must be unique")
+    for artifact_id, start, end in keys:
+        text = artifacts.get(artifact_id)
+        if text is None:
+            raise ValueError("ballot cites an unknown captured artifact")
+        if start >= end or end > len(text):
+            raise ValueError("ballot citation is empty, reversed, or out of range")
+    contract_semantics = {
+        "quantity",
+        "source",
+        "instrument_or_series",
+        "unit",
+        "timestamp",
+        "timezone",
+        "measurement_method",
+        "precision",
+        "revision_policy",
+        "canonical_observation_id",
+        "canonical_observation_version",
+        "comparator",
+        "threshold",
+        "resolution_source",
+        "cutoff",
+        "rounding",
+        "missing_data_policy",
+        "cancellation_policy",
+        "exceptional_outcome_policy",
+        "dispute_policy",
+        "clarification_policy",
+    }
+    required = (
+        payload.get("eligible") is True
+        or payload.get("family") != "unsupported"
+        or any(payload.get(field) is not None for field in contract_semantics)
+        if kind == "contract"
+        else payload.get("relationship") != "NONE"
+        or payload.get("settlement_compatibility") != "UNKNOWN"
+        or bool(payload.get("conditions"))
+        or bool(payload.get("near_match_differences"))
+    )
+    if required and not citations:
+        raise ValueError("eligible or semantic ballot requires captured-source citations")
+    cited = {row[0] for row in keys}
+    if (
+        kind == "pair"
+        and required
+        and (not artifact_groups or any(not cited.intersection(group) for group in artifact_groups))
+    ):
+        raise ValueError("pair ballots require captured-source citations from both operands")
+
+
 def panel_config(role: str, manifests: list[dict]) -> dict:
     if role not in {"producer", "evaluator"}:
         raise ValueError("panel role must be producer or evaluator")
     if len(manifests) < MIN_PANEL:
         raise ValueError("each panel requires at least three local models")
     identities = [m["identity"] for m in manifests]
-    families = [m["family"] for m in manifests]
-    revisions = [m["weight_revision"] for m in manifests]
+    families = [m.get("lineage") for m in manifests]
+    revisions = [m.get("weights_revision") for m in manifests]
+    if any(not isinstance(value, str) or not value for value in families):
+        raise ValueError("panel models require operator-reviewed lineage metadata")
+    if any(not isinstance(value, str) or not value for value in revisions):
+        raise ValueError("panel models require weights-only content identities")
     if len(set(identities)) != len(identities):
         raise ValueError("panel models must have distinct identities")
     if len(set(families)) != len(families):
         raise ValueError("panel models must be distinct families")
     if len(set(revisions)) != len(revisions):
-        raise ValueError("panel models must have distinct weight revisions")
+        raise ValueError("panel models must have distinct weight sets")
     return {
         "protocol": PROTOCOL,
         "prompt": PROMPT_VERSION,
@@ -157,16 +223,16 @@ def disjoint_panels(producer: list[dict], evaluator: list[dict]) -> None:
     panel_config("evaluator", evaluator)
     producer_ids = {m["identity"] for m in producer}
     evaluator_ids = {m["identity"] for m in evaluator}
-    producer_families = {m["family"] for m in producer}
-    evaluator_families = {m["family"] for m in evaluator}
-    producer_rev = {m["weight_revision"] for m in producer}
-    evaluator_rev = {m["weight_revision"] for m in evaluator}
+    producer_families = {m["lineage"] for m in producer}
+    evaluator_families = {m["lineage"] for m in evaluator}
+    producer_rev = {m["weights_revision"] for m in producer}
+    evaluator_rev = {m["weights_revision"] for m in evaluator}
     if producer_ids & evaluator_ids:
         raise ValueError("producer and evaluator panels cannot share model identities")
     if producer_families & evaluator_families:
         raise ValueError("producer and evaluator panels cannot share model families")
     if producer_rev & evaluator_rev:
-        raise ValueError("producer and evaluator panels cannot share weight revisions")
+        raise ValueError("producer and evaluator panels cannot share weight sets")
 
 
 def persist_config(store: Store, logical: str, config: dict) -> str:
@@ -185,26 +251,30 @@ def record_ballot(
     raw_artifact: str | None,
     status: str,
     reason: str = "",
+    measurement: dict | None = None,
+    dependencies: list[str] | None = None,
 ) -> str:
     data = {
         "protocol": PROTOCOL,
         "prompt": PROMPT_VERSION,
         "kind": kind,
         "subject": subject,
+        "config_id": config_id,
         "model": model,
         "payload": payload,
         "raw_response_artifact": raw_artifact,
         "reason": reason,
+        "measurement": measurement or {},
     }
     with store.transaction():
+        parents = [config_id, *(dependencies or [])]
+        if store._rows("SELECT id FROM nodes WHERE id=?", [subject]):
+            parents.append(subject)
         identity = store.insert(
             "judge_ballot",
             f"{kind}:{subject}:{model['identity']}:{config_id}",
             data,
-            [
-                config_id,
-                *([subject] if store._rows("SELECT id FROM nodes WHERE id=?", [subject]) else []),
-            ],
+            list(dict.fromkeys(parents)),
             status,
             make_current=True,
         )
@@ -232,9 +302,10 @@ def freeze_label_set(
     ballots: list[str],
     label: dict | None,
     abstention: str | None,
+    dependencies: list[str] | None = None,
 ) -> str:
     existing = store._rows(
-        "SELECT id FROM nodes WHERE kind=? AND logical=? ORDER BY created,id",
+        "SELECT id FROM nodes WHERE kind=? AND logical=? AND current=true ORDER BY created,id",
         ["consensus_label_set", logical],
     )
     if existing:
@@ -250,15 +321,15 @@ def freeze_label_set(
         "label_source": "local_unanimous_consensus",
         "ballots": ballots,
     }
-    dependencies = [config_id]
+    parents = [config_id, *ballots, *(dependencies or [])]
     if store._rows("SELECT id FROM nodes WHERE id=?", [subject]):
-        dependencies.append(subject)
+        parents.append(subject)
     with store.transaction():
         return store.insert(
             "consensus_label_set",
             logical,
             data,
-            dependencies,
+            list(dict.fromkeys(parents)),
             "LABELED" if label is not None else ABSTAINED,
         )
 
@@ -274,12 +345,19 @@ def run_ballot(
     schema: dict,
     generator=None,
     manifest: dict | None = None,
-) -> tuple[str, dict | None, str | None]:
+    artifacts: dict[str, str] | None = None,
+    artifact_groups: list[set[str]] | None = None,
+    dependencies: list[str] | None = None,
+    expected_pair: dict | None = None,
+) -> tuple[str, dict | None, str | None, dict]:
     manifest = manifest or model_manifest(model_path)
     config = store.get(config_id)["data"]
+    parents = [config_id, *(dependencies or [])]
+    if store._rows("SELECT id FROM nodes WHERE id=?", [subject]):
+        parents.append(subject)
     job_id = store.enqueue(
         "judge",
-        [config_id],
+        list(dict.fromkeys(parents)),
         {
             "protocol": PROTOCOL,
             "prompt": PROMPT_VERSION,
@@ -293,14 +371,25 @@ def run_ballot(
     if claimed is None:
         output = store._rows("SELECT output FROM jobs WHERE id=?", [job_id])[0]["output"]
         if not output:
-            return job_id, None, "missing ballot"
+            return job_id, None, "missing ballot", {}
         record = store.get(output)
-        return output, record["data"].get("payload"), record["data"].get("reason") or None
+        return (
+            output,
+            record["data"].get("payload"),
+            record["data"].get("reason") or None,
+            record["data"].get("measurement", {}),
+        )
     raw_artifact = None
+    started = time.monotonic()
+    peak_memory = 0
     try:
+        path = Path(model_path)
+        before = model_manifest(path) if (path / "config.json").is_file() else manifest
+        if fingerprint(before) != fingerprint(manifest):
+            raise ValueError("model manifest changed before generation")
         if generator is None:
             with MODEL_LOCK:
-                raw, _peak = generate_constrained(
+                raw, peak_memory = generate_constrained(
                     model_path,
                     prompt,
                     schema,
@@ -312,6 +401,27 @@ def run_ballot(
             raw = generator(prompt, schema)
         raw_artifact = store.put_artifact(raw.encode() if isinstance(raw, str) else raw)
         payload = parse_ballot(kind, raw)
+        validate_citations(kind, payload, artifacts or {}, artifact_groups)
+        if (
+            kind == "pair"
+            and expected_pair is not None
+            and (
+                payload["scope"] != expected_pair["scope"]
+                or conditions(payload["conditions"]) != conditions(expected_pair["conditions"])
+            )
+        ):
+            raise ValueError("pair identity mismatch")
+        after = model_manifest(path) if (path / "config.json").is_file() else manifest
+        if fingerprint(after) != fingerprint(before):
+            raise ValueError("model manifest changed during generation")
+        job = store._rows("SELECT attempts FROM jobs WHERE id=?", [job_id])[0]
+        measurement = {
+            "stage": kind,
+            "latency_seconds": time.monotonic() - started,
+            "peak_memory_bytes": peak_memory,
+            "failures": 0,
+            "retries": max(0, job["attempts"] - 1),
+        }
         identity = record_ballot(
             store,
             kind=kind,
@@ -321,10 +431,20 @@ def run_ballot(
             payload=payload,
             raw_artifact=raw_artifact,
             status="RECORDED",
+            measurement=measurement,
+            dependencies=dependencies,
         )
         store.complete_job(job_id, identity, raw_artifact)
-        return identity, payload, None
+        return identity, payload, None, measurement
     except TimeoutError as exc:
+        job = store._rows("SELECT attempts FROM jobs WHERE id=?", [job_id])[0]
+        measurement = {
+            "stage": kind,
+            "latency_seconds": time.monotonic() - started,
+            "peak_memory_bytes": peak_memory,
+            "failures": 1,
+            "retries": max(0, job["attempts"] - 1),
+        }
         identity = record_ballot(
             store,
             kind=kind,
@@ -335,10 +455,21 @@ def run_ballot(
             raw_artifact=raw_artifact,
             status=ABSTAINED,
             reason="timeout",
+            measurement=measurement,
+            dependencies=dependencies,
         )
         store.fail_job(job_id, f"{type(exc).__name__}: {str(exc)[:1500]}", raw_artifact)
-        return identity, None, "timeout"
+        return identity, None, "timeout", measurement
     except Exception as exc:
+        job = store._rows("SELECT attempts FROM jobs WHERE id=?", [job_id])[0]
+        measurement = {
+            "stage": kind,
+            "latency_seconds": time.monotonic() - started,
+            "peak_memory_bytes": peak_memory,
+            "failures": 1,
+            "retries": max(0, job["attempts"] - 1),
+        }
+        reason = str(exc) if isinstance(exc, ValueError) else type(exc).__name__
         identity = record_ballot(
             store,
             kind=kind,
@@ -348,10 +479,12 @@ def run_ballot(
             payload={},
             raw_artifact=raw_artifact,
             status=ABSTAINED,
-            reason=f"{type(exc).__name__}",
+            reason=reason,
+            measurement=measurement,
+            dependencies=dependencies,
         )
         store.fail_job(job_id, f"{type(exc).__name__}: {str(exc)[:1500]}", raw_artifact)
-        return identity, None, type(exc).__name__
+        return identity, None, reason, measurement
 
 
 def collect_unanimous(
@@ -366,10 +499,14 @@ def collect_unanimous(
     schema: dict,
     generator=None,
     manifests: list[dict] | None = None,
+    artifacts: dict[str, str] | None = None,
+    artifact_groups: list[set[str]] | None = None,
+    dependencies: list[str] | None = None,
+    expected_pair: dict | None = None,
 ) -> dict:
     frozen_logical = f"{logical}:{config_id}"
     existing = store._rows(
-        "SELECT id FROM nodes WHERE kind=? AND logical=? ORDER BY created,id",
+        "SELECT id FROM nodes WHERE kind=? AND logical=? AND current=true ORDER BY created,id",
         ["consensus_label_set", frozen_logical],
     )
     if existing:
@@ -382,12 +519,17 @@ def collect_unanimous(
             "abstention": abstention,
             "disagreement": abstention == "dissent",
             "id": frozen["id"],
+            "measurements": [
+                store.get(identity)["data"].get("measurement", {})
+                for identity in frozen["data"].get("ballots", [])
+            ],
         }
     ballots = []
     payloads = []
     reasons = []
+    measurements = []
     for index, path in enumerate(paths):
-        identity, payload, reason = run_ballot(
+        identity, payload, reason, measurement = run_ballot(
             store,
             kind=kind,
             subject=subject,
@@ -397,8 +539,13 @@ def collect_unanimous(
             schema=schema,
             generator=generator,
             manifest=None if manifests is None else manifests[index],
+            artifacts=artifacts,
+            artifact_groups=artifact_groups,
+            dependencies=dependencies,
+            expected_pair=expected_pair,
         )
         ballots.append(identity)
+        measurements.append(measurement)
         if payload is None:
             reasons.append(reason or "invalid ballot")
         else:
@@ -418,6 +565,7 @@ def collect_unanimous(
         ballots=ballots,
         label=label,
         abstention=abstention,
+        dependencies=dependencies,
     )
     frozen = store.get(frozen_id)
     label = frozen["data"]["label"]
@@ -428,6 +576,7 @@ def collect_unanimous(
         "abstention": abstention,
         "disagreement": abstention == "dissent",
         "id": frozen["id"],
+        "measurements": measurements,
     }
 
 

@@ -137,7 +137,8 @@ operating system, chosen Python version, lockfile, and results for:
    of the database with its artifacts.
 6. The product benchmark and technical-spec stage metrics, including the frozen
    acceptance-policy version/configuration, consensus panel/protocol identifiers,
-   memory, latency, and automation diagnostics.
+   reviewed lineage and weights-only revisions, pair-label coverage, memory,
+   per-stage latency, total wall time, failures, retries, and automation diagnostics.
 
 These are implementation gates, not checks already performed by this document.
 

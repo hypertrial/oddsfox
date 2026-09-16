@@ -1,63 +1,67 @@
 {
-  "benchmark_hash": "3c6d5b34f2ff6f1ba8f23990d02aa86db10b7f563c82c619448f389bc3069f0f",
+  "benchmark_hash": "09829af8a253cbbda61e81305e7a5c6a59748db5c1d37444f086af6a9adf5fef",
+  "evidence_mode": "synthetic-fixture",
   "scored_before_case_review": true,
   "pipeline_configuration": {
     "compiler": "test",
-    "model": null,
+    "protocol": "local-unanimous-consensus/1",
+    "producer_panel_manifest": {
+      "protocol": "local-unanimous-consensus/1",
+      "prompt": "judge-ballots/2",
+      "role": "producer",
+      "unanimity": "exact-canonical",
+      "sampling": {"temperature": 0},
+      "models": [
+        {"identity": "p0", "lineage": "producer-0", "weights_revision": "producer-weights-0"},
+        {"identity": "p1", "lineage": "producer-1", "weights_revision": "producer-weights-1"},
+        {"identity": "p2", "lineage": "producer-2", "weights_revision": "producer-weights-2"}
+      ]
+    },
     "schema": "1.0.0"
   },
   "acceptance_policy": {
-    "version": "test/1",
-    "allowed_scopes": [
-      "OBSERVED_EVENT"
-    ],
-    "allowed_settlement_states": [
-      "CONDITIONAL"
-    ],
-    "require_resolved": true,
+    "version": "consensus-agreement/1",
+    "allowed_scopes": ["OBSERVED_EVENT"],
+    "allowed_settlement_states": ["CONDITIONAL", "COMPATIBLE"],
+    "require_resolved": false,
     "normalization": "exact-string-set/1"
   },
   "proposals": [
-    {
-      "a": "a",
-      "b": "b",
-      "relation": "IMPLIES",
-      "scope": "OBSERVED_EVENT",
-      "conditions": [],
-      "proof": {
-        "state": "PROVEN_UNDER_PREMISES"
-      },
-      "settlement": {
-        "state": "CONDITIONAL"
-      },
-      "interpretation_assessments": [
-        "SUPPORTED",
-        "SUPPORTED"
-      ]
-    },
-    {
-      "a": "b",
-      "b": "c",
-      "relation": "IMPLIES",
-      "scope": "OBSERVED_EVENT",
-      "conditions": [],
-      "proof": {
-        "state": "PROVEN_UNDER_PREMISES"
-      },
-      "settlement": {
-        "state": "UNKNOWN"
-      },
-      "interpretation_assessments": [
-        "SUPPORTED",
-        "SUPPORTED"
-      ]
-    }
+    {"a": "a", "b": "b", "relation": "IMPLIES", "scope": "OBSERVED_EVENT", "conditions": []}
   ],
-  "stage_outputs": [],
-  "outcomes": [],
+  "stage_outputs": [
+    {"id": "a", "stage": "ir_fields", "mode": "pipeline", "values": {"quantity": null, "source": null, "instrument_or_series": null, "unit": null, "comparator": null, "threshold": "1", "measurement_method": null, "timestamp": null, "timezone": null, "precision": null, "revision_policy": null}},
+    {"id": "a", "stage": "canonical_resolution", "mode": "pipeline", "values": {"canonical_observation_id": null, "canonical_observation_version": null}},
+    {"id": "a", "stage": "settlement_fields", "mode": "pipeline", "values": {"resolution_source": null, "cutoff": null, "rounding": null, "missing_data_policy": null, "cancellation_policy": null, "exceptional_outcome_policy": null, "dispute_policy": null, "clarification_policy": null}},
+    {"id": "b", "stage": "ir_fields", "mode": "pipeline", "values": {"quantity": null, "source": null, "instrument_or_series": null, "unit": null, "comparator": null, "threshold": null, "measurement_method": null, "timestamp": null, "timezone": null, "precision": null, "revision_policy": null}},
+    {"id": "b", "stage": "canonical_resolution", "mode": "pipeline", "values": {"canonical_observation_id": null, "canonical_observation_version": null}},
+    {"id": "b", "stage": "settlement_fields", "mode": "pipeline", "values": {"resolution_source": null, "cutoff": null, "rounding": null, "missing_data_policy": null, "cancellation_policy": null, "exceptional_outcome_policy": null, "dispute_policy": null, "clarification_policy": null}},
+    {"id": "c", "stage": "ir_fields", "mode": "pipeline", "values": {"quantity": null, "source": null, "instrument_or_series": null, "unit": null, "comparator": null, "threshold": null, "measurement_method": null, "timestamp": null, "timezone": null, "precision": null, "revision_policy": null}},
+    {"id": "c", "stage": "canonical_resolution", "mode": "pipeline", "values": {"canonical_observation_id": null, "canonical_observation_version": null}},
+    {"id": "c", "stage": "settlement_fields", "mode": "pipeline", "values": {"resolution_source": null, "cutoff": null, "rounding": null, "missing_data_policy": null, "cancellation_policy": null, "exceptional_outcome_policy": null, "dispute_policy": null, "clarification_policy": null}},
+    {"id": "223118eef01de933943eb939828f88a31e69ba520263a1b7106799c60baaf679", "operands": ["a", "b"], "stage": "settlement_compatibility", "mode": "pipeline", "values": {"state": "COMPATIBLE", "conditions": []}},
+    {"id": "d1e7ce2a2c3a99d82fa46a177c3d8da5a5f60f66515d73a9c72e94320de7971c", "operands": ["b", "c"], "stage": "settlement_compatibility", "mode": "pipeline", "values": {"state": "COMPATIBLE", "conditions": []}},
+    {"id": "171cce728b97fbaeb32788b521d2019b14488b261926ff26abbe4a8f93d65eca", "operands": ["a", "c"], "stage": "settlement_compatibility", "mode": "pipeline", "values": {"state": "DIFFERENT", "conditions": []}}
+  ],
+  "outcomes": [
+    {"id": "a", "stage": "interpret", "state": "complete"},
+    {"id": "b", "stage": "interpret", "state": "complete"},
+    {"id": "c", "stage": "interpret", "state": "complete"}
+  ],
+  "pair_outcomes": [
+    {"a": "a", "b": "b", "scope": "OBSERVED_EVENT", "conditions": [], "state": "complete"},
+    {"a": "b", "b": "c", "scope": "OBSERVED_EVENT", "conditions": [], "state": "complete"},
+    {"a": "a", "b": "c", "scope": "OBSERVED_EVENT", "conditions": [], "state": "complete"}
+  ],
+  "diagnostics": {
+    "ballots": 18,
+    "latency_seconds": 18.0,
+    "stage_latency_seconds": {"contract": 9.0, "pair": 9.0},
+    "peak_memory_bytes": 1,
+    "failures": 0,
+    "retries": 0
+  },
   "complete_zero_error_scans": true,
-  "unanimous_cross_venue_relationship": true,
-  "unanimous_near_match_rejection": true,
   "zero_accepted_known_false_equivalences": true,
-  "provenance_invalidation": true
+  "provenance_invalidation": false
 }

@@ -645,7 +645,11 @@ class Pipeline:
                     continue
                 dependencies = claim["interpretations"] + [a["id"] for a in approvals]
                 bases = [self._acceptance_basis(r) for r in operands]
-                basis = "HUMAN_REVIEW" if "HUMAN_REVIEW" in bases else "LOCAL_MODEL_CONSENSUS"
+                basis = (
+                    "HUMAN_REVIEW"
+                    if bases and all(value == "HUMAN_REVIEW" for value in bases)
+                    else "LOCAL_MODEL_CONSENSUS"
+                )
                 data = claim | {
                     "proof_artifact": proof_artifacts[claim["claim_id"]],
                     "approvals": [a["id"] for a in approvals],

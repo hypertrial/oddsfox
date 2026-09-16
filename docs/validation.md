@@ -16,7 +16,7 @@ GitHub Actions is not used because hosted Actions are unavailable to the free
 organization. The failed run for commit `e7f66dc` did not start a runner or execute
 repository checks. A fresh local `scripts/verify` run is the authoritative software
 completion gate. The latest verified baseline passed Ruff, formatting, ty,
-public-schema drift, the package build and 235 tests, with two upstream dependency
+public-schema drift, the package build and 269 tests, with two upstream dependency
 deprecation warnings.
 Historical CI results below remain execution records for their exact revisions;
 they are not the current completion mechanism.
@@ -277,13 +277,25 @@ bound to port 8778 if it was not stopped locally.
 ## Local unanimous consensus software (2026-09-08)
 
 The local unanimous-consensus path is implemented as software: pinned model
-manifests (including chat-template hash, `model_file`/Python/symlink rejection
-before load), disjoint producer/evaluator panels, immutable ballots, write-once
-frozen labels, metrics v4 (`oddsfox-metrics/4`, `label_source:
+manifests (including an adjacent operator-controlled lineage sidecar, weights-only identity,
+chat-template hash, and `model_file`/Python/symlink rejection before load), disjoint
+producer/evaluator panels, immutable ballots with captured-source citation checks,
+write-once frozen labels, metrics v4 (`oddsfox-metrics/4`, `label_source:
 local_unanimous_consensus`), `LOCAL_MODEL_CONSENSUS` publication off by default,
 and human-rejection veto. Event details deep-link to
 `/research?contract=<contract-version-id>`. Consensus is not described as ground
 truth, independent human review, or proven natural-language correctness.
+
+Metrics v4 now freezes explicit labels or abstentions for every comparison and
+scores relationships only over the labeled-pair universe while reporting pair-label
+coverage. Corpus and producer evidence include all mandatory stages, completion and
+abstention outcomes, contract/pair latency, total latency, peak memory, failures,
+and retries. Validation stages and hash-checks the full bundle before an atomic,
+write-once publication; a failed write leaves no visible destination.
+The bundle's `judge-evidence.json` is scoped to the exact label sets in the run and
+retains panel configs, immutable ballots, dependency edges, raw responses, and
+cited captured-source artifacts. Synthetic fixtures are explicitly marked and do
+not satisfy the immutable-provenance release gate.
 
 Executed verification: `scripts/verify-fast` and `scripts/verify` passed with
 231 tests, Ruff, ty, public schema drift, and the package build. The historical

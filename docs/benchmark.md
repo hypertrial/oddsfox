@@ -30,12 +30,23 @@ and `independent_human_labels: false`. Model ballots cannot set
 `near_match_human_validation`. v4 reports **agreement** with the evaluator panel,
 not correctness or human truth.
 
+The evaluator and producer panel manifests identify distinct operator-reviewed
+lineages and weights-only revisions. Each model directory has an adjacent,
+operator-controlled `<directory>.oddsfox-lineage.json` record whose digest must
+match the actual safetensors and whose architecture must match model configuration.
+Changing weights, lineage metadata, prompts, or configuration creates different
+provenance and invalidates reuse.
+
 - `contracts`: records with immutable contract-version `id`, `venue`, `template`
   and `eligible`. Include hard negatives and unsupported inputs.
 - `comparisons`: the fixed comparison universe, each with `a`, `b`, `scope` and
   explicit `conditions`. The pair is unordered; implication direction belongs
   to a claim. A batch supports at most 250 contracts. Candidate generation
   determines what is scored, never the gold relation.
+- `pair_labels`: one explicit evaluator relationship for every unanimously labeled
+  comparison, including `NONE` and `NEAR_MATCH`. `pair_outcomes` covers every
+  frozen comparison as `complete` or `abstained`; only labeled pairs enter the
+  relationship denominator. The report exposes pair-label coverage separately.
 - `gold_claims`: positive complete claims with `a`, `b`, `relation`, `scope` and
   `conditions`. Symmetric relations normalize operand order; implication preserves
   direction. Claims outside the comparison universe are rejected. v4 gold is
@@ -55,6 +66,17 @@ whitespace and sorting/deduplicating the exact strings. It does not infer semant
 equivalence between differently worded conditions. Normalize field labels under
 the published IR rules before freezing them. Store ballot provenance and
 disagreement records with the corpus; the scorer does not manufacture them.
+Ballot citations must name captured artifacts and valid, nonempty Unicode-offset
+ranges. Retain raw responses and diagnostics for contract and pair latency, total
+latency, peak memory, failures, and retries.
+
+Runtime validation bundles include `judge-evidence.json`, limited to the exact
+evaluator and producer label sets used by that run. It contains their configs,
+ballots, dependencies, raw responses, and cited source artifacts with content
+hashes. The run binds this file by `judge_evidence_hash` and
+`evidence_mode: immutable-local-store`. Hand-authored development examples use
+`evidence_mode: synthetic-fixture`; that mode can exercise the scorer but can
+never satisfy the provenance-invalidation release gate.
 
 Complete two-venue scans with zero event errors are required before a corpus freeze.
 If more than 250 contracts exist, use a frozen deterministic stratified sample by
@@ -66,7 +88,8 @@ gate, not relaxed criteria.
 
 `benchmark_hash` is `oddsfox.ir.fingerprint(benchmark)`. Include the complete
 `pipeline_configuration` and set `scored_before_case_review` only for the preserved
-original automatic output. Store `proposals`, `stage_outputs`, and `outcomes`.
+original automatic output. Store `proposals`, `stage_outputs`, `outcomes`, complete
+producer `pair_outcomes`, and producer diagnostics.
 
 The complete acceptance policy contains `version`, `allowed_scopes`,
 `allowed_settlement_states`, `require_resolved`, and `normalization`.
@@ -112,6 +135,10 @@ evaluator-panel near-match rejection, zero accepted known false equivalences, an
 passing provenance/invalidation checks. The two relationship gates are frozen
 corpus evidence, not producer self-report. Automation diagnostics replace
 review-time claims.
+
+Evidence bundles are assembled in a sibling staging directory, hash-verified,
+fsynced, and renamed into place. A failed or repeated publication does not expose
+a partial bundle or overwrite an existing one.
 
 For paired review experiments, record `paired_review_tasks` with `manual_seconds`,
 `assisted_seconds`, `manual_correct`, and `assisted_correct`; times must include

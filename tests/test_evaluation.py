@@ -226,6 +226,5 @@ def test_consensus_agreement_selects_pair_claims_without_solver_proofs():
     run["proposals"] = [
         {"a": "a", "b": "b", "relation": "IMPLIES", "scope": "OBSERVED_EVENT", "conditions": []}
     ]
-    report = evaluate(bench, run)
-    assert report["relationships"]["selected_precision"]["value"] == 1
-    assert report["relationships"]["selected_recall"]["correct"] == 1
+    with pytest.raises(ValueError, match="metrics v3 cannot select"):
+        evaluate(bench, run)

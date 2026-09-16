@@ -15,6 +15,8 @@ from oddsfox.ir import fingerprint
 
 MODEL_LOCK = threading.Lock()
 MEMORY_LIMIT = 8 * 1024**3
+LINEAGE_SCHEMA = "oddsfox-model-lineage/1"
+LINEAGE_FILE = "oddsfox-lineage.json"
 
 
 def chat_template_text(path: Path) -> str:
@@ -59,7 +61,8 @@ def model_manifest(path: Path) -> dict:
     relevant = [
         p for p in files if p.suffix in {".safetensors", ".json", ".model", ".txt", ".jinja"}
     ]
-    if not any(p.suffix == ".safetensors" for p in relevant):
+    weight_files = [p for p in relevant if p.suffix == ".safetensors"]
+    if not weight_files:
         raise ValueError("model directory has no safetensors weights")
     hashes = {}
     for file in relevant:
@@ -71,10 +74,40 @@ def model_manifest(path: Path) -> dict:
     quantization = config.get("quantization", config.get("quantization_config"))
     if not quantization:
         raise ValueError("V1 model evaluation requires explicitly quantized weights")
+    weights_revision = fingerprint(
+        sorted(hashes[str(file.relative_to(path))] for file in weight_files)
+    )
+    lineage_path = path.with_name(f"{path.name}.{LINEAGE_FILE}")
+    if not lineage_path.is_file():
+        raise ValueError(f"model requires adjacent operator-reviewed {LINEAGE_FILE}")
+    lineage = json.loads(lineage_path.read_text(encoding="utf-8"))
+    if set(lineage) != {
+        "schema",
+        "architecture",
+        "lineage",
+        "weights_revision",
+        "operator_reviewed",
+    }:
+        raise ValueError("model lineage record has unsupported fields")
+    if (
+        lineage["schema"] != LINEAGE_SCHEMA
+        or lineage["operator_reviewed"] is not True
+        or not isinstance(lineage["architecture"], str)
+        or not lineage["architecture"].strip()
+        or not isinstance(lineage["lineage"], str)
+        or not lineage["lineage"].strip()
+        or lineage["weights_revision"] != weights_revision
+        or lineage["architecture"].strip() != model_family(config)
+    ):
+        raise ValueError("model lineage record is not reviewed or does not match the weights")
     template = chat_template_text(path)
     return {
         "identity": path.name,
-        "family": model_family(config),
+        "family": lineage["lineage"].strip(),
+        "architecture": lineage["architecture"].strip(),
+        "lineage": lineage["lineage"].strip(),
+        "lineage_schema": LINEAGE_SCHEMA,
+        "weights_revision": weights_revision,
         "weight_revision": fingerprint(hashes),
         "files": hashes,
         "quantization": quantization,

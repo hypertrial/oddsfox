@@ -1,105 +1,71 @@
 {
   "benchmark_id": "synthetic-test",
   "revision": "1",
-  "label_version": "1",
+  "label_version": "local-unanimous-consensus/1",
   "labeling_guide": "exact-string-set/1",
   "split": "development",
   "independent_human_labels": false,
-  "contracts": [
-    {
-      "id": "a",
-      "venue": "polymarket",
-      "template": "test",
-      "eligible": true
-    },
-    {
-      "id": "b",
-      "venue": "kalshi",
-      "template": "test",
-      "eligible": true
-    },
-    {
-      "id": "c",
-      "venue": "kalshi",
-      "template": "test",
-      "eligible": true
-    }
-  ],
-  "comparisons": [
-    {
-      "a": "a",
-      "b": "b",
-      "scope": "OBSERVED_EVENT",
-      "conditions": []
-    },
-    {
-      "a": "b",
-      "b": "c",
-      "scope": "OBSERVED_EVENT",
-      "conditions": []
-    },
-    {
-      "a": "a",
-      "b": "c",
-      "scope": "OBSERVED_EVENT",
-      "conditions": []
-    }
-  ],
-  "gold_claims": [
-    {
-      "a": "a",
-      "b": "b",
-      "relation": "IMPLIES",
-      "scope": "OBSERVED_EVENT",
-      "conditions": [],
-      "proof": {
-        "state": "PROVEN_UNDER_PREMISES"
-      },
-      "settlement": {
-        "state": "CONDITIONAL"
-      },
-      "interpretation_assessments": [
-        "SUPPORTED",
-        "SUPPORTED"
-      ]
-    },
-    {
-      "a": "b",
-      "b": "c",
-      "relation": "IMPLIES",
-      "scope": "OBSERVED_EVENT",
-      "conditions": [],
-      "proof": {
-        "state": "PROVEN_UNDER_PREMISES"
-      },
-      "settlement": {
-        "state": "CONDITIONAL"
-      },
-      "interpretation_assessments": [
-        "SUPPORTED",
-        "SUPPORTED"
-      ]
-    }
-  ],
-  "stage_labels": [
-    {
-      "id": "a",
-      "stage": "ir_fields",
-      "mode": "pipeline",
-      "expected": {
-        "source": null,
-        "threshold": "1"
-      }
-    }
-  ],
   "label_source": "local_unanimous_consensus",
   "metric_definition_version": "oddsfox-metrics/4",
+  "evaluator_panel": {
+    "protocol": "local-unanimous-consensus/1",
+    "prompt": "judge-ballots/2",
+    "role": "evaluator",
+    "unanimity": "exact-canonical",
+    "sampling": {"temperature": 0},
+    "models": [
+      {"identity": "e0", "lineage": "eval-0", "weights_revision": "eval-weights-0"},
+      {"identity": "e1", "lineage": "eval-1", "weights_revision": "eval-weights-1"},
+      {"identity": "e2", "lineage": "eval-2", "weights_revision": "eval-weights-2"}
+    ]
+  },
+  "diagnostics": {
+    "ballots": 18,
+    "latency_seconds": 18.0,
+    "stage_latency_seconds": {"contract": 9.0, "pair": 9.0},
+    "peak_memory_bytes": 1,
+    "failures": 0,
+    "retries": 0
+  },
+  "contracts": [
+    {"id": "a", "venue": "polymarket", "template": "test", "eligible": true},
+    {"id": "b", "venue": "kalshi", "template": "test", "eligible": true},
+    {"id": "c", "venue": "kalshi", "template": "test", "eligible": true}
+  ],
+  "comparisons": [
+    {"a": "a", "b": "b", "scope": "OBSERVED_EVENT", "conditions": []},
+    {"a": "b", "b": "c", "scope": "OBSERVED_EVENT", "conditions": []},
+    {"a": "a", "b": "c", "scope": "OBSERVED_EVENT", "conditions": []}
+  ],
+  "pair_labels": [
+    {"a": "a", "b": "b", "scope": "OBSERVED_EVENT", "conditions": [], "relationship": "IMPLIES"},
+    {"a": "b", "b": "c", "scope": "OBSERVED_EVENT", "conditions": [], "relationship": "NONE"},
+    {"a": "a", "b": "c", "scope": "OBSERVED_EVENT", "conditions": [], "relationship": "NEAR_MATCH"}
+  ],
+  "pair_outcomes": [
+    {"a": "a", "b": "b", "scope": "OBSERVED_EVENT", "conditions": [], "state": "complete"},
+    {"a": "b", "b": "c", "scope": "OBSERVED_EVENT", "conditions": [], "state": "complete"},
+    {"a": "a", "b": "c", "scope": "OBSERVED_EVENT", "conditions": [], "state": "complete"}
+  ],
+  "gold_claims": [
+    {"a": "a", "b": "b", "relation": "IMPLIES", "scope": "OBSERVED_EVENT", "conditions": []}
+  ],
+  "stage_labels": [
+    {"id": "a", "stage": "ir_fields", "mode": "pipeline", "expected": {"quantity": null, "source": null, "instrument_or_series": null, "unit": null, "comparator": null, "threshold": "1", "measurement_method": null, "timestamp": null, "timezone": null, "precision": null, "revision_policy": null}},
+    {"id": "a", "stage": "canonical_resolution", "mode": "pipeline", "expected": {"canonical_observation_id": null, "canonical_observation_version": null}},
+    {"id": "a", "stage": "settlement_fields", "mode": "pipeline", "expected": {"resolution_source": null, "cutoff": null, "rounding": null, "missing_data_policy": null, "cancellation_policy": null, "exceptional_outcome_policy": null, "dispute_policy": null, "clarification_policy": null}},
+    {"id": "b", "stage": "ir_fields", "mode": "pipeline", "expected": {"quantity": null, "source": null, "instrument_or_series": null, "unit": null, "comparator": null, "threshold": null, "measurement_method": null, "timestamp": null, "timezone": null, "precision": null, "revision_policy": null}},
+    {"id": "b", "stage": "canonical_resolution", "mode": "pipeline", "expected": {"canonical_observation_id": null, "canonical_observation_version": null}},
+    {"id": "b", "stage": "settlement_fields", "mode": "pipeline", "expected": {"resolution_source": null, "cutoff": null, "rounding": null, "missing_data_policy": null, "cancellation_policy": null, "exceptional_outcome_policy": null, "dispute_policy": null, "clarification_policy": null}},
+    {"id": "c", "stage": "ir_fields", "mode": "pipeline", "expected": {"quantity": null, "source": null, "instrument_or_series": null, "unit": null, "comparator": null, "threshold": null, "measurement_method": null, "timestamp": null, "timezone": null, "precision": null, "revision_policy": null}},
+    {"id": "c", "stage": "canonical_resolution", "mode": "pipeline", "expected": {"canonical_observation_id": null, "canonical_observation_version": null}},
+    {"id": "c", "stage": "settlement_fields", "mode": "pipeline", "expected": {"resolution_source": null, "cutoff": null, "rounding": null, "missing_data_policy": null, "cancellation_policy": null, "exceptional_outcome_policy": null, "dispute_policy": null, "clarification_policy": null}},
+    {"id": "223118eef01de933943eb939828f88a31e69ba520263a1b7106799c60baaf679", "operands": ["a", "b"], "stage": "settlement_compatibility", "mode": "pipeline", "expected": {"state": "COMPATIBLE", "conditions": []}},
+    {"id": "d1e7ce2a2c3a99d82fa46a177c3d8da5a5f60f66515d73a9c72e94320de7971c", "operands": ["b", "c"], "stage": "settlement_compatibility", "mode": "pipeline", "expected": {"state": "COMPATIBLE", "conditions": []}},
+    {"id": "171cce728b97fbaeb32788b521d2019b14488b261926ff26abbe4a8f93d65eca", "operands": ["a", "c"], "stage": "settlement_compatibility", "mode": "pipeline", "expected": {"state": "DIFFERENT", "conditions": []}}
+  ],
   "label_abstentions": [],
   "near_match_rejections": [
-    {
-      "a": "a",
-      "b": "c",
-      "differences": ["source"]
-    }
+    {"a": "a", "b": "c", "scope": "OBSERVED_EVENT", "conditions": [], "differences": ["source"]}
   ]
 }

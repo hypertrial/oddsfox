@@ -393,6 +393,10 @@ Metric definition `oddsfox-metrics/3` remains for synthetic human-label fixtures
 Metric definition `oddsfox-metrics/4` is the consensus path: `label_source` must be
 `local_unanimous_consensus`, `independent_human_labels` must be false, and release
 flags that claim independent human validation cannot be set from model ballots.
+The frozen corpus carries an explicit relationship label or abstention outcome for
+every comparison. Relationship agreement is scored only over unanimously labeled
+pairs, while pair-label coverage retains the full frozen comparison universe as
+its denominator. Every non-abstained corpus requires all four stage-label classes.
 
 ### Benchmark metric contract
 
@@ -437,11 +441,24 @@ breakdowns to these metrics as well as to the end-to-end results.
 
 Local unanimous consensus uses two disjoint panels of at least three models
 each: producers emit runtime IR, evaluators freeze labels. Panels cannot share
-weight revisions or declared model families. Models run sequentially under the
+weights-only revisions or operator-reviewed declared lineages. Each model directory
+has an adjacent operator-controlled lineage sidecar bound to its safetensor digest
+and declared architecture; downloaded model packages cannot self-attest review.
+Directory and template changes also invalidate the full manifest. Models run sequentially under the
 existing MLX lock. Exact unanimous canonical agreement is required; dissent,
-timeout, invalid schema/evidence, changed model, or missing ballot produces
+timeout, invalid schema/evidence, invalid captured-source citation, changed model,
+or missing ballot produces
 `ABSTAINED`, never a negative gold label or accepted claim. Judge prompts are
 separate from compiler and explanation prompts. Semantic IR 1.0.0 is unchanged.
+
+Frozen evidence records completion and abstention outcomes, contract and pair
+stage latency, total wall time, peak memory, failures, and retries. Validation
+publishes the bundle only after all files and manifest hashes validate in a staged
+directory; publication is one atomic rename and never overwrites an existing bundle.
+The hash-covered judge evidence is limited to the label sets used by that run and
+includes their configs, ballots, dependencies, raw responses, and cited captured
+sources. Development fixtures are marked synthetic and cannot satisfy the
+immutable-provenance release gate.
 
 Regression cases include threshold equality boundaries, unit conversion, different
 sources/times/vintages, missing rules, exceptional payouts, inconsistent premises,

@@ -121,6 +121,7 @@ def approve_interpretation(
         schema=ContractBallot.model_json_schema(),
         generator=generator,
         manifests=manifests,
+        artifacts=texts,
     )
     if result["label"] is None:
         raise ValueError(result["abstention"] or "producer panel abstained")
