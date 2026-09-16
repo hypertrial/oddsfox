@@ -204,12 +204,13 @@ repository-specific verification are documented in [AGENTS.md](AGENTS.md) and
 [PROJECT_AGENT.md](PROJECT_AGENT.md).
 
 Install Node.js 22 or newer for the browser JavaScript regression test; it uses
-Node’s built-in test runner and requires no npm packages. CI configures Node 22.
+Node’s built-in test runner and requires no npm packages.
 
 Run `scripts/verify-fast` during development and `scripts/verify` before completing
 work. The latter runs lint, formatting, type checks, tests, schema drift checks and
-a package build. CI runs these lightweight checks; model and product benchmarks
-remain local.
+a package build. A fresh local `scripts/verify` run is the authoritative completion
+gate. GitHub Actions is not used because hosted Actions are unavailable to the free
+organization; model and product benchmarks also remain local.
 
 ## License
 

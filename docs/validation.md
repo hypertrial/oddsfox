@@ -10,6 +10,16 @@ and Python 3.14.7. `uv.lock` pins the resolved runtime and development tools.
 The full dependency set, including cvc5, DuckDB, MLX-LM and Outlines, installed;
 core and Outlines imports passed. Model inference is a separate check.
 
+## Current verification policy (2026-09-16)
+
+GitHub Actions is not used because hosted Actions are unavailable to the free
+organization. The failed run for commit `e7f66dc` did not start a runner or execute
+repository checks. A fresh local `scripts/verify` run is the authoritative software
+completion gate. At `e7f66dc` it passed Ruff, formatting, ty, public-schema drift,
+the package build and 235 tests, with two upstream dependency deprecation warnings.
+Historical CI results below remain execution records for their exact revisions;
+they are not the current completion mechanism.
+
 ## Software checks
 
 The automated suite covers canonical IR, exact decimals, explicit nulls, source
