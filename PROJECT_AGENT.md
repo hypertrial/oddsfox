@@ -38,7 +38,7 @@ the repository. There is one writer per dataset; server users use its API.
 - `scripts/verify`: documentation checks, the fast gate, formatting, ty, public
   JSON Schema drift check and a package build.
 
-Wrappers work from any directory. For OddsFox, a fresh local `scripts/verify` run is
+Wrappers work from any directory. For OddsFox, a fresh clean-checkout `scripts/verify` run is
 the authoritative completion gate. GitHub Actions is not used because hosted
 Actions are unavailable to the free organization. The latest verified baseline is
 269 passing tests with two upstream dependency deprecation warnings. Model smokes

@@ -14,7 +14,7 @@ core and Outlines imports passed. Model inference is a separate check.
 
 GitHub Actions is not used because hosted Actions are unavailable to the free
 organization. The failed run for commit `e7f66dc` did not start a runner or execute
-repository checks. A fresh local `scripts/verify` run is the authoritative software
+repository checks. A fresh clean-checkout `scripts/verify` run is the authoritative software
 completion gate. The latest verified baseline passed Ruff, formatting, ty,
 public-schema drift, the package build and 269 tests, with two upstream dependency
 deprecation warnings.
