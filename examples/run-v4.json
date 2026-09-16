@@ -61,7 +61,5 @@
     "failures": 0,
     "retries": 0
   },
-  "complete_zero_error_scans": true,
-  "zero_accepted_known_false_equivalences": true,
-  "provenance_invalidation": false
+  "complete_zero_error_scans": true
 }

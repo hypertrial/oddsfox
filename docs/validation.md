@@ -16,7 +16,7 @@ GitHub Actions is not used because hosted Actions are unavailable to the free
 organization. The failed run for commit `e7f66dc` did not start a runner or execute
 repository checks. A fresh clean-checkout `scripts/verify` run is the authoritative software
 completion gate. The latest verified baseline passed Ruff, formatting, ty,
-public-schema drift, the package build and 269 tests, with two upstream dependency
+public-schema drift, the package build and 274 tests, with two upstream dependency
 deprecation warnings.
 Historical CI results below remain execution records for their exact revisions;
 they are not the current completion mechanism.
@@ -304,3 +304,26 @@ two-venue scans were not run in this session**; those remain unmet product gates
 not a software-gate substitute.
 Do not enable `--enable-consensus-publication` until a complete v4 local evidence
 bundle satisfies every frozen machine gate.
+
+## Evidence-derived consensus release gates (2026-09-16)
+
+Metrics v4 no longer trusts run-supplied booleans for zero known false
+equivalences or provenance/invalidation. It derives known false equivalences from
+the closure of policy-selected producer claims, checked against each comparison's
+explicit unanimous evaluator label. A non-equivalence label remains authoritative
+even when other evaluator implications form a cycle; abstentions remain unknown.
+The report retains the canonical claims and count.
+
+Trusted local validation now executes a rollback-only dependency probe over the
+exact ballots and label sets retained in `judge-evidence.json`. The receipt is
+embedded and hash-bound in `run.json`, copied to `invalidation-evidence.json`, and
+covered by the create-only bundle manifest. Missing or inconsistent receipts fail
+trusted validation before publication; synthetic fixtures cannot self-attest the
+gate. The receipt demonstrates local dependency behavior under the executing
+validator, not authenticity against an operator able to regenerate the bundle.
+
+`scripts/verify-fast` and `scripts/verify` passed 274 tests with two upstream
+dependency deprecation warnings; Ruff, formatting, ty, public-schema drift, and the
+package build also passed. Focused consensus and evaluation suites passed 69 tests.
+No model download, live venue scan, six-model panel evaluation, or product release
+claim was performed.

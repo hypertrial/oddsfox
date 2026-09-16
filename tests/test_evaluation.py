@@ -76,6 +76,7 @@ def test_duplicates_and_unselected_paths_cannot_inflate_scores():
     assert original["relationships"]["selected_recall"]["correct"] == 1
     assert original["relationships"]["all_recall"]["correct"] == 3
     assert original["relationships"]["selected_recall"]["total"] == 3
+    assert "known_false_equivalences" not in original["relationships"]
     assert original["stages"]["ir_fields/pipeline"]["fields"]["correct"] == 0
     assert original["stages"]["ir_fields/pipeline"]["fields"]["total"] == 2
     assert original["release_gates"]["independent_human_labels"] is False

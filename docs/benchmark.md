@@ -136,6 +136,27 @@ passing provenance/invalidation checks. The two relationship gates are frozen
 corpus evidence, not producer self-report. Automation diagnostics replace
 review-time claims.
 
+The zero-known-false-equivalence gate closes claims selected by the frozen producer
+policy over the complete comparison universe, then checks each selected equivalence
+against that comparison's explicit unanimous evaluator label. A non-equivalence
+label makes the selected equivalence known false even if other evaluator implications
+would form a cycle under closure. Unlabeled comparisons and evaluator abstentions
+remain unknown rather than false. The metrics report includes the deterministic
+canonical claims and their count. Legacy run booleans with the same gate names remain
+readable but are ignored.
+
+Trusted local validation also executes `dependency-invalidation/1` against one
+deterministically selected frozen contract. Inside a transaction it verifies that
+the exact dependent ballots and label sets become stale while unrelated run evidence
+remains current, then forces rollback and verifies every exact-run record is current
+again. The receipt is embedded and hash-bound in `run.json`, copied exactly to
+`invalidation-evidence.json`, and covered by the bundle manifest. It is a retained
+local consistency receipt, not a cryptographic attestation against an operator who
+can regenerate the whole bundle. Historical trusted v4 bundles without this receipt
+remain historical evidence but cannot satisfy the corrected provenance/invalidation
+gate when rescored. Synthetic development fixtures may omit it and always report
+that gate as false.
+
 Evidence bundles are assembled in a sibling staging directory, hash-verified,
 fsynced, and renamed into place. A failed or repeated publication does not expose
 a partial bundle or overwrite an existing one.

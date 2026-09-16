@@ -15,7 +15,13 @@ from pathlib import Path
 
 from oddsfox.catalog import candidates_for, sync_status
 from oddsfox.discovery import VENUES
-from oddsfox.evaluation import CONSENSUS_AGREEMENT, comparison_key, evaluate
+from oddsfox.evaluation import (
+    CONSENSUS_AGREEMENT,
+    INVALIDATION_PROTOCOL,
+    comparison_key,
+    evaluate,
+    invalidation_partition,
+)
 from oddsfox.ir import fingerprint
 from oddsfox.judge import (
     ContractBallot,
@@ -33,6 +39,11 @@ from oddsfox.store import Store
 
 SAMPLE_CAP = 250
 SAMPLE_ALGORITHM = "stratified-venue-template-lexical/1"
+
+
+class _RollbackProbe(Exception):
+    def __init__(self, receipt: dict):
+        self.receipt = receipt
 
 
 def scans_complete(store: Store) -> dict:
@@ -349,6 +360,48 @@ def judge_evidence(store: Store, label_set_ids: list[str]) -> dict:
     }
 
 
+def invalidation_evidence(store: Store, corpus: dict, evidence: dict) -> dict:
+    roots = sorted(row["id"] for row in corpus["contracts"])
+    root = next(
+        (identity for identity in roots if invalidation_partition(evidence, identity)[1]), None
+    )
+    if root is None:
+        raise ValueError("validation evidence has no contract-dependent judge records")
+    exact, affected, unaffected = invalidation_partition(evidence, root)
+    restored = {root, *exact}
+    if any(store.get(identity)["current"] is not True for identity in restored):
+        raise ValueError("invalidation probe requires current frozen evidence")
+    try:
+        with store.transaction():
+            store.invalidate(root, "validation invalidation probe")
+            observed_stale = {identity for identity in exact if not store.get(identity)["current"]}
+            observed_current = exact - observed_stale
+            if (
+                store.get(root)["current"] is not False
+                or observed_stale != affected
+                or observed_current != unaffected
+            ):
+                raise ValueError("invalidation probe did not match judge dependencies")
+            raise _RollbackProbe(
+                {
+                    "protocol": INVALIDATION_PROTOCOL,
+                    "root_contract_id": root,
+                    "expected_affected_ids": sorted(affected),
+                    "observed_stale_ids": sorted(observed_stale),
+                    "unaffected_current_ids": sorted(observed_current),
+                }
+            )
+    except _RollbackProbe as rollback:
+        receipt = rollback.receipt
+    rollback_restored = {
+        identity for identity in restored if store.get(identity)["current"] is True
+    }
+    if rollback_restored != restored:
+        raise ValueError("invalidation probe rollback did not restore frozen evidence")
+    receipt["rollback_restored_ids"] = sorted(rollback_restored)
+    return receipt
+
+
 def freeze_corpus(
     store: Store,
     evaluator_paths: list[Path],
@@ -604,8 +657,6 @@ def producer_run(
             venues.get(c["a"]) != venues.get(c["b"]) for c in corpus["gold_claims"]
         ),
         "unanimous_near_match_rejection": bool(corpus.get("near_match_rejections")),
-        "zero_accepted_known_false_equivalences": False,
-        "provenance_invalidation": False,
     }
 
 
@@ -645,6 +696,9 @@ def validate_dataset(
     run["evidence_mode"] = "immutable-local-store"
     run["judge_evidence_hash"] = fingerprint(evidence)
     run["judge_evidence"] = evidence
+    invalidation = invalidation_evidence(store, corpus, evidence)
+    run["invalidation_evidence_hash"] = fingerprint(invalidation)
+    run["invalidation_evidence"] = invalidation
     metrics = evaluate(corpus, run, _trusted_evidence=True)
     metrics["operational"] = {
         "validation_wall_seconds": time.monotonic() - started,
@@ -657,6 +711,7 @@ def validate_dataset(
         "run.json": run,
         "metrics.json": metrics,
         "judge-evidence.json": evidence,
+        "invalidation-evidence.json": invalidation,
         "disagreements.json": {
             "disagreements": corpus["disagreements"],
             "label_abstentions": corpus["label_abstentions"],

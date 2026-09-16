@@ -13,6 +13,7 @@ METRIC_VERSION = "oddsfox-metrics/3"
 METRIC_V4 = "oddsfox-metrics/4"
 CONSENSUS_AGREEMENT = "consensus-agreement/1"
 CONSENSUS_PROTOCOL = "local-unanimous-consensus/1"
+INVALIDATION_PROTOCOL = "dependency-invalidation/1"
 STAGES = ("ir_fields", "canonical_resolution", "settlement_fields", "settlement_compatibility")
 CONTRACT_STAGE_FIELDS = {
     "ir_fields": {
@@ -453,6 +454,69 @@ def _validate_judge_evidence(
     _validate_evidence_projection(benchmark, run, label_sets, ballots, evaluator_ids, producer_ids)
 
 
+def invalidation_partition(evidence: dict, root: str) -> tuple[set[str], set[str], set[str]]:
+    """Split the exact retained ballots and label sets by dependency on root."""
+    exact = {row.get("id") for key in ("label_sets", "ballots") for row in evidence.get(key, [])}
+    if None in exact or not exact:
+        raise ValueError("invalidation evidence requires exact judge nodes")
+    children: dict[str, set[str]] = defaultdict(set)
+    for row in evidence.get("dependencies", []):
+        child, parent = row.get("child"), row.get("parent")
+        if child in exact:
+            children[parent].add(child)
+    affected = set()
+    pending = [root]
+    while pending:
+        parent = pending.pop()
+        for child in children.get(parent, set()) - affected:
+            affected.add(child)
+            pending.append(child)
+    return exact, affected, exact - affected
+
+
+def _validate_invalidation_evidence(benchmark: dict, run: dict, evidence: dict) -> bool:
+    probe = run.get("invalidation_evidence")
+    digest = run.get("invalidation_evidence_hash")
+    if probe is None and digest is None:
+        return False
+    if not isinstance(probe, dict) or digest != fingerprint(probe):
+        raise ValueError("metrics v4 invalidation evidence hash is invalid")
+    if (
+        set(probe)
+        != {
+            "protocol",
+            "root_contract_id",
+            "expected_affected_ids",
+            "observed_stale_ids",
+            "unaffected_current_ids",
+            "rollback_restored_ids",
+        }
+        or probe["protocol"] != INVALIDATION_PROTOCOL
+    ):
+        raise ValueError("metrics v4 invalidation evidence shape is invalid")
+    root = probe["root_contract_id"]
+    canonical_root = next(
+        (
+            identity
+            for identity in sorted(row["id"] for row in benchmark["contracts"])
+            if invalidation_partition(evidence, identity)[1]
+        ),
+        None,
+    )
+    if root != canonical_root:
+        raise ValueError("metrics v4 invalidation root is not deterministic")
+    exact, affected, unaffected = invalidation_partition(evidence, root)
+    expected = {
+        "expected_affected_ids": sorted(affected),
+        "observed_stale_ids": sorted(affected),
+        "unaffected_current_ids": sorted(unaffected),
+        "rollback_restored_ids": sorted({root, *exact}),
+    }
+    if not affected or any(probe[key] != value for key, value in expected.items()):
+        raise ValueError("metrics v4 invalidation evidence does not match judge dependencies")
+    return True
+
+
 def in_universe(key: tuple, universe: set[tuple]) -> bool:
     a, b, _, scope, cond = key
     return (*sorted((a, b)), scope, cond) in universe
@@ -552,6 +616,32 @@ def _relationships(
             "all": len(all_closed),
             "selected": len(selected_closed),
         },
+    }
+
+
+def _known_false_equivalences(
+    chosen: set[tuple], universe: set[tuple], pair_labels: list[dict]
+) -> dict:
+    """Report selected equivalences contradicted by explicit unanimous labels."""
+    explicit = {comparison_key(row): row["relationship"] for row in pair_labels}
+    false_claims = sorted(
+        claim
+        for claim in closure(chosen, universe)
+        if claim[2] == "EQUIVALENT"
+        and explicit.get((*sorted(claim[:2]), claim[3], claim[4])) not in {None, "EQUIVALENT"}
+    )
+    return {
+        "count": len(false_claims),
+        "claims": [
+            {
+                "a": a,
+                "b": b,
+                "relation": relation,
+                "scope": scope,
+                "conditions": list(condition_set),
+            }
+            for a, b, relation, scope, condition_set in false_claims
+        ],
     }
 
 
@@ -673,6 +763,7 @@ def evaluate(benchmark: dict, run: dict, *, _trusted_evidence: bool = False) -> 
     if version not in {METRIC_VERSION, METRIC_V4}:
         raise ValueError("unsupported metric definition version")
     evidence_verified = False
+    invalidation_verified = False
     if label_source == "local_unanimous_consensus":
         if version != METRIC_V4:
             raise ValueError("consensus corpora must use oddsfox-metrics/4")
@@ -720,8 +811,16 @@ def evaluate(benchmark: dict, run: dict, *, _trusted_evidence: bool = False) -> 
                 ):
                     raise ValueError("metrics v4 judge evidence artifacts are invalid")
             evidence_verified = True
+            invalidation_verified = _validate_invalidation_evidence(benchmark, run, evidence)
+            if _trusted_evidence and not invalidation_verified:
+                raise ValueError("trusted metrics v4 validation requires invalidation evidence")
         elif evidence_mode != "synthetic-fixture" or benchmark.get("split") != "development":
             raise ValueError("metrics v4 requires immutable judge evidence provenance")
+        elif (
+            run.get("invalidation_evidence") is not None
+            or run.get("invalidation_evidence_hash") is not None
+        ):
+            raise ValueError("synthetic metrics v4 cannot self-attest invalidation evidence")
     elif version == METRIC_V4:
         raise ValueError("metrics v4 requires label_source local_unanimous_consensus")
     elif label_source not in {None}:
@@ -995,6 +1094,7 @@ def evaluate(benchmark: dict, run: dict, *, _trusted_evidence: bool = False) -> 
     }
     if version == METRIC_V4:
         sampled = len(benchmark["contracts"])
+        known_false_equivalences = _known_false_equivalences(chosen, universe, pair_labels)
         contract_ids = set(ids)
         contract_abstentions = {
             row.get("id")
@@ -1014,6 +1114,7 @@ def evaluate(benchmark: dict, run: dict, *, _trusted_evidence: bool = False) -> 
             "label_coverage": coverage,
             "pair_label_coverage": ratio(len(scoring_universe), len(universe)),
             "pair_label_abstentions": len(universe - scoring_universe),
+            "known_false_equivalences": known_false_equivalences,
         }
         report["release_gates"] = {
             "independent_human_labels": False,
@@ -1028,11 +1129,10 @@ def evaluate(benchmark: dict, run: dict, *, _trusted_evidence: bool = False) -> 
                 by_id.get(c["a"]) != by_id.get(c["b"]) for c in benchmark["gold_claims"]
             ),
             "unanimous_near_match_rejection": bool(near_labels),
-            "zero_accepted_known_false_equivalences": run.get(
-                "zero_accepted_known_false_equivalences"
-            )
-            is True,
-            "provenance_invalidation": _trusted_evidence and evidence_verified,
+            "zero_accepted_known_false_equivalences": known_false_equivalences["count"] == 0,
+            "provenance_invalidation": _trusted_evidence
+            and evidence_verified
+            and invalidation_verified,
         }
         report["caution"] = (
             "Local unanimous consensus is reproducible panel agreement under a frozen "

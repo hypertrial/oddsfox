@@ -217,7 +217,7 @@ Run `scripts/verify-fast` during development and `scripts/verify` before complet
 work. The latter runs lint, formatting, type checks, tests, schema drift checks and
 a package build. A fresh clean-checkout `scripts/verify` run is the authoritative completion
 gate. GitHub Actions is not used because hosted Actions are unavailable to the free
-organization. The latest verified baseline is 269 passing tests with two upstream
+organization. The latest verified baseline is 274 passing tests with two upstream
 dependency deprecation warnings; model and product benchmarks also remain local.
 
 ## License

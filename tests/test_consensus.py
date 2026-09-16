@@ -13,7 +13,12 @@ from oddsfox.consensus import (
     approve_interpretation,
 )
 from oddsfox.demo import load_demo
-from oddsfox.evaluation import comparison_identity, comparison_key, evaluate
+from oddsfox.evaluation import (
+    comparison_identity,
+    comparison_key,
+    evaluate,
+    invalidation_partition,
+)
 from oddsfox.ir import SemanticIR, fingerprint
 from oddsfox.judge import (
     ContractBallot,
@@ -533,9 +538,13 @@ def test_v4_example_corpus_gates_ignore_run_flags():
     lying = dict(run)
     lying["unanimous_cross_venue_relationship"] = False
     lying["unanimous_near_match_rejection"] = False
+    lying["zero_accepted_known_false_equivalences"] = False
+    lying["provenance_invalidation"] = True
     still = evaluate(bench, lying)
     assert still["release_gates"]["unanimous_cross_venue_relationship"] is True
     assert still["release_gates"]["unanimous_near_match_rejection"] is True
+    assert still["release_gates"]["zero_accepted_known_false_equivalences"] is True
+    assert still["release_gates"]["provenance_invalidation"] is False
 
     conflict = deepcopy(run)
     conflict["proposals"].append(
@@ -556,6 +565,138 @@ def test_v4_example_corpus_gates_ignore_run_flags():
     contradictory["pair_outcomes"][0]["reason"] = "dissent"
     with pytest.raises(ValueError, match="producer pair stages"):
         evaluate(bench, contradictory)
+
+
+@pytest.mark.parametrize(
+    "proposals",
+    [
+        [
+            {
+                "a": "a",
+                "b": "b",
+                "relation": "EQUIVALENT",
+                "scope": "OBSERVED_EVENT",
+                "conditions": [],
+            }
+        ],
+        [
+            {
+                "a": "a",
+                "b": "b",
+                "relation": "IMPLIES",
+                "scope": "OBSERVED_EVENT",
+                "conditions": [],
+            },
+            {
+                "a": "b",
+                "b": "a",
+                "relation": "IMPLIES",
+                "scope": "OBSERVED_EVENT",
+                "conditions": [],
+            },
+        ],
+    ],
+    ids=["direct", "closure-induced"],
+)
+def test_metrics_v4_derives_known_false_equivalences_from_selected_closure(proposals):
+    root = Path(__file__).resolve().parents[1]
+    bench = json.loads((root / "examples/benchmark-v4.json").read_text())
+    run = json.loads((root / "examples/run-v4.json").read_text())
+    run["proposals"] = proposals
+    run["zero_accepted_known_false_equivalences"] = True
+
+    report = evaluate(bench, run)
+
+    expected = {
+        "a": "a",
+        "b": "b",
+        "relation": "EQUIVALENT",
+        "scope": "OBSERVED_EVENT",
+        "conditions": [],
+    }
+    assert report["consensus"]["known_false_equivalences"] == {
+        "count": 1,
+        "claims": [expected],
+    }
+    assert report["release_gates"]["zero_accepted_known_false_equivalences"] is False
+
+
+def test_metrics_v4_does_not_call_evaluator_abstention_known_false():
+    root = Path(__file__).resolve().parents[1]
+    bench = json.loads((root / "examples/benchmark-v4.json").read_text())
+    run = json.loads((root / "examples/run-v4.json").read_text())
+    pair = bench["comparisons"][0]
+    pair_id = comparison_identity(pair)
+    bench["pair_labels"] = bench["pair_labels"][1:]
+    bench["pair_outcomes"][0] = pair | {"state": "abstained", "reason": "dissent"}
+    bench["gold_claims"] = []
+    bench["stage_labels"] = [row for row in bench["stage_labels"] if row.get("id") != pair_id]
+    run["benchmark_hash"] = fingerprint(bench)
+    run["proposals"] = [
+        pair | {"relation": "EQUIVALENT"},
+    ]
+
+    report = evaluate(bench, run)
+
+    assert report["consensus"]["known_false_equivalences"] == {"count": 0, "claims": []}
+    assert report["release_gates"]["zero_accepted_known_false_equivalences"] is True
+
+
+def test_metrics_v4_explicit_label_overrides_evaluator_closure_cycle():
+    root = Path(__file__).resolve().parents[1]
+    bench = json.loads((root / "examples/benchmark-v4.json").read_text())
+    run = json.loads((root / "examples/run-v4.json").read_text())
+    bench["pair_labels"] = [row | {"relationship": "IMPLIES"} for row in bench["pair_labels"]]
+    bench["pair_labels"][2] = bench["pair_labels"][2] | {"a": "c", "b": "a"}
+    bench["gold_claims"] = [
+        {key: value for key, value in row.items() if key != "relationship"}
+        | {"relation": "IMPLIES"}
+        for row in bench["pair_labels"]
+    ]
+    bench["near_match_rejections"] = []
+    old_pair_id = comparison_identity(
+        {"a": "a", "b": "c", "scope": "OBSERVED_EVENT", "conditions": []}
+    )
+    new_pair_id = comparison_identity(bench["pair_labels"][2])
+    bench["stage_labels"] = [
+        row | {"id": new_pair_id} if row.get("id") == old_pair_id else row
+        for row in bench["stage_labels"]
+    ]
+    run["benchmark_hash"] = fingerprint(bench)
+    run["proposals"] = [
+        {
+            "a": "a",
+            "b": "b",
+            "relation": "EQUIVALENT",
+            "scope": "OBSERVED_EVENT",
+            "conditions": [],
+        }
+    ]
+
+    report = evaluate(bench, run)
+
+    assert report["relationships"]["selected_precision"]["value"] == 1
+    assert report["consensus"]["known_false_equivalences"]["count"] == 1
+    assert report["release_gates"]["zero_accepted_known_false_equivalences"] is False
+
+
+def test_synthetic_metrics_v4_cannot_self_attest_invalidation():
+    root = Path(__file__).resolve().parents[1]
+    bench = json.loads((root / "examples/benchmark-v4.json").read_text())
+    run = json.loads((root / "examples/run-v4.json").read_text())
+    receipt = {
+        "protocol": "dependency-invalidation/1",
+        "root_contract_id": "a",
+        "expected_affected_ids": ["ballot"],
+        "observed_stale_ids": ["ballot"],
+        "unaffected_current_ids": [],
+        "rollback_restored_ids": ["a", "ballot"],
+    }
+    run["invalidation_evidence"] = receipt
+    run["invalidation_evidence_hash"] = fingerprint(receipt)
+
+    with pytest.raises(ValueError, match="synthetic metrics v4 cannot self-attest"):
+        evaluate(bench, run)
 
 
 @pytest.mark.parametrize(
@@ -1104,7 +1245,7 @@ def test_positive_ballots_and_both_pair_operands_require_citations():
     )
 
 
-def test_validate_dataset_success_and_atomic_bundle(store, tmp_path):
+def test_validate_dataset_success_and_atomic_bundle(store, tmp_path, monkeypatch):
     from oddsfox.catalog import set_sync_state
     from oddsfox.store import now
     from oddsfox.sync import SyncRunner
@@ -1191,6 +1332,7 @@ def test_validate_dataset_success_and_atomic_bundle(store, tmp_path):
         evaluator_manifests=EVALUATORS,
     )
     assert report["relationships"]["selected_precision"]["value"] == 1
+    assert report["release_gates"]["zero_accepted_known_false_equivalences"] is True
     assert report["release_gates"]["provenance_invalidation"] is True
     assert all(
         report["stages"][f"{stage}/pipeline"]["fields"]["total"] > 0
@@ -1203,13 +1345,84 @@ def test_validate_dataset_success_and_atomic_bundle(store, tmp_path):
     )
     manifest = json.loads((output / "manifest.json").read_text())
     evidence = json.loads((output / "judge-evidence.json").read_text())
+    invalidation = json.loads((output / "invalidation-evidence.json").read_text())
     bundled_run = json.loads((output / "run.json").read_text())
     bundled_corpus = json.loads((output / "corpus.json").read_text())
     assert bundled_run["judge_evidence_hash"] == fingerprint(evidence)
+    assert bundled_run["invalidation_evidence"] == invalidation
+    assert bundled_run["invalidation_evidence_hash"] == fingerprint(invalidation)
     assert bundled_run["evidence_mode"] == "immutable-local-store"
     assert evidence["label_sets"] and evidence["ballots"] and evidence["raw_responses"]
     assert evidence["cited_sources"]
     assert all(row["sha256"] == identity for identity, row in evidence["raw_responses"].items())
+    exact_ids = {row["id"] for key in ("label_sets", "ballots") for row in evidence[key]}
+    children = {}
+    for dependency in evidence["dependencies"]:
+        if dependency["child"] in exact_ids:
+            children.setdefault(dependency["parent"], set()).add(dependency["child"])
+    affected = set()
+    pending = [invalidation["root_contract_id"]]
+    while pending:
+        for child in children.get(pending.pop(), set()) - affected:
+            affected.add(child)
+            pending.append(child)
+    unaffected = exact_ids - affected
+    assert invalidation["root_contract_id"] == sorted(contract_ids)[0]
+    assert affected and unaffected
+    assert invalidation == {
+        "protocol": "dependency-invalidation/1",
+        "root_contract_id": invalidation["root_contract_id"],
+        "expected_affected_ids": sorted(affected),
+        "observed_stale_ids": sorted(affected),
+        "unaffected_current_ids": sorted(unaffected),
+        "rollback_restored_ids": sorted({invalidation["root_contract_id"], *exact_ids}),
+    }
+    assert all(
+        store.get(identity)["current"] is True
+        for identity in {invalidation["root_contract_id"], *exact_ids}
+    )
+    assert "invalidation-evidence.json" in manifest["files"]
+
+    missing_probe = deepcopy(bundled_run)
+    missing_probe.pop("invalidation_evidence")
+    missing_probe.pop("invalidation_evidence_hash")
+    with pytest.raises(ValueError, match="requires invalidation evidence"):
+        evaluate(bundled_corpus, missing_probe, _trusted_evidence=True)
+
+    tampered_probe = deepcopy(bundled_run)
+    tampered_probe["invalidation_evidence"]["observed_stale_ids"] = []
+    with pytest.raises(ValueError, match="invalidation evidence hash is invalid"):
+        evaluate(bundled_corpus, tampered_probe, _trusted_evidence=True)
+
+    mismatched_probe = deepcopy(bundled_run)
+    mismatched_probe["invalidation_evidence"]["observed_stale_ids"] = []
+    mismatched_probe["invalidation_evidence_hash"] = fingerprint(
+        mismatched_probe["invalidation_evidence"]
+    )
+    with pytest.raises(ValueError, match="does not match judge dependencies"):
+        evaluate(bundled_corpus, mismatched_probe, _trusted_evidence=True)
+
+    substituted_root = next(
+        identity
+        for identity in sorted(contract_ids)[1:]
+        if invalidation_partition(evidence, identity)[1]
+    )
+    exact, affected, unaffected_for_root = invalidation_partition(evidence, substituted_root)
+    substituted_probe = deepcopy(bundled_run)
+    substituted_probe["invalidation_evidence"] = {
+        "protocol": "dependency-invalidation/1",
+        "root_contract_id": substituted_root,
+        "expected_affected_ids": sorted(affected),
+        "observed_stale_ids": sorted(affected),
+        "unaffected_current_ids": sorted(unaffected_for_root),
+        "rollback_restored_ids": sorted({substituted_root, *exact}),
+    }
+    substituted_probe["invalidation_evidence_hash"] = fingerprint(
+        substituted_probe["invalidation_evidence"]
+    )
+    with pytest.raises(ValueError, match="invalidation root is not deterministic"):
+        evaluate(bundled_corpus, substituted_probe, _trusted_evidence=True)
+
     relabeled_corpus = deepcopy(bundled_corpus)
     relabeled_run = deepcopy(bundled_run)
     relabeled_corpus["pair_labels"][0]["relationship"] = "EXCLUDES"
@@ -1230,6 +1443,32 @@ def test_validate_dataset_success_and_atomic_bundle(store, tmp_path):
             producer_manifests=PRODUCERS,
             evaluator_manifests=EVALUATORS,
         )
+
+    original_invalidate = store.invalidate
+
+    def force_probe_mismatch(identity, reason):
+        original_invalidate(identity, reason)
+        original_invalidate(next(iter(unaffected)), "forced probe mismatch")
+
+    monkeypatch.setattr(store, "invalidate", force_probe_mismatch)
+    failed_output = tmp_path / "failed-validation-bundle"
+    with pytest.raises(ValueError, match="probe did not match judge dependencies"):
+        validate_dataset(
+            store,
+            failed_output,
+            producer_paths,
+            evaluator_paths,
+            generator=generator,
+            producer_manifests=PRODUCERS,
+            evaluator_manifests=EVALUATORS,
+        )
+    assert not failed_output.exists()
+    assert all(
+        store.get(identity)["current"] is True
+        for identity in {invalidation["root_contract_id"], *exact_ids}
+    )
+    monkeypatch.setattr(store, "invalidate", original_invalidate)
+
     pair_labels = [
         row for row in store.list("consensus_label_set", True) if row["data"]["kind"] == "pair"
     ]
